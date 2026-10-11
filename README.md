@@ -28,6 +28,9 @@ for each. The vault is the folder of their own on a host that a new device resto
 | [`records/`](records/README.md) | How a profile says things: folders, signed records, private records, permissions, the inbox, the vault, blobs, what every host must do, and a reference host | a library | wherever an app, host or index runs |
 | [`escrow/`](escrow/README.md) | Money out when both sides agree, or by an arbiter or timer set at the start; this is one escrow, and anyone may use another | a program and a client | the chain, devnet today |
 
+Credits, prepaid units for the foundation's host and registry payer, live in services at
+[shared/credits](https://github.com/foundationforest/services/tree/main/shared/credits).
+
 Each folder's README has the same shape, so a reader knows where a fact lives: What it is, How it
 works (ending with how to use or run it), Promises, Limits, Who decides what, FAQ.
 
@@ -103,7 +106,7 @@ Planned, not built:
   sides, the arbiter or the timer move the money ([escrow](escrow/README.md#promises)).
 - **Anyone can take part.** Anyone can run a host, run an issuer, name a market or build an app, and
   everything needed to compete with the foundation is open.
-- **Both programs are sealed on mainnet, for different reasons.** The registry because everyone
+- **Both programs are to be sealed on mainnet, for different reasons.** The registry because everyone
   shares it: a change would mean two registries, two of you. The escrow because money sits inside
   it: nobody, the foundation included, may change the rules around money already there. A new
   version of either is a new program at a new address, and several escrows may run at once, for
