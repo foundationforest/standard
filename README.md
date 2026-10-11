@@ -6,12 +6,12 @@ libraries that follow them. Everything else, the
 [services](https://github.com/foundationforest/services) the Open Forest Foundation runs and the
 [app](https://github.com/foundationforest/app), lives in its own repo and can be replaced.
 
-## Why these six
+## Why these five
 
 Every piece is sorted by one question: what if there were two of it?
 
 - Two key recipes or two registries would mean two of you, so those are fixed.
-- Records, reputation proofs, escrow and credits are shared formats: anyone can offer another.
+- Records, reputation proofs and escrow are shared formats: anyone can offer another.
 - Hosts, issuers, indexes and apps are not here: anyone runs one, and the foundation's are in
   services.
 
@@ -27,7 +27,6 @@ for each. The vault is the folder of their own on a host that a new device resto
 | [`reputation/`](reputation/README.md) | The proof of a score across the person's profiles, and the tree an index publishes for it | a circuit and a client | made on the device, checked by anyone |
 | [`records/`](records/README.md) | How a profile says things: folders, signed records, private records, permissions, the inbox, the vault, blobs, what every host must do, and a reference host | a library | wherever an app, host or index runs |
 | [`escrow/`](escrow/README.md) | Money out when both sides agree, or by an arbiter or timer set at the start; this is one escrow, and anyone may use another | a program and a client | the chain, devnet today |
-| [`credits/`](credits/README.md) | Prepaid units for one service, bought once and spent without the service telling who bought them | a library | wherever an app or service runs |
 
 Each folder's README has the same shape, so a reader knows where a fact lives: What it is, How it
 works (ending with how to use or run it), Promises, Limits, Who decides what, FAQ.
@@ -80,8 +79,6 @@ What others can still see:
 - A ramp, a service that turns cash into dollars on chain and back, knows the profile it paid into.
 - A host sees who wrote to whom and when, not what, and the network address of whoever reads or
   writes.
-- A service you buy credits from sees who paid, not which spends they become
-  ([credits](credits/README.md)).
 - An issuer that checks faces, or its provider, keeps the face to refuse it a second time.
 - An AI run in the cloud shows its maker what you tell it.
 

@@ -3,8 +3,7 @@
 // the seed, so a new device finds the vault with the seed alone. The folder holds its hosts record
 // and one private record at `vault`, made for the vault's own inbox key alone (vaultRecord and
 // openVault in private.ts). Inside: the labels of the person's profiles and where each lives, the
-// grants they received, their issuers' notes, their credits and the buys not yet finished
-// (credits/), and apps' settings.
+// grants they received, their issuers' notes, and apps' settings.
 //
 // An app keeps every field it does not know, at the top and inside `settings`, so two apps, or an
 // older and a newer one, share one vault without erasing each other's.
@@ -22,23 +21,16 @@ export type VaultProfile = { label: string; hosts: string[] }
 /** An issuer's note: the issuer's name, as keys/'s recipe takes it, and the signed note, as JSON (registry/client's noteToJson). */
 export type IssuerNote = { issuer: string; note: { [key: string]: Json } }
 
-/** A credit not yet spent: the service's origin, and the credit in base64url (credits/). */
-export type VaultCredit = { service: string; credit: string }
-
 export type Vault = {
   /** The person's profiles, each label once. */
   profiles?: VaultProfile[]
   /** The grants the person received, through their profiles' inboxes. */
   grants?: Grant[]
   issuerNotes?: IssuerNote[]
-  /** Credits not yet spent. */
-  credits?: VaultCredit[]
-  /** Buys not yet finished, as credits/'s `buy` gives them to keep: its `checkPending` checks each. */
-  buying?: { [key: string]: Json }[]
   /** Apps' settings: any fields, each an app's own. */
   settings?: { [key: string]: Json }
   /** Fields an app does not know: kept as they are. */
-  [field: string]: Json | Grant[] | VaultProfile[] | IssuerNote[] | VaultCredit[] | undefined
+  [field: string]: Json | Grant[] | VaultProfile[] | IssuerNote[] | undefined
 }
 
 function fail(message: string): never {
@@ -78,14 +70,5 @@ export function checkVault(value: unknown): asserts value is Vault {
       if (!isObject(n.note)) fail('a note is an object')
     }
   }
-  if ('credits' in value) {
-    if (!Array.isArray(value.credits)) fail('credits is a list')
-    for (const c of value.credits as unknown[]) {
-      if (!isObject(c) || Object.keys(c).sort().join() !== 'credit,service') fail('a credit is { service, credit }')
-      if (typeof c.service !== 'string' || normalizeOrigin(c.service) !== c.service) fail("a credit's service is an origin")
-      if (typeof c.credit !== 'string' || !/^[A-Za-z0-9_-]+$/.test(c.credit)) fail('a credit is base64url')
-    }
-  }
-  if ('buying' in value && (!Array.isArray(value.buying) || !(value.buying as unknown[]).every(isObject))) fail('buying is a list of buys')
   if ('settings' in value && !isObject(value.settings)) fail('settings is an object')
 }

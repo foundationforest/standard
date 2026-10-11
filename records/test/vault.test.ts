@@ -66,10 +66,6 @@ describe('the vault', () => {
       ['an issuer note with no issuer', { issuerNotes: [{ issuer: '', note }] }],
       ['a note that is no object', { issuerNotes: [{ issuer: 'issuer-a.example', note: 'x' }] }],
       ['settings is an object', { settings: [] }],
-      ['a credit with no service', { credits: [{ credit: 'AAEC' }] }],
-      ['a credit whose service is no origin', { credits: [{ service: 'payer.example', credit: 'AAEC' }] }],
-      ['a credit that is no base64url', { credits: [{ service: 'https://payer.example', credit: 'AA+C' }] }],
-      ['buying is a list of buys', { buying: ['x'] }],
     ]
     for (const [why, v] of bad) assert.throws(() => checkVault(v), (e: unknown) => code('vault')(e) || code('grant')(e), why)
     await assert.rejects(vaultRecord(vault, vaultInbox.recipient, { settings: [] } as never, T0), code('vault'))
@@ -101,8 +97,7 @@ describe('the vault', () => {
         profiles: [{ label: 'tutoring/seller', hosts: [a.url] }, { label: 'tutoring/buyer', hosts: [b.url] }],
         grants: [received],
         issuerNotes: [{ issuer: 'issuer-a.example', note }],
-        credits: [{ service: 'https://payer.example', credit: 'AAEC' }],
-        buying: [{ service: 'https://host.example', key: 'AA', buy: 'AA', blinds: [{ nonce: 'AA', inverse: 'AA' }] }],
+        bookmarks: [{ url: 'https://shop.example', since: T0 }],
         settings: { indexes: ['https://index.example'], theme: 'dark' },
       }
       await publish([c.url], [hostsRecord(vault, [c.url], T0), await vaultRecord(vault, vaultInbox.recipient, kept, T0)])
@@ -126,6 +121,7 @@ describe('the vault', () => {
       const results = await publish([a.url], [accessRecord(key, carla.address, 'offer/from-a-new-device', offerBody('9'), T0 + 1)])
       assert.equal(results[0]!.results[0]!.ok, true)
       assert.deepEqual(found.vault.issuerNotes, [{ issuer: 'issuer-a.example', note }])
+      assert.deepEqual(found.vault.bookmarks, [{ url: 'https://shop.example', since: T0 }], 'a field an app added comes back as it was')
 
       // A later write, from either device, after the one read: the newer vault counts.
       const later = { ...found.vault, settings: { ...found.vault.settings, theme: 'light' } }
