@@ -48,8 +48,6 @@ jobs:
             install: escrow/client
           - package: reputation/client
             install: keys registry/client reputation/client
-          - package: credits
-            install: credits
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -112,9 +110,9 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
       - name: Install
-        run: for dir in keys records registry/client registry/circuit escrow/client reputation/client reputation/circuit credits; do (cd "$dir" && npm ci --no-audit --no-fund); done
+        run: for dir in keys records registry/client registry/circuit escrow/client reputation/client reputation/circuit; do (cd "$dir" && npm ci --no-audit --no-fund); done
       - name: Type-check every package
-        run: for dir in keys records registry/client registry/circuit escrow/client reputation/client reputation/circuit credits; do echo "== $dir"; (cd "$dir" && npm run check); done
+        run: for dir in keys records registry/client registry/circuit escrow/client reputation/client reputation/circuit; do echo "== $dir"; (cd "$dir" && npm run check); done
 
   programs:
     runs-on: ubuntu-latest

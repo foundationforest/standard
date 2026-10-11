@@ -307,7 +307,7 @@ A grant is how an access key reaches whoever it is for: its private half, and wh
 
 The vault holds what a new device needs and the seed alone cannot give back: the labels of the
 person's profiles and where each lives, the grants they received, their issuers' notes (the
-signed word each issuer gave them that it checked them), their credits, and apps' settings. It lives on hosts in a folder of its own, whose main key is the vault
+signed word each issuer gave them that it checked them), and apps' settings. It lives on hosts in a folder of its own, whose main key is the vault
 key, mixed from the seed ([keys](../keys/README.md#the-vault-key)), so a new device finds it with
 the seed alone.
 
@@ -315,8 +315,6 @@ the seed alone.
 { "profiles": [{ "label": <label>, "hosts": [<origin>, …] }, …],
   "grants": [<grant>, …],
   "issuerNotes": [{ "issuer": <issuer name>, "note": <signed note> }, …],
-  "credits": [{ "service": <origin>, "credit": <base64url> }, …],
-  "buying": [<buy>, …],
   "settings": { … } }
 ```
 
@@ -330,9 +328,6 @@ the seed alone.
   it, opens it, adds it here and writes the vault again.
 - `issuerNotes`: the issuer's name, exactly as keys/'s recipe takes it, and the note it signed, as
   registry/'s JSON ([registry](../registry/README.md#the-note-and-the-person-proof)).
-- `credits`: credits not yet spent, each with the origin of the service it is for; `buying`: buys
-  not yet finished, as [credits/](../credits/README.md)'s `buy` gives them to keep. An app removes a
-  credit once it is spent.
 - `settings`: apps' settings, such as the hosts, issuers and indexes the person chose. Each field
   is an app's own.
 - To change it, an app reads the current vault, changes it, and writes it, at a time past the
@@ -686,7 +681,7 @@ with the pinned inbox key they were encrypted to. The profile is
 - **Two devices writing the vault at once lose one change.** The newer record counts. An app that
   reads before it writes, and writes again when the vault changed under it, loses nothing.
 - **The vault is one record.** A host's largest record bounds it: 64 KB on the reference host, a
-  few hundred grants, or about a hundred credits.
+  few hundred grants.
 - **A vault has no registry row.** A host that chooses to take only registered folders will not keep
   it.
 

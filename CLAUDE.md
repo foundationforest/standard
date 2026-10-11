@@ -5,8 +5,7 @@ escrow). Read `README.md` and the README of the directory you work in before any
 
 Use these words: seed, main key, profile, address, label, stamp, issuer, list, registry, row,
 record, folder, host, access key, grant, permissions, private, envelope, inbox key, inbox, blob,
-escrow, receipt, deal, index, fee payer, sponsor, ticket, app, market, role, ramp, and sealed (for
-programs only).
+escrow, receipt, deal, index, fee payer, app, market, role, ramp, and sealed (for programs only).
 Plain words, no em-dashes.
 
 Rules for apps: `keys/README.md`, Rules for apps that hold keys. Never copy them here.
@@ -16,7 +15,7 @@ Rules for apps: `keys/README.md`, Rules for apps that hold keys. Never copy them
 - Work in plan mode. One task per session. Open a pull request; never push to main.
 - The promises in each README change only when Carlos says so in a chat; never change one as a side
   effect of a task.
-- The repo is `keys/`, `records/`, `registry/`, `reputation/`, `credits/`, `escrow/`, `README.md`,
+- The repo is `keys/`, `records/`, `registry/`, `reputation/`, `escrow/`, `README.md`,
   `CLAUDE.md` and `LICENSE`, with `.github/`. The README is the standard.
 - Keep the docs true in the same pull request: a change that makes a README wrong fixes it. A README
   says only what the code does today. Say "on devnet" for what runs; never state anything as
@@ -41,7 +40,7 @@ Rules for apps: `keys/README.md`, Rules for apps that hold keys. Never copy them
 # Each package: install, type-check, tests that need no chain.
 # keys first: records, registry/client and reputation/client read it; registry/client before
 # reputation/client, which reads it.
-for d in keys records registry/client escrow/client reputation/client credits; do
+for d in keys records registry/client escrow/client reputation/client; do
   (cd "$d" && npm ci && npm run check && npm test)
 done
 

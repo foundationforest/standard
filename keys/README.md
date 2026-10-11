@@ -120,7 +120,7 @@ label, where the scope is the label as a number, made the way the registry makes
 
 The vault is a folder of the person's own, on a host, that holds what a new device needs and the
 seed cannot give back: the labels of their profiles, the grants they received (each a private
-message that hands them an access key), their issuers' notes, their credits, and apps' settings
+message that hands them an access key), their issuers' notes, and apps' settings
 ([records](../records/README.md#the-vault)). Its key is mixed from the seed, so a new device finds
 the vault with the seed alone.
 
