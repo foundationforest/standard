@@ -54,6 +54,15 @@ standard:
 The info strings are part of every key, so they never change: a new string would give everyone
 new keys.
 
+### Day to day
+
+By default, nothing mixed from the seed is stored, only the seed. When the person acts, the app
+mixes the one key that action needs (a profile's main key from its label, its inbox key from that,
+the issuer secret for a proof), uses it, and drops it; JavaScript cannot promise its bytes are
+erased (Limits). The vault is not used day to day: a new device reads it to learn which profiles
+exist, and the app writes it when what it holds changes, such as a new profile or a grant received
+([records](../records/README.md#the-vault)).
+
 ### Main keys
 
 A main key is one profile: it signs the profile's records (the signed statements in its folder)

@@ -28,13 +28,13 @@ address, never an upgrade, and the old ones keep working.
 
 A buyer pays a seller for an hour of maths.
 
-1. **The link.** The seller's offer, which it publishes to say what it sells, has a price, and an
-   index, a service that reads what profiles publish and scores them, shows its pay link
-   ([The pay link](#the-pay-link)).
-   The buyer's app reads the offer and agrees the amount.
+1. **The offer.** The seller's offer, which it publishes to say what it sells, has a price, and an
+   index, a service that reads what profiles publish and scores them, shows it. The buyer's app
+   reads the offer and agrees the amount.
 2. **Opening and paying in.** The buyer's app makes the terms (`termsFor`), then in one
    transaction opens the escrow (`create`) and pays the amount into it (`createAndFund`). Or the
-   seller opens it first, as an invoice, and the buyer pays into it.
+   seller opens it first, as an invoice, and the buyer pays into it
+   ([Two ways to open it](#two-ways-to-open-it)).
 3. **The money waits.** Neither side can take it alone; each side can only give it to the other.
 4. **The money leaves.** The buyer releases it to the seller once the hour is done; or the seller
    gives it back; or both sign a split; or the arbiter or the timer, if the terms named one,
@@ -59,6 +59,18 @@ order (`terms_hash` in `program/src/state.rs`). So:
 `create` names both keys, the mint, the amount and any options. The party opening it signs, and
 so does whoever fronts the rent, the deposit Solana holds in every account and gives back when it
 closes, recorded as the payer ([Rent](#rent)).
+
+### Two ways to open it
+
+`create` takes either party as its creator, so an escrow opens one of two ways:
+
+- **The buyer opens it from an offer.** The buyer's app reads the seller's offer and names the
+  seller's address, the amount (the offer's price, times the hours or days bought), the dollar
+  (the price's mint) and the options (the arbiter and the timer in the offer's `terms`, if any):
+  `termsFor`, then `createIx`. It usually pays in the same transaction (`createAndFund`).
+- **The seller opens it for one buyer: an invoice.** The seller's app names the buyer, the amount,
+  the dollar and the options (`invoiceIx`). The buyer pays into its address with a plain transfer,
+  from anywhere ([Paying in](#paying-in)), or in one tap (`payInvoiceInOneTap`).
 
 ### Paying in
 
@@ -129,28 +141,6 @@ Three more instructions move money that is not the deal's:
 - **`recover_late`:** money sent after the end goes back to the buyer. Anyone may send it.
 - **`sweep_rent`:** lamports above the receipt's rent-exempt minimum (SOL sent to the escrow's
   address, or what a cut in Solana's rent frees) go to the payer. Anyone may send it.
-
-### The pay link
-
-The one format for paying for an offer from any app. An index shows it on every live offer with a
-price. An offer is live while its profile has not deleted it and it is not past its `expires`
-time. The link never pays and never holds money: it links. Nothing answers at
-`https://forest.foundation/pay` yet; it is to be set up before mainnet.
-
-    https://forest.foundation/pay?v=2
-      &offer=<profile address>/offer/<id>
-      &record=<the id of the record that holds the offer>
-      &price.amount=<whole units, decimal text>&price.mint=<mint>&price.per=<hour | day | job>
-      [&terms.arbiter=<key>][&terms.timer.days=<1..65535>&terms.timer.to=<seller | buyer>]
-
-Parameters come in exactly this order, so two apps write the same link. Every parameter after
-`record` is the offer record's own field, named by its path
-([offer schema](../records/schemas/offer.json)). The seller is the profile the offer address
-names, paid at its address. The only other key the link carries is the arbiter, and the escrow
-pays only the two sides, so a forged link cannot send money anywhere else. An app reads the offer
-at `offer` (from its hosts, or an index), shows the record's terms if its id is not `record`, and
-pays as in [A deal, start to end](#a-deal-start-to-end), the buyer opening the escrow. The client
-builds and reads no link.
 
 ### The receipt
 
@@ -379,7 +369,7 @@ each.
 
 ## Who decides what
 
-- **The standard:** the program's rules and the receipt, to be sealed on mainnet; the pay link.
+- **The standard:** the program's rules and the receipt, to be sealed on mainnet.
 - **An app, with the person:** the terms, the arbiter, the timer's default, and which escrow to
   use.
 - **A fee payer chooses** which transactions it pays for, and what it charges for fronting rent.

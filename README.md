@@ -41,8 +41,9 @@ a new device needs and the seed cannot give back.
 | [`escrow/`](escrow/README.md) | Money out when one side gives it to the other or both sides agree, or by an arbiter (a key both sides saw at the start) or a timer (a number of days, then it pays one side) set at the start; this is one escrow, and anyone may use another | a program and a client | on chain, devnet today |
 
 Credits, prepaid units for the foundation's host and its registry payer (which pays for registry
-rows), live in services at
-[shared/credits](https://github.com/foundationforest/services/tree/main/shared/credits).
+rows), live in services, each in its own README: the
+[host's](https://github.com/foundationforest/services/blob/main/host/README.md#credits) and the
+[registry payer's](https://github.com/foundationforest/services/blob/main/fee-payer/registry/README.md#credits).
 
 Each folder's README has the same shape, so a reader knows where a fact lives: What it is, How it
 works (ending with how to use or run it), Promises, Limits, Who decides what, FAQ.
