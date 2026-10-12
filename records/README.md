@@ -5,9 +5,10 @@ Part of Forest's standard: [the top README](../README.md). The record shapes: [s
 ## What it is
 
 How a Forest profile says things, and how anyone reads them. Everything a profile says (its card,
-its offers, its reviews of others) is a record: a small signed JSON value at a path in the
-profile's folder. Hosts keep folders and serve them to anyone. Any app, index or AI reads them and
-checks every signature itself, so a host can withhold a record but never forge one. Beside each
+the record that gives its name and photo; its offers; its reviews of others) is a record: a small
+signed JSON value at a path in the profile's folder. Hosts keep folders and serve them to anyone.
+Any app, index (a service that reads records and scores profiles) or AI reads them and checks
+every signature itself, so a host can withhold a record but never forge one. Beside each
 folder a host keeps the profile's inbox, where anyone may leave an encrypted message, and the photos
 and videos its records name.
 
@@ -19,7 +20,8 @@ record shapes as JSON Schemas, and test vectors.
 
 ### Folders
 
-A profile is one main key, mixed from the person's seed and a label such as `tutoring/seller`
+A profile is one main key, mixed from the person's seed (24 words every key comes from) and a
+label such as `tutoring/seller`
 ([keys/](../keys/README.md)). Its name is its address: the main key's public key in base58, which
 is also its Solana address. Its inbox key, mixed from the main key, opens what is encrypted to it.
 Nothing else is needed: no account, no sign-up, no directory.
@@ -29,7 +31,7 @@ Its folder is everything signed for it, one current record per path:
 | Path | What it holds |
 |---|---|
 | `hosts` | where the folder lives |
-| `permissions` | the access keys the profile hands out |
+| `permissions` | the access keys the profile hands out: keys that act for it within limits |
 | `profile` | the card: name, photo, inbox, proofs |
 | `offer/<id>` | an offer, or a request for one |
 | `review/<id>` | a review this profile wrote of another |
@@ -40,9 +42,10 @@ Its folder is everything signed for it, one current record per path:
   bytes. A prefix covers a path segment by segment: `offer` covers `offer` and `offer/x`, not
   `offerx`.
 - `profile`, `offer/<id>` and `review/<id>` are shaped by the JSON Schemas in `schemas/`; a market
-  adds fields, never a shape. A review sits in the folder of the profile that wrote it: the one it
-  is about cannot erase it; the one who wrote it can. It names its subject by address, and its
-  deal, if it wants, by `dealId`: the escrow receipt's address when the deal went through the
+  (the trade a label names, such as `tutoring`) adds fields, never a shape. A review sits in the
+  folder of the profile that wrote it: the one it is about cannot erase it; the one who wrote it
+  can. It names its subject by address, and its deal, if it wants, by `dealId`: the escrow receipt's
+  address (the account the escrow leaves on chain when a deal ends) when the deal went through the
   [escrow](../escrow/README.md), else 32 random bytes chosen when the deal began.
 
 **The hosts record** is `{ "urls": [origin, …] }`: 1 to 8 distinct origins, `https://host[:port]`,
@@ -77,7 +80,8 @@ coordinates are decimal text (`"30"`, `"38.72"`); arrays have no holes; object k
 and refuse the record unless the result equals the bytes it received.
 
 **Keys by address.** An address has one spelling: decoding and encoding again MUST give the same
-text. A key named by its address anywhere, in a record, a message, a pull or a grant (the private
+text. A key named by its address anywhere, in a record, a message, a pull (a signed request to
+fetch an inbox's messages) or a grant (the private
 body that hands an access key to whoever it is for), MUST be a canonical point in the prime-order
 subgroup and not of small order; anything else is refused.
 
@@ -151,9 +155,10 @@ keep one of a past key's records as the owner's own, the owner publishes it agai
 key. A read key is removed by deleting its entry: nothing it did needs to count.
 
 **Notes.** `notes` holds the owner's notes on its keys (who holds each, until when, why), as one
-envelope, a body only chosen keys open (Private records), encrypted to the owner's own inbox key
-alone, holding `{ "notes": [<note>, …] }`. A note is a grant (Grants) whose `key` is the public
-half, as `access` lists it: who holds a key needs nothing private. Hosts and readers ignore
+envelope, an encrypted body that only the keys it is encrypted to can open (Private records). It
+is encrypted to the owner's own inbox key alone, and holds `{ "notes": [<note>, …] }`. Each note
+has a grant's shape (Grants), but its `key` is the key's public half, as `access` lists it, not its
+private half: a note says who holds a key, and that needs no secret. Hosts and readers ignore
 `notes`; only the owner's apps open it. The public part stays `key`, `scope` and `paths`: no
 names, dates or reasons.
 
@@ -191,9 +196,10 @@ folder.
 - No `inbox` field means no inbox: hosts refuse deliveries. A profile with an inbox gives
   `inboxKey`, since senders encrypt to it.
 - `senders` is `"anyone"`, or `{ "issuer" }`: the sender's key must hold a registry row (the public
-  statement that a key holds a note an issuer signed) from that issuer, under any label
-  ([registry/](../registry/README.md)). The issuer is named by its key as a row holds it: x then y
-  of its point on Baby Jubjub, each 32 bytes big-endian, as 128 characters of lowercase hex.
+  statement that a key holds a note an issuer, anyone who checks people, signed) from that issuer,
+  under any label ([registry/](../registry/README.md)). The issuer is named by its key as a row
+  holds it: x then y of its point on Baby Jubjub, each 32 bytes big-endian, as 128 characters of
+  lowercase hex.
 - `once`: one message from each sender, ever.
 - `maxBytes`: the largest message it takes, as canonical text in bytes.
 - `readers`: read keys' public halves. Senders encrypt every message to them too, so a reader that
@@ -234,8 +240,8 @@ message: the receiving host reads `from`'s current hosts and permissions records
 message key the owner makes past stops being taken once a host reads them again. The inbox's rule
 and `once` apply to `from`, as for any message.
 
-**Pull.** The recipient asks each of its hosts for what arrived after a cursor
-(`POST /v1/inbox/pull`):
+**Pull.** The recipient asks each of its hosts for what arrived after a cursor, the number a host
+gives the last message on a page, so the next ask starts after it (`POST /v1/inbox/pull`):
 
 ```
 { "v": 1, "profile": <address>, "after": <cursor>, "time": <ms since 1970>, "key"?: <address>,
@@ -306,10 +312,10 @@ A grant is how an access key reaches whoever it is for: its private half, and wh
 ### The vault
 
 The vault holds what a new device needs and the seed alone cannot give back: the labels of the
-person's profiles and where each lives, the grants they received, their issuers' notes (the
-signed word each issuer gave them that it checked them), and apps' settings. It lives on hosts in a folder of its own, whose main key is the vault
-key, mixed from the seed ([keys](../keys/README.md#the-vault-key)), so a new device finds it with
-the seed alone.
+person's profiles and where each lives, the grants they received, their issuers' notes (the signed
+word each issuer gave them that it checked them), and apps' settings. It lives on hosts in a folder
+of its own, whose main key is the vault key, mixed from the seed
+([keys](../keys/README.md#the-vault-key)), so a new device finds it with the seed alone.
 
 ```
 { "profiles": [{ "label": <label>, "hosts": [<origin>, …] }, …],
@@ -350,13 +356,14 @@ proof in the profile record only when the person chooses to show it there:
 
 - **`reputation`** shows the score of the profiles the person holds in an index's tree, without
   saying which. It carries the index's key, the root and time the index signed and its signature,
-  the score, the stamp of this profile's registry row (the number the row is kept at), the label when the proof shows one market,
-  and the proof's 256 bytes. A reader checks it with reputation/client's `verifyReputation`: it
-  holds only when the row at that stamp names this main key, and the proof shows that stamp comes
-  from the same secret as the profiles it counts, so nobody can lend their score to someone else.
-  Each reader decides which indexes and issuers it trusts and how old a time it accepts. How it is
-  made is [reputation/](../reputation/README.md)'s.
-- **`person`** shows the profile's tier: that an issuer signed the person a note at that tier
+  the score, the stamp of this profile's registry row (the number the row is kept at), the label
+  when the proof shows one market, and the proof's 256 bytes. A reader checks it with
+  reputation/client's `verifyReputation`: it holds only when the row at that stamp names this main
+  key, and the proof shows that stamp comes from the same secret as the profiles it counts, so
+  nobody can lend their score to someone else. Each reader decides which indexes and issuers it
+  trusts and how old a time it accepts. How it is made is [reputation/](../reputation/README.md)'s.
+- **`person`** shows the profile's tier, a number in the note whose meaning is the issuer's: that
+  an issuer signed the person a note at that tier
   ([registry/](../registry/README.md)). It carries the issuer's key, the label and the stamp as
   the profile's registry row holds them, the tier in decimal (a tier can be a number far past
   2^53 − 1, where a record's numbers stop), and the proof's 256 bytes, in the reputation proof's
@@ -374,7 +381,7 @@ blob from the record's hosts, and check its SHA-256 themselves.
 
 ### Hosts
 
-A host is an address that answers six requests, the host socket, however many machines stand
+A host is an address that answers seven requests, the host socket, however many machines stand
 behind it. It has no keys, no accounts and no login: a record's signature is all it asks for,
 and a pull's is the recipient's main key's or message key's. It is open: it takes signed records
 for any profile and serves them to anyone; it takes messages for any profile whose profile record
@@ -395,8 +402,10 @@ host.
 
 - A page's header `forest-cursor` is the last sequence number on it: the next page is after it.
   A page always holds at least one line.
-- The read by POST gives the same answer as the GET: front doors log URLs, so a person reading
-  their own profiles by GET leaves a trail. The GET stays for public readers.
+- `POST /v1/records/read` gives the same answer as `GET /v1/records`, with the profile and the
+  cursor in the body instead of the URL. Front doors, the proxies and hosting platforms that stand
+  in front of a host, log URLs, so a person who reads their own profiles by GET leaves a trail. The
+  GET stays for public readers.
 - A refused pull is answered 400 with `{ok, error, message}`: [`stale`] when its time is more than
   600,000 ms from the host's clock, [`signature`] when neither the profile's main key nor the
   `key` it names signed it, [`permission`] when the profile's permissions record on this host does
@@ -641,8 +650,8 @@ with the pinned inbox key they were encrypted to. The profile is
 - **A person can always move.** A profile's name is its key, not a host's address. A host never
   refuses a newer hosts or permissions record by its own choice but for its size, and one that
   only removes an access key is never larger than the one before.
-- **A host holds nothing secret.** No keys, no accounts, no login, and it cannot open a private
-  record.
+- **A host holds nothing secret of the people it serves.** No keys, no accounts, no login, and it
+  cannot open a private record.
 - **Only a profile's main key, or a message key its permissions record lists, can pull its inbox.**
 
 ## Limits
@@ -688,7 +697,7 @@ with the pinned inbox key they were encrypted to. The profile is
 ## Who decides what
 
 - **The standard:** the record and the message, and what makes each valid (the ten-minute
-  window); the six requests and their codes; the control records and the scopes of access keys;
+  window); the seven requests and their codes; the control records and the scopes of access keys;
   envelopes; the three shapes; the inbox, its rules and the request body; the grant; the vault;
   the proofs field.
 - **A host chooses:** its keep days; the largest record, message and blob it takes;
@@ -698,7 +707,8 @@ with the pinned inbox key they were encrypted to. The profile is
 - **An app, with the person:** the copies it keeps; which hosts, the vault's among them; which
   private records it encrypts to a read key; how a grant reaches its holder; whether to forward a
   message to email or a notification; dropping a message that arrives twice; what it finds too
-  big to read; and what asks for the person's face.
+  big to read; and what asks for the person's face. The profile can change or delete anything it
+  wrote, at will. What others wrote about it, and payments, stay.
 - **An index chooses:** which hosts, issuers and markets count, which hosts it crawls,
   how much each review weighs, and which proofs it accepts.
 
@@ -756,10 +766,11 @@ the seed is found with nothing else; it can live on hosts apart from the profile
 key opens it.
 
 **Why is a proof's `proof` 256 bytes, and not snarkjs's JSON?**
-A record's keys cannot spell snarkjs's `pi_a`, `pi_b` and `pi_c`. The bytes are the three points
-whole, in the order Ethereum's and Solana's BN254 precompiles read, so a reader rebuilds snarkjs's
-form by reading eight numbers; compressed, they would save 128 bytes and leave every reader square
-roots to take.
+A record's object keys cannot spell snarkjs's `pi_a`, `pi_b` and `pi_c`: they allow no `_`. The
+256 bytes are the proof's three points, not compressed, in the order Ethereum's and Solana's BN254
+precompiles read them, so a reader gets snarkjs's form back by reading eight 32-byte numbers.
+Compressed, the points would take 128 bytes fewer, but every reader would have to take square
+roots to rebuild them.
 
 **Why not AT Protocol, Nostr or Pubky as the base?**
 AT Protocol has one server per profile and a central directory. Nostr's keys cannot be Solana keys,
