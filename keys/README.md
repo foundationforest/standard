@@ -22,10 +22,10 @@ defaults an app adopts, or says it doesn't. The library in `src/` follows it, an
 - Case and spacing in the words do not matter. A word not on BIP39's list is refused, and the
   checksum catches all but about 1 in 256 other mistakes, such as a wrong word or two words
   swapped.
-- Where the seed lives is the app's choice. By default it lives in the app's slot of the phone's
-  secure keychain (Apple's Keychain or Android's Keystore), opened by the person's face or
-  fingerprint and used only to mix keys, with the 24 words in the person's password manager as the
-  backup.
+- Where the seed lives is the app's choice. By default it stays on the device, locked by the
+  device's secure hardware: a phone's keychain (Apple's Keychain or Android's Keystore), or, in a
+  browser, encrypted under a secret that hardware gives only after the person's face or
+  fingerprint; the 24 words in the person's password manager are the backup.
 - Whoever controls the app that holds the seed controls the seed, since the app can do whatever the
   seed can. A web app's code arrives from its server on each visit; an installed app's does not.
 
@@ -53,6 +53,15 @@ standard:
 
 The info strings are part of every key, so they never change: a new string would give everyone
 new keys.
+
+### Day to day
+
+By default, nothing mixed from the seed is stored, only the seed. When the person acts, the app
+mixes the one key that action needs (a profile's main key from its label, its inbox key from that,
+the issuer secret for a proof), uses it, and drops it; JavaScript cannot promise its bytes are
+erased (Limits). The vault is not used day to day: a new device reads it to learn which profiles
+exist, and the app writes it when what it holds changes, such as a new profile or a grant received
+([records](../records/README.md#the-vault)).
 
 ### Main keys
 
@@ -154,7 +163,8 @@ which access keys may act, and a grant hands one to whoever it is for
 
 ### Rules for apps that hold keys
 
-1. The seed and the main keys stay in the device's secure slot.
+1. The seed stays on the device, locked by its secure hardware; keys mixed from it are held in
+   memory only for the action that needs them.
 2. Every signature asks for the person's face or fingerprint and shows what is being signed; the
    person may relax this per action, and the default is never relaxed.
 3. Nothing leaves the device but access keys and signatures.
@@ -215,8 +225,8 @@ encryption and an opening through age, and the scalar step by step without zk-ki
 
 ## Limits
 
-- **It trusts the device's secure slot and the person's password manager** to keep the seed and the
-  words, and show them to no one else.
+- **It trusts the device's secure hardware and the person's password manager** to keep the seed and
+  the words, and show them to no one else.
 - **It trusts its pieces, used unchanged:** Web Crypto (HKDF-SHA256, and its random source for new
   seeds), `@noble/curves` 2.4.0 (ed25519), `@scure/base` 2.4.0 (base58, bech32), `@scure/bip39`
   2.4.0, `age-encryption` 0.3.1 (whose hybrid runs on `@noble/post-quantum`),

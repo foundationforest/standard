@@ -276,9 +276,11 @@ requests today, and the other fields are that kind's parameters:
 | `inbox` | `after`, if wanted: the cursors a pull returned, by host, for newer messages only |
 | `pay` | `offer`, `units` and `note`, as below |
 
-For `pay` they are `offer`, the offer's [pay link](../escrow/README.md#the-pay-link), and if wanted
-`units`, a whole number of hours or days for an offer priced per hour or per day, and `note`, text
-for the person: `{ "request": "pay", "offer": <pay link>, "units": 2, "note": … }`.
+For `pay` they are `offer`, the offer as `<profile address>/offer/<id>`, and if wanted `units`, a
+whole number of hours or days for an offer priced per hour or per day, and `note`, text for the
+person: `{ "request": "pay", "offer": <profile address>/offer/<id>, "units": 2, "note": … }`. The
+app reads the offer and opens the escrow from it
+([escrow](../escrow/README.md#two-ways-to-open-it)).
 
 An app acts on a request only when it was sent to the profile's own inbox by the profile's main
 key or by a message key its permissions record lists, and shows any other `request` body as a
@@ -693,6 +695,8 @@ with the pinned inbox key they were encrypted to. The profile is
   few hundred grants.
 - **A vault has no registry row.** A host that chooses to take only registered folders will not keep
   it.
+- **Not here: a pay scope.** A key that moves money is the person's own; a delegate's allowance is
+  the chain's, not this standard's.
 
 ## Who decides what
 
