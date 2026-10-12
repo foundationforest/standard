@@ -7,10 +7,11 @@ comes before mainnet. Nothing is on mainnet.
 
 ## What it is
 
-The reputation proof lets a person carry a score from their profiles to another one of theirs,
-such as a new profile, without naming any of them. A profile's reviews are its own, and nothing
-public ties a person's profiles together; the proof carries the score across without linking them,
-and only to the person's own registered profile, so nobody can lend their score to someone else.
+The reputation proof lets a person carry a score from their profiles (their identities, one for
+each label, the free text saying what a profile is for) to another one of theirs, such as a new
+profile, without naming any of them. A profile's reviews are its own, and nothing public ties a
+person's profiles together; the proof carries the score across without linking them, and only to
+the person's own registered profile, so nobody can lend their score to someone else.
 It has two uses:
 
 - **Global:** the count-weighted score of up to eight profiles the person picks, naming none of
@@ -29,9 +30,10 @@ circom 2.2.3, Groth16 on BN254, and the Poseidon and Merkle pieces Semaphore use
 
 ### The tree an index publishes
 
-An index, a service that reads records from hosts and scores profiles as it chooses
-([records](../records/README.md)), publishes its scores as a tree. The tree is a standard: any
-index may publish one, and a proof names the root it used.
+An index, a service that reads records (what profiles publish) from hosts (the servers that keep
+them) and scores profiles as it chooses ([records](../records/README.md)), publishes its scores as
+a tree. The tree is a standard: any index may publish one, and a proof names the root it used, the
+one number the whole tree hashes down to.
 
 - **A leaf** is `Poseidon(stamp, scope, score, count)`, circomlib's Poseidon with four inputs:
   - `stamp`: the profile's stamp ([keys](../keys/README.md#stamps)), the number its registry row's
@@ -121,7 +123,7 @@ client, unchanged.
 | `buildTree(leaves)` | For an index: the root to sign. Refuses an empty tree, more than 2^20 leaves, a field out of range, or two leaves for one stamp |
 | `signedBytes(root, time)` | The bytes an index signs |
 | `proveReputation({ secret, labels, leaves, profileLabel, show?, artifacts })` | The proof, on the device: one to eight labels of the person's profiles from one issuer, found in the leaves by their stamps, shown on the profile with `profileLabel`, registered with the same issuer; `show` shows the label, only with one |
-| `verifyReputation(connection, { proof, root, score, stamp, profile, label?, index, time, signature })` | The row the proof landed on: when the index signed the root with that time, the proof holds for that score, stamp and shown label, and the row at the stamp names `profile`, the main key that shows it. The row gives the issuer every counted profile shares. Null otherwise |
+| `verifyReputation(connection, { proof, root, score, stamp, profile, label?, index, time, signature })` | Checks a proof, and gives the registry row it lands on, or null. It gives the row only when the index signed the root with that time, the proof holds for that score, stamp and shown label, and the row at the stamp names `profile`, the main key of the profile that shows the proof. The row names the issuer that every counted profile shares |
 | `proofBytes(proof)`, `proofFromBytes(bytes)` | The proof as the 256 bytes a profile record carries ([records](../records/README.md)), and back; `verifyReputation` takes either |
 | `circuitInput({...})` | The circuit's input, for a caller that drives snarkjs itself |
 

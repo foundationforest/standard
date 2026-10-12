@@ -9,7 +9,9 @@ On devnet: the program runs at `J4ES52YohsZhknYbsgmZwHpyNw14EjrrGZxHpcmcBmq4`, s
 ## What it is
 
 A free public registry on Solana, and the client a device uses to add to it and read it. Each row
-says: *this profile holds a note this issuer signed, under this label*. A zero-knowledge proof shows
+says: *this profile holds a note this issuer signed, under this label*. A profile is one of a
+person's identities, named by its main key; a note is an issuer's signed word that it checked the
+person; a label is free text saying what the profile is for. A zero-knowledge proof shows
 it without showing the note, so a row does not say who the person is. A stamp, the number a person
 has for one label at one issuer ([keys](../keys/README.md#stamps)), gets at most one row, and a row
 is written once and never changes. The program holds nothing else: no fee, no coin, no treasury and
@@ -18,7 +20,8 @@ sends the transaction.
 
 - `program/`: the program (Anchor 1.2) and its LiteSVM tests, the property test among them.
 - `client/`: stamps, the person proof and its check, the two instructions, rows read back, and a
-  tier checked against its row. It talks to no network of its own.
+  tier (a number in the note whose meaning is the issuer's, such as which checks it made) checked
+  against its row. It talks to no network of its own.
 - `circuit/`: the person proof's circuit, its devnet setup and its tests.
 - `devnet/`: the deploy script and the public record of what runs on devnet.
 
@@ -168,7 +171,7 @@ blockhash and a connection to Solana.
 | `buildRegistration({...})` | Makes the person proof from the note, and returns the unsigned `register` transaction |
 | `registerIx`, `refundIx` | The two instructions, by hand |
 | `fetchRow(connection, stamp)`, `fetchRows(connection, { profile, issuer, label })`, `decodeRow(data)` | Rows read back and checked |
-| `verifyTier(connection, { profile, issuer?, label?, stamp, tier, proof })` | The tier a profile shows, as a `person` proof in its profile record: its person proof, as snarkjs writes it or its 256 bytes, checked against its row, and so are the issuer and label it shows, when given. Gives the row, so the reader weighs its issuer and when it was made |
+| `verifyTier(connection, { profile, issuer?, label?, stamp, tier, proof })` | Checks the tier a profile shows. A profile shows it as a `person` proof in its profile record, the record that holds its card ([records](../records/README.md#proofs)). This checks that person proof, as snarkjs writes it or as its 256 bytes, against the profile's row, and the issuer and label it shows against the row too, when given. Gives the row, so the reader can weigh its issuer and when it was made |
 | `signNote(privateKey, note)`, `issuerKeyOf(privateKey)` | For an issuer: the signed note, and its key |
 | `noteNumberOf(secret)`, `noteHash(note)`, `noteSigned(note)` | The note number, what an issuer signs, and whether its issuer signed it |
 | `noteToJson(note)`, `noteFromJson(json)` | The note as JSON, as a vault keeps it, and back; `noteFromJson` refuses any other shape, and leaves the signature to `noteSigned` |
@@ -303,8 +306,9 @@ solana program show <program id>          # Authority: none
   notes with a key of their own and write rows with them. An issuer that checks faces is trusted to
   sign one note per real, distinct human; the program cannot tell. A reader that trusts no issuer
   counts no row.
-- **A row made after its issuer's key leaked stays uncounted.** Its stamp is taken, and a note
-  under the issuer's new key gives the same stamp, so that person cannot write a second row.
+- **A row made after its issuer's key leaked stays uncounted.** It still takes its stamp, and a
+  note under the issuer's new key gives the same stamp, so the person that stamp belongs to cannot
+  write a second row under that label with that issuer.
 - **One row per issuer, not per face.** A person with notes from two issuers can hold two rows
   under one label, for two profiles. A reader that trusts both issuers counts both.
 - **The refund goes to whoever paid.** When a fee payer paid the deposit, the refund is the fee
@@ -317,7 +321,7 @@ solana program show <program id>          # Authority: none
 - **The standard:** the row, the proof, and one row per stamp; to be sealed on mainnet.
 - **An issuer:** chooses whom it signs notes for and how it checks them, and what its tiers mean.
 - **Other services:** each chooses for itself which rows a fee payer pays for, and which issuers an
-  index counts, and from when.
+  index (a service that reads records and scores profiles) counts, and from when.
 - **An app, with the person:** when to register, making the proof on the device, and showing the
   tier.
 
@@ -332,3 +336,15 @@ destination are read from the chain, never from the caller.
 **What if I lose my seed?** The rows stay on the chain and nobody else can use them, but your issuer
 secrets are gone, and an issuer that checks faces will not sign your face a note for a new seed.
 The 24 words are the only backup.
+
+**Can I be checked by more than one issuer?** Yes. Each issuer's note gives its own row for the same
+profile, at its own stamp. An index decides which issuers it counts and how much each weighs, so
+more issuers behind a profile give it more weight at an index that counts them. The same issuer
+never gives a second row under one label: a new note from it gives the same stamp.
+
+**What if someone steals my seed, or I sell it?** Whoever holds the seed acts as every profile and
+can move their money ([keys](../keys/README.md#faq)). The note an issuer signed carries numbers
+made from the person's face, its embedding, so a service that wants to can ask whoever shows the
+note for a live face match against it. Today no service does, outside the foundation's issuer,
+which matches a live face against a note only before it signs the same note at a higher tier. A
+sold seed is the same case.

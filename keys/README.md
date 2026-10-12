@@ -33,10 +33,16 @@ defaults an app adopts, or says it doesn't. The library in `src/` follows it, an
 
 Every key below is mixed with HKDF-SHA256 (RFC 5869), a standard one-way mix of a secret and a
 text: an empty salt, the text's UTF-8 bytes as its info, 32 bytes out. Only the text changes, and
-each key is explained below, in the order it is needed. A note is the signed word an issuer gives a
-person after checking them, a stamp is the number that fixes where one registry row sits, and a
-row says in public that a profile holds a note; the vault is the person's folder of their own on a
-host, which a new device restores from.
+each key is explained below, in the order it is needed. The table uses words from the rest of the
+standard:
+
+- **profile:** one of the person's identities, one for each label, a free text saying what the
+  profile is for;
+- **note:** what an issuer, anyone who checks people, signs for a person after checking them;
+- **stamp:** the number that sets where one registry row sits; a row says in public that a profile
+  holds a note;
+- **vault:** a folder of the person's own on a host, which a new device restores from. A folder is
+  the signed records kept under one key, and a host is a server that keeps folders.
 
 | From | Mixed with (info) | Gives |
 |---|---|---|
@@ -50,8 +56,8 @@ new keys.
 
 ### Main keys
 
-A main key is one profile: it signs the profile's records and transactions, and its address is
-the profile's name.
+A main key is one profile: it signs the profile's records (the signed statements in its folder)
+and transactions, and its address is the profile's name.
 
 - There is one per label. A label is free text saying what the profile is for, used exactly as
   given, as UTF-8, so `Tutoring/Seller` and `tutoring/seller` are two profiles. The recommended
@@ -120,9 +126,9 @@ label, where the scope is the label as a number, made the way the registry makes
 
 The vault is a folder of the person's own, on a host, that holds what a new device needs and the
 seed cannot give back: the labels of their profiles, the grants they received (each a private
-message that hands them an access key), their issuers' notes, and apps' settings
-([records](../records/README.md#the-vault)). Its key is mixed from the seed, so a new device finds
-the vault with the seed alone.
+message that hands them an access key, a key that acts for one profile within limits), their
+issuers' notes, and apps' settings ([records](../records/README.md#the-vault)). Its key is mixed
+from the seed, so a new device finds the vault with the seed alone.
 
 - It is a main key with no label: its address is the vault folder's name, and it signs the vault's
   records. No label gives it: a profile's text always starts `forest/v1/profile/`.
@@ -135,14 +141,16 @@ the vault with the seed alone.
 
 A person hands out access keys, never a main key. An access key is one the owner's app makes at
 random, not from the seed, and hands to an app, a server or an AI so it can act for one profile.
-Each has one scope:
+Each has one scope, the one kind of thing it may do:
 
-- **write key:** signs records into the profile's folder, at the paths it is allowed;
+- **write key:** signs records into the profile's folder, at the paths it is allowed (a path is
+  where a record sits in the folder, such as `offer/maths`);
 - **message key:** sends the profile's messages and pulls its inbox;
 - **read key:** opens the private records and messages encrypted to it.
 
-The profile's permissions record lists which access keys may act, and a grant hands one to
-whoever it is for ([records](../records/README.md)).
+The profile's permissions record, a record in its folder that only the main key writes, lists
+which access keys may act, and a grant hands one to whoever it is for
+([records](../records/README.md)).
 
 ### Rules for apps that hold keys
 
@@ -242,11 +250,12 @@ gets the words gets every key.
 
 **What if I give the words to the wrong app?**
 Then that app has everything the seed opens, and nothing takes it back:
-- every profile: labels are public, so it can mix any main key, sign as that profile and move its
-  money;
+- every profile: a main key is mixed from the seed and a label, and labels are public, so it can
+  mix the main key of every profile, sign as it and move its money;
 - every inbox key, so it can open the person's private records and messages;
-- every issuer secret, so it can use their stamps. In a market where the person has no registry
-  row yet, it can take that row for a profile of its own, and this seed can never have one there;
+- every issuer secret, so it can use the person's stamps. Under a label where the person has no
+  registry row yet, it can register that row for a profile of its own; the stamp is then taken, so
+  this seed can never have a row there;
 - the vault, with every grant the person received and their issuers' notes.
 
 There is no rotation, so the only way out is a new seed and new profiles, moving the money first if
@@ -276,7 +285,9 @@ signature can only be forged once such a computer exists. So only the inbox key 
 post-quantum. A large enough quantum computer could:
 - work out from a profile's address what signs for it, then sign as the profile and move its
   money;
-- forge person and reputation proofs, whose curves it breaks too.
+- forge person proofs (the proof that registers a profile, showing an issuer signed the person a
+  note) and reputation proofs (the proof that carries a score from a person's profiles to another
+  of theirs), whose curves it breaks too.
 
 It could not open private records, even ones copied today to open later:
 - the inbox key is age's hybrid, so its recipient gives nothing away unless ML-KEM-768 breaks

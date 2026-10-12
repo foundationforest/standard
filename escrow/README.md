@@ -7,8 +7,9 @@ Part of Forest's standard: [the top README](../README.md). Down: the
 
 A program Forest offers on Solana, and its client; use any escrow. An escrow holds an amount of
 one mint, one kind of money such as a dollar, between two keys, a buyer and a seller, and lets it
-out only when both sides agree, or by an arbiter or a timer that were in its terms from the start. Every escrow that held the money
-leaves a receipt at its address, for good.
+out only when both sides agree or one side gives the money to the other, or by an arbiter or a
+timer that were in its terms from the start. Every escrow that held the money leaves a receipt at
+its address, for good: its account, saying how the deal ended.
 
 It runs on devnet at `FA6ZodkyhMDj9yjzY27dk8JDCtcHnJx8mr45Mx9TfKg8`, still upgradable
 ([record](devnet/devnet.json)); nothing is on mainnet. On mainnet each version is to be sealed the
@@ -27,7 +28,9 @@ address, never an upgrade, and the old ones keep working.
 
 A buyer pays a seller for an hour of maths.
 
-1. **The link.** The seller's offer has a price, and an index shows its pay link (The pay link).
+1. **The link.** The seller's offer, which it publishes to say what it sells, has a price, and an
+   index, a service that reads what profiles publish and scores them, shows its pay link
+   ([The pay link](#the-pay-link)).
    The buyer's app reads the offer and agrees the amount.
 2. **Opening and paying in.** The buyer's app makes the terms (`termsFor`), then in one
    transaction opens the escrow (`create`) and pays the amount into it (`createAndFund`). Or the
@@ -35,9 +38,9 @@ A buyer pays a seller for an hour of maths.
 3. **The money waits.** Neither side can take it alone; each side can only give it to the other.
 4. **The money leaves.** The buyer releases it to the seller once the hour is done; or the seller
    gives it back; or both sign a split; or the arbiter or the timer, if the terms named one,
-   decides (How money leaves).
+   decides ([How money leaves](#how-money-leaves)).
 5. **The receipt stays.** The escrow's account stays at its address, saying how the deal ended,
-   and each side's review names that address as its deal (The receipt).
+   and each side's review names that address as its deal ([The receipt](#the-receipt)).
 
 A buyer with nothing to wait for does steps 2 and 4 in one transaction: `payInOneTap`.
 
@@ -54,7 +57,8 @@ order (`terms_hash` in `program/src/state.rs`). So:
   (`randomId()`).
 
 `create` names both keys, the mint, the amount and any options. The party opening it signs, and
-so does whoever fronts the rent, recorded as the payer (Rent).
+so does whoever fronts the rent, the deposit Solana holds in every account and gives back when it
+closes, recorded as the payer ([Rent](#rent)).
 
 ### Paying in
 
@@ -63,7 +67,7 @@ so does whoever fronts the rent, recorded as the payer (Rent).
   mint with a transfer fee (it would take part of every payment, while every way out pays the
   whole balance), or one that cannot be transferred (it could never leave). A dollar, here, is
   such a mint made to track the US dollar, such as Open USD; what its maker can still do is in
-  the [security checklist](security-checklist.md).
+  [Limits](#limits).
 - **The deposit address** is the escrow's associated token account for the mint, so a payment
   sent "to the escrow's address" from anywhere lands there. Money arrives by a plain transfer,
   from anywhere; a payment in a Token-2022 mint must be a `transfer_checked`. Confidential
@@ -77,8 +81,8 @@ so does whoever fronts the rent, recorded as the payer (Rent).
 - **The amount** is one payment: an app multiplies a price per hour or per day before `create`,
   one escrow per payment.
 - **The deposit address is made first** when paying in the same transaction as `create`
-  (`createAndFund` and the one-tap builders do), so a fee payer that checks every transfer's
-  destination before it signs finds it made.
+  (`createAndFund` and the one-tap builders do), so a fee payer (a service that pays Solana's
+  costs for others) that checks every transfer's destination before it signs finds it made.
 
 ### The arbiter and the timer
 
@@ -112,9 +116,10 @@ side stays silent.
    may send it.
 
 Every way out pays the whole balance, and pays each side only at its standard token account for
-the mint (its associated token account), so no ending can send money anywhere else. That account
-is checked by address alone, so a side that hands it to another key blocks no way out; whoever
-sends a way out makes it first if it is missing (`makeStandardAccountIx`).
+the mint (its associated token account), so no ending can send money anywhere else. The program
+checks that account by its address alone, not by who holds it now, so a side that hands its
+account to another key cannot block any way out. If the account does not exist yet, whoever sends
+the way out makes it first (`makeStandardAccountIx`).
 
 Three more instructions move money that is not the deal's:
 
@@ -128,7 +133,9 @@ Three more instructions move money that is not the deal's:
 ### The pay link
 
 The one format for paying for an offer from any app. An index shows it on every live offer with a
-price. It never pays and never holds money: it links.
+price. An offer is live while its profile has not deleted it and it is not past its `expires`
+time. The link never pays and never holds money: it links. Nothing answers at
+`https://forest.foundation/pay` yet; it is to be set up before mainnet.
 
     https://forest.foundation/pay?v=2
       &offer=<profile address>/offer/<id>
@@ -142,7 +149,8 @@ Parameters come in exactly this order, so two apps write the same link. Every pa
 names, paid at its address. The only other key the link carries is the arbiter, and the escrow
 pays only the two sides, so a forged link cannot send money anywhere else. An app reads the offer
 at `offer` (from its hosts, or an index), shows the record's terms if its id is not `record`, and
-pays as in A deal, start to end, the buyer opening the escrow. The client builds and reads no link.
+pays as in [A deal, start to end](#a-deal-start-to-end), the buyer opening the escrow. The client
+builds and reads no link.
 
 ### The receipt
 
@@ -162,10 +170,12 @@ Solana holds a deposit, its rent, in every account, and gives it back when the a
 Whoever fronts an escrow's rent signs `create` as payer, is recorded, and gets every rent back:
 the deposit account's at every ending, both rents at `close_unfunded`, and, by `sweep_rent`,
 whatever a cut in Solana's rent later frees above the receipt's minimum. Refunds arrive in SOL, to
-that key. A fee payer may front it; what it charges for that is its own choice. The one other
-case: a deposit account a late payment made again was almost always made by the buyer's own
-payment, so `recover_late` sends its rent to the buyer. Registry rows (the registry's public
-statements that a profile holds an issuer's note) follow the same rule.
+that key. A fee payer may front it; what it charges for that is its own choice. Registry rows
+(the registry's public statements that a profile holds an issuer's note) follow the same rule.
+
+One rent goes elsewhere. A payment that arrives after an escrow ended makes its closed deposit
+account again, and that payment is almost always the buyer's own, so the buyer paid that account's
+rent: `recover_late` sends it to the buyer, with the late money.
 
 At today's 5,080 lamports a byte, the escrow account is 305 bytes (2,199,640 lamports), and comes
 back whole only if it never held the amount; otherwise the receipt keeps its minimum. A classic
@@ -213,22 +223,24 @@ objected escrow is open or funded, and ends by any way out but the timer.
   `makeDepositAddressIx`, `makeStandardAccountIx`, `makeRefundAddressIx`: addresses (an escrow's
   from its terms), and the accounts a payment needs made first.
 - `hookAccounts`, `payoutTransfers`: a transfer hook's accounts, through `@solana/spl-token`'s
-  resolver.
+  resolver. A transfer hook is a program a Token-2022 mint's maker can name, which runs on every
+  transfer of that mint and can refuse it.
 - `decodeEscrow`, `decodeEvents`: the receipt and the events. `decodeEvents` reads only events
   this program wrote, by the runtime's own invoke lines.
 
 **What the app decides**, because the program does not know:
 
-- **The options.** Check them before anyone works or pays (The arbiter and the timer).
+- **The options.** Check them before anyone works or pays
+  ([The arbiter and the timer](#the-arbiter-and-the-timer)).
 - **When to offer the objection, and what to say.** The program records nothing about why.
   `canObject` reads the device's clock; the chain's decides, so one sent in the last seconds may
   be refused.
-- **Which dollars to offer,** and what to say about each one's maker (the security checklist). Know
-  a dollar by its mint's address, never its name.
+- **Which dollars to offer,** and what to say about each one's maker ([Limits](#limits)). Know a
+  dollar by its mint's address, never its name.
 - **A hook's accounts.** For a mint whose hook names a program, resolve them before each
   transaction (`hookAccounts`), since the dollar's maker can change the program at any time, and
   pass them to each way out and to the payment in.
-- **Who fronts the rent** (Rent).
+- **Who fronts the rent** ([Rent](#rent)).
 
 ### Run it, and what one escrow costs
 
@@ -286,9 +298,10 @@ None of this can change after the mainnet deploy; on devnet the program is still
   the error a refused instruction returns. Every handler that needs a live escrow checks that
   first, as an allowlist of the live states (open, funded).
 - **The instructions, events and errors.** Eleven instructions, seven events and 32 errors, their
-  bytes and account lists. Every way out names the mint right after the deposit account, names
-  only the accounts it pays, and forwards the accounts after its own to each transfer, for a
-  transfer hook, never signing.
+  bytes and account lists. In every way out, the mint comes right after the deposit account, and
+  the only accounts it names are the ones it pays. Any accounts a transaction adds after the
+  instruction's own are passed on to each transfer, never as signers, for the mint's transfer
+  hook.
 
 On mainnet the program is sealed the day it deploys:
 
@@ -337,6 +350,9 @@ extensions, and one more invoice in it. There is no smoke test: read a receipt w
 
 - **It trusts** the SPL Token and Token-2022 programs, the associated token program, and Anchor
   1.2; and the app, to show a person every option they did not agree to before they work or pay.
+- **The dollar's maker keeps its powers over its dollar.** A maker like Open USD's can freeze
+  balances or take them back, an escrow's deposit included, and nothing in the program can stop
+  it.
 - **A deadlock holds the money.** With no arbiter, if neither side gives and they do not agree,
   the money stays in the escrow for good: after an objection, or with no timer at all. Nothing in
   the program can break it. A deal that may need a third view names an arbiter at the start.
