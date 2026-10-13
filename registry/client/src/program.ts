@@ -6,6 +6,7 @@
 // independently against the committed wire vectors, so a drift on either side fails a test.
 
 import { sha256 } from '@noble/hashes/sha2.js'
+import { concatBytes } from '@noble/hashes/utils.js'
 import { PublicKey, SystemProgram, TransactionInstruction, type AccountMeta } from '@solana/web3.js'
 
 import { fromBytes32, toBytes32 } from './field.ts'
@@ -39,17 +40,11 @@ function u32le(n: number): Uint8Array {
   return b
 }
 
-function concat(parts: Uint8Array[]): Buffer {
-  let n = 0
-  for (const p of parts) n += p.length
-  const out = new Uint8Array(n)
-  let at = 0
-  for (const p of parts) {
-    out.set(p, at)
-    at += p.length
-  }
-  return Buffer.from(out)
-}
+/**
+ * Instruction data as web3.js takes it. Its type says Buffer, but web3.js reads the data only as
+ * bytes; making a Buffer here would need Node's global, which a browser does not have.
+ */
+const instructionData = (bytes: Uint8Array): Buffer => bytes as Buffer
 
 const bytes32 = (v: bigint | Uint8Array): Uint8Array => {
   const b = typeof v === 'bigint' ? toBytes32(v) : v
@@ -62,7 +57,7 @@ export const keyBytes = (k: PublicKey | Uint8Array): Uint8Array => bytes32(k ins
 /** An issuer's key as a row holds it: x, then y, each 32 bytes big-endian. */
 export function issuerKeyBytes(issuer: IssuerKey): Uint8Array {
   if (issuer.length !== 2) throw new RangeError("an issuer's key is two numbers")
-  return concat([bytes32(issuer[0]), bytes32(issuer[1])])
+  return concatBytes(bytes32(issuer[0]), bytes32(issuer[1]))
 }
 
 /** A row's size in bytes, discriminator included, for a label of `labelBytes` bytes. It never changes. */
@@ -72,7 +67,7 @@ export function rowSpace(labelBytes: number): number {
 
 /** A row's address: derived from its stamp, so one stamp has at most one row. */
 export function rowAddress(stamp: bigint | Uint8Array, programId: PublicKey = PROGRAM_ID): PublicKey {
-  return PublicKey.findProgramAddressSync([Buffer.from(ROW_SEED), Buffer.from(bytes32(stamp))], programId)[0]
+  return PublicKey.findProgramAddressSync([ROW_SEED, bytes32(stamp)], programId)[0]
 }
 
 const ro = (pubkey: PublicKey, isSigner = false): AccountMeta => ({ pubkey, isSigner, isWritable: false })
@@ -109,17 +104,19 @@ export function registerIx(args: {
       rw(args.payer, true),
       ro(SystemProgram.programId),
     ],
-    data: concat([
-      discriminator('global', 'register'),
-      bytes32(args.stamp),
-      issuerKeyBytes(args.issuer),
-      bytes32(args.tier),
-      p.a,
-      p.b,
-      p.c,
-      u32le(label.length),
-      label,
-    ]),
+    data: instructionData(
+      concatBytes(
+        discriminator('global', 'register'),
+        bytes32(args.stamp),
+        issuerKeyBytes(args.issuer),
+        bytes32(args.tier),
+        p.a,
+        p.b,
+        p.c,
+        u32le(label.length),
+        label,
+      ),
+    ),
   })
 }
 
@@ -133,7 +130,7 @@ export function refundIx(args: { row: PublicKey; payer: PublicKey; programId?: P
   return new TransactionInstruction({
     programId: args.programId ?? PROGRAM_ID,
     keys: [rw(args.row), rw(args.payer)],
-    data: Buffer.from(discriminator('global', 'refund')),
+    data: instructionData(discriminator('global', 'refund')),
   })
 }
 

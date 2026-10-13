@@ -348,6 +348,20 @@ describe('hosts that misbehave', () => {
       await h.close()
     }
   })
+
+  test('a host that fails is skipped, and the reader is told which and why', async () => {
+    const [up, down] = await Promise.all([startHost({ now: () => T0 }), startHost({ now: () => T0 })])
+    await down.close()
+    try {
+      await publish([up.url], [hostsRecord(alice, [up.url], T0), ownerRecord(alice, 'profile', profileBody('A'), T0)])
+      const v = await readProfile([down.url, up.url], alice.address, T0)
+      assert.ok(v.current.has('profile'), 'the host that answered still counts')
+      assert.deepEqual(v.failed.map((f) => f.host), [down.url])
+      assert.ok(v.failed[0]!.error.length > 0)
+    } finally {
+      await up.close()
+    }
+  })
 })
 
 describe('limits: each host’s own size, batch and page; each reader’s own size; 60 seconds a read', () => {

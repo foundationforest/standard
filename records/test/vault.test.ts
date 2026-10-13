@@ -134,4 +134,20 @@ describe('the vault', () => {
       await Promise.all([a.close(), b.close(), c.close()])
     }
   })
+
+  test('a host that fails is never taken for one with no vault: the read throws, and a vault found says which failed', async () => {
+    const now = () => T0 + MINUTE
+    const [up, down] = await Promise.all([startHost({ now }), startHost({ now })])
+    await down.close()
+    try {
+      const reader = { address: vault.address, identity: vaultInbox.identity }
+      await assert.rejects(readVault([up.url, down.url], reader, now()), code('host'))
+      await publish([up.url], [hostsRecord(vault, [up.url], T0), await vaultRecord(vault, vaultInbox.recipient, { settings: { theme: 'dark' } }, T0)])
+      const found = await readVault([up.url, down.url], reader, now())
+      assert.deepEqual(found?.vault.settings, { theme: 'dark' })
+      assert.deepEqual(found?.failed.map((f) => f.host), [down.url])
+    } finally {
+      await up.close()
+    }
+  })
 })

@@ -19,7 +19,7 @@ import { readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync, type StatementSync } from 'node:sqlite'
-import { base58 } from './bytes.ts'
+import { base58, utf8 } from './bytes.ts'
 import type { Body } from './record.ts'
 
 /** Folder files kept open at once; the least recently used closes first, so many folders never run out of file handles. */
@@ -288,7 +288,7 @@ export class Storage {
     this.host.q('INSERT INTO log (seq, folder, id, arrived) VALUES (?, ?, ?, ?)').run(seq, address, id, now)
     const folder = this.folder(address, true)!
     folder.tx(() => {
-      folder.q('INSERT INTO records (seq, id, text, bytes, arrived) VALUES (?, ?, ?, ?, ?)').run(seq, id, text, Buffer.byteLength(text), now)
+      folder.q('INSERT INTO records (seq, id, text, bytes, arrived) VALUES (?, ?, ?, ?, ?)').run(seq, id, text, utf8(text).length, now)
       for (const row of folder.q('SELECT id, older_since FROM records').all() as Array<{ id: string; older_since: number | null }>) {
         if (current.has(row.id) && row.older_since !== null) folder.q('UPDATE records SET older_since = NULL WHERE id = ?').run(row.id)
         else if (!current.has(row.id) && row.older_since === null) folder.q('UPDATE records SET older_since = ? WHERE id = ?').run(now, row.id)
@@ -336,7 +336,7 @@ export class Storage {
   /** False when that id is here already. Its number comes from the clock, as a record's does. */
   addMessage(folder: string, id: string, text: string, now: number): boolean {
     const db = this.folder(folder, true)!
-    return db.q('INSERT OR IGNORE INTO messages (seq, id, text, bytes, arrived) VALUES (?, ?, ?, ?, ?)').run(nextNumber(db, 'messages', now), id, text, Buffer.byteLength(text), now).changes > 0
+    return db.q('INSERT OR IGNORE INTO messages (seq, id, text, bytes, arrived) VALUES (?, ?, ?, ?, ?)').run(nextNumber(db, 'messages', now), id, text, utf8(text).length, now).changes > 0
   }
 
   /** A folder's messages after a cursor, in arrival order. */

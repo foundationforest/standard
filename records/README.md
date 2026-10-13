@@ -23,8 +23,9 @@ record shapes as JSON Schemas, and test vectors.
 
 A profile is one main key, mixed from the person's seed (24 words every key comes from) and a
 label such as `tutoring/seller`
-([keys/](../keys/README.md)). Its name is its address: the main key's public key in base58, which
-is also its Solana address. Its inbox key, mixed from the main key, opens what is encrypted to it.
+([keys/](../keys/README.md)). Its address is its name on the network: the main key's public key in
+base58, which is also its Solana address; the card's optional `name` is only what the owner calls
+it. Its inbox key, mixed from the main key, opens what is encrypted to it.
 Nothing else is needed: no account, no sign-up, no directory.
 
 Its folder is everything signed for it, one current record per path:
@@ -344,8 +345,10 @@ of its own, whose main key is the vault key, mixed from the seed
 
 **Restoring.** A new device mixes the vault key from the seed, and its inbox key from that. It asks
 the hosts it knows for the vault key's folder, or a host the person names; the folder's hosts
-record names the rest. It opens `vault`, then mixes each profile's main key from its label and
-reads that folder from its hosts. Issuer secrets come from the seed and each note's issuer name.
+record names the rest. It finds no vault only when every host it asked answered: if one failed, the
+read fails too, since the vault may be there. It opens `vault`, then mixes each profile's main key
+from its label and reads that folder from its hosts. Issuer secrets come from the seed and each
+note's issuer name.
 
 ### Proofs
 
@@ -501,7 +504,8 @@ its own choice.
   `nextTime`); messages and pulls (`signMessage`, `decodeMessage`, `messageId`, `pullRequest`,
   `checkPull`, `inboxOf`, `sealedTo`); grants and notes (`checkGrant`, `checkNote`); talking to
   hosts (`publish`, `readPage`, `readAll`, `readProfile`, `deliver`, `pull`, `putBlob`,
-  `getBlob`). A read asks by POST with `post: true`. A read, a publish, a
+  `getBlob`). A host that fails does not stop `readProfile`: it reads the others and lists that
+  host, with the error, in `failed`. A read asks by POST with `post: true`. A read, a publish, a
   delivery and a pull go through the caller's own `fetch` if given, and refuse a host that
   redirects with `redirect: 'error'`. No server, database or encryption library is in it.
 - `@forest/records/private`: `makePrivate`, `openPrivate`, `readerCount`; `message` (encrypt to a

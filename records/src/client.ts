@@ -125,7 +125,7 @@ async function* readLines(res: Response, max: number): AsyncGenerator<string | n
     }
   }
   const finish = (): string | null | undefined => {
-    const line = over ? null : size ? decoder.decode(Buffer.concat(parts)) : undefined
+    const line = over ? null : size ? decoder.decode(concat(...parts)) : undefined
     parts = []
     size = 0
     over = false
@@ -161,23 +161,25 @@ export async function readAll(host: string, options: Omit<ReadOptions, 'after'> 
 
 /**
  * A profile as its hosts show it: the hosts given, then every host its current hosts record names,
- * until no new one turns up. A host that does not answer is skipped: the others still count.
+ * until no new one turns up. A host that fails is skipped, so the others still count, and listed in
+ * `failed` with why.
  */
-export async function readProfile(hosts: string[], profile: string, now: number, how: ReadHow = {}): Promise<View> {
+export async function readProfile(hosts: string[], profile: string, now: number, how: ReadHow = {}): Promise<View & { failed: Array<{ host: string; error: string }> }> {
   const read = new Set<string>()
   const found: Checked[] = []
+  const failed: Array<{ host: string; error: string }> = []
   for (let next = hosts; next.length; ) {
     for (const host of next) {
       read.add(host)
       try {
         found.push(...(await readAll(host, { ...how, profile })).records)
-      } catch {
-        // Skipped.
+      } catch (err) {
+        failed.push({ host, error: (err as Error).message })
       }
     }
     next = viewProfile(profile, found, now).hosts.filter((h) => !read.has(h))
   }
-  return viewProfile(profile, found, now)
+  return { ...viewProfile(profile, found, now), failed }
 }
 
 export type MessagePage = { messages: CheckedMessage[]; cursor: number; refused: Array<{ line: string; reason: string }> }
