@@ -5,8 +5,9 @@ Part of Forest's standard: [the top README](../README.md). The record shapes: [s
 ## What it is
 
 How a Forest profile says things, and how anyone reads them. Everything a profile says (its card,
-the record that gives its name and photo; its offers; its reviews of others) is a record: a small
-signed JSON value at a path in the profile's folder. Hosts keep folders and serve them to anyone.
+the record that shows it; its offers; its reviews of others) is a record: a small signed JSON
+value at a path in the profile's folder. A card without a name is shown by its market and role; a
+name, if any, is what the owner calls the profile. Hosts keep folders and serve them to anyone.
 Any app, index (a service that reads records and scores profiles) or AI reads them and checks
 every signature itself, so a host can withhold a record but never forge one. Beside each
 folder a host keeps the profile's inbox, where anyone may leave an encrypted message, and the photos

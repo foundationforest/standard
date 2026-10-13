@@ -3,7 +3,7 @@
   "title": "profile",
   "description": "A profile's public card, at the path `profile`: one per profile. A profile lives in one market, in one role; its label is market/role. Markets may add fields.",
   "type": "object",
-  "required": ["name", "market", "role", "createdAt"],
+  "required": ["market", "role", "createdAt"],
   "properties": {
     "market": {
       "type": "string",
@@ -17,7 +17,7 @@
     },
     "name": {
       "type": "string",
-      "description": "Display name.",
+      "description": "Optional. What the owner calls the profile. A card without a name is shown by its market and role.",
       "maxLength": 64
     },
     "photo": {
