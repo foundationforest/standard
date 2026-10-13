@@ -60,7 +60,8 @@ describe('schemas', () => {
   })
 
   test('the required fields', () => {
-    for (const field of ['name', 'market', 'role', 'createdAt']) assert.ok(!fits('profile', edit('profile', [field], undefined)), field)
+    for (const field of ['market', 'role', 'createdAt']) assert.ok(!fits('profile', edit('profile', [field], undefined)), field)
+    assert.ok(fits('profile', edit('profile', ['name'], undefined)), 'a card without a name is shown by its market and role')
     for (const field of ['direction', 'description', 'createdAt']) assert.ok(!fits('offer', edit('offer', [field], undefined)), field)
     for (const field of ['subject', 'createdAt']) assert.ok(!fits('review', edit('review', [field], undefined)), field)
     assert.ok(fits('review', { subject: alice.address, createdAt: '2026-10-02T12:00:00Z' }), 'a review can be as thin as pointing at a person')
