@@ -103,14 +103,19 @@ export async function openVault(body: Body, identity: string): Promise<Vault> {
 /**
  * The vault, read from hosts: the folder at the vault key's `address`, on the hosts given and every
  * host its hosts record names, by POST so the address is in no URL; its current `vault` record
- * opened with the vault's inbox key `identity`. With it, the folder's hosts and the record's time,
- * for the next write. Null when no host has it.
+ * opened with the vault's inbox key `identity`. With it, the folder's hosts, the record's time, for
+ * the next write, and the hosts that failed, as readProfile lists them: one may hold a newer vault.
+ * Null when every host asked answered and none has it. When none has it and a host failed, it
+ * throws: the vault may be there.
  */
-export async function readVault(hosts: string[], vault: { address: string; identity: string }, now: number, how: ReadHow = {}): Promise<{ vault: Vault; hosts: string[]; time: number } | null> {
+export async function readVault(hosts: string[], vault: { address: string; identity: string }, now: number, how: ReadHow = {}): Promise<{ vault: Vault; hosts: string[]; time: number; failed: Array<{ host: string; error: string }> } | null> {
   const view = await readProfile(hosts, vault.address, now, { ...how, post: true })
   const current = view.current.get(VAULT_PATH)
-  if (!current?.record.body) return null
-  return { vault: await openVault(current.record.body, vault.identity), hosts: view.hosts, time: current.record.time }
+  if (!current?.record.body) {
+    if (!view.failed.length) return null
+    throw new RecordError('host', `no vault read, and a host that may hold it failed: ${view.failed.map((f) => `${f.host} (${f.error})`).join(', ')}`)
+  }
+  return { vault: await openVault(current.record.body, vault.identity), hosts: view.hosts, time: current.record.time, failed: view.failed }
 }
 
 /** The notes for a permissions record (permissionsRecord's `notes`): each checked, sealed to the owner's own inbox key alone. */

@@ -26,7 +26,7 @@
 import { type IncomingMessage, type Server, type ServerResponse, createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { sha256 } from '@noble/hashes/sha2.js'
-import { hex } from './bytes.ts'
+import { hex, utf8 } from './bytes.ts'
 import { READ_TIMEOUT_MS } from './client.ts'
 import { publicKeyFromAddress } from './keys.ts'
 import { type CheckedMessage, type Inbox, type SignedMessage, checkPull, inboxOf, readMessage, verifyMessage } from './message.ts'
@@ -245,7 +245,7 @@ export class Host {
 
   /** Whether a line is larger than this host takes. Its length in UTF-16 units is never more than its bytes, so huge text is refused unencoded. */
   private tooBig(line: string): boolean {
-    return line.length > this.maxLineBytes || Buffer.byteLength(line) > this.maxLineBytes
+    return line.length > this.maxLineBytes || utf8(line).length > this.maxLineBytes
   }
 
   /** This host's view of a profile, from what it stores. */
@@ -326,7 +326,7 @@ export class Host {
       if (!held) return refuse('sender', 'from holds no registry row from the inbox’s issuer')
     }
     if (rules?.once && this.storage.hasOnce(m.to, m.from)) return refuse('once', 'this inbox takes one message from each sender')
-    if (rules?.maxBytes !== undefined && Buffer.byteLength(line) > rules.maxBytes) return refuse('too_big', `this inbox takes messages of at most ${rules.maxBytes} bytes`)
+    if (rules?.maxBytes !== undefined && utf8(line).length > rules.maxBytes) return refuse('too_big', `this inbox takes messages of at most ${rules.maxBytes} bytes`)
     if (this.messageChoice) {
       const refused = await this.messageChoice(m, this.storage.messageTotals(m.to))
       if (refused) return refuse('refused', refused)
@@ -441,7 +441,7 @@ export class Host {
       if (body === null) return sendJson(res, 413, { ok: false, error: 'size', message: `a pull request is at most ${MAX_ASK_BYTES} bytes` })
       let out: { lines: string[]; cursor: number }
       try {
-        out = this.pull(body.toString('utf8'))
+        out = this.pull(bodyText.decode(body))
       } catch (err) {
         if (!(err instanceof RecordError)) throw err
         return sendJson(res, 400, { ok: false, error: err.code, message: err.message })
@@ -462,7 +462,7 @@ export class Host {
           res.writeHead(413).end()
           return
         }
-        asked = readAsk(body.toString('utf8'))
+        asked = readAsk(bodyText.decode(body))
       }
       if (!asked || !Number.isSafeInteger(asked.after) || asked.after! < 0) {
         res.writeHead(400).end()
@@ -478,7 +478,7 @@ export class Host {
       res.writeHead(413).end()
       return
     }
-    const lines = body.toString('utf8').split('\n').filter((l) => l.length > 0)
+    const lines = bodyText.decode(body).split('\n').filter((l) => l.length > 0)
     const results = inbox ? await this.deliver(lines) : await this.accept(lines)
     res.writeHead(200, { 'content-type': 'application/x-ndjson' })
     res.end(results.map((r) => JSON.stringify(r) + '\n').join(''))
@@ -508,13 +508,23 @@ function sendLines(res: ServerResponse, out: { lines: string[]; cursor: number }
   res.end(out.lines.map((l) => l + '\n').join(''))
 }
 
-async function readBody(req: IncomingMessage, max: number): Promise<Buffer | null> {
-  const chunks: Buffer[] = []
+/** A body as text: bytes that are not UTF-8 become U+FFFD and a byte order mark stays, so a line that has one is refused. */
+const bodyText = new TextDecoder('utf-8', { ignoreBOM: true })
+
+async function readBody(req: IncomingMessage, max: number): Promise<Uint8Array | null> {
+  const chunks: Uint8Array[] = []
   let size = 0
   for await (const chunk of req) {
-    size += (chunk as Buffer).length
+    size += (chunk as Uint8Array).length
     if (size > max) return null
-    chunks.push(chunk as Buffer)
+    chunks.push(chunk as Uint8Array)
   }
-  return Buffer.concat(chunks)
+  // Copied here, not concat(...chunks): a slow client can send more pieces than a call takes arguments.
+  const body = new Uint8Array(size)
+  let at = 0
+  for (const chunk of chunks) {
+    body.set(chunk, at)
+    at += chunk.length
+  }
+  return body
 }

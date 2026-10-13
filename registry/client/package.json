@@ -8,7 +8,7 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "scripts": {
-    "test": "node --test --test-force-exit test/client.test.ts test/note.test.ts",
+    "test": "node --test --test-force-exit test/client.test.ts test/note.test.ts test/no-buffer.test.ts",
     "test:validator": "node --test --test-force-exit test/validator.test.ts",
     "test:devnet": "FOREST_DEVNET=1 node --test --test-force-exit test/devnet.test.ts",
     "check": "tsc --noEmit",
