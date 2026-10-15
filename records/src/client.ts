@@ -1,5 +1,5 @@
 // Talking to hosts over HTTP: publish records and read them back; deliver messages and pull your
-// own; put and get blobs. Every record and message read is checked here, and every blob's bytes
+// own; put, get and delete blobs. Every record and message read is checked here, and every blob's bytes
 // hashed, whatever host they came from: a reader trusts no host.
 //
 // How many lines a request or a page holds is each host's choice, and this handles any: a request
@@ -12,7 +12,7 @@ import { sha256 } from '@noble/hashes/sha2.js'
 import { concat, hex } from './bytes.ts'
 import { canonical } from './canonical.ts'
 import type { ReadOptions, Result } from './host.ts'
-import { type CheckedMessage, type SignedMessage, type SignedPull, decodeMessage, encodeMessage } from './message.ts'
+import { type CheckedMessage, type SignedBlobRequest, type SignedMessage, type SignedPull, decodeMessage, encodeMessage } from './message.ts'
 import { type Checked, RecordError, type SignedRecord, decodeRecord, encodeRecord } from './record.ts'
 import { type View, viewProfile } from './view.ts'
 
@@ -215,16 +215,14 @@ export async function pull(host: string, request: SignedPull, options: { maxByte
 
 export type BlobOutcome = { host: string; status: number; ok: boolean; error?: string; message?: string }
 
-/**
- * Put bytes on each host, named by their SHA-256, as `type`: post the record that names them
- * first, with this hash and this type, or a host refuses them as unnamed.
- */
-export async function putBlob(hosts: string[], bytes: Uint8Array, type: string): Promise<BlobOutcome[]> {
-  const name = hex.encode(sha256(bytes))
+/** One signed blob request to each host, the bytes with a put; each host's answer. */
+async function sendBlob(hosts: string[], request: SignedBlobRequest, bytes?: Uint8Array): Promise<BlobOutcome[]> {
   return Promise.all(
     hosts.map(async (host): Promise<BlobOutcome> => {
       try {
-        const res = await fetch(`${host}/v1/blobs/${name}`, { method: 'PUT', headers: { 'content-type': type }, body: new Uint8Array(bytes) })
+        const headers: Record<string, string> = { 'forest-blob': canonical(request) }
+        if (request.action === 'put') headers['content-type'] = request.mimeType
+        const res = await fetch(`${host}/v1/blobs/${request.sha256}`, { method: request.action === 'put' ? 'PUT' : 'DELETE', headers, ...(bytes && { body: new Uint8Array(bytes) }) })
         const answer = (await res.json().catch(() => ({ ok: false }))) as Omit<BlobOutcome, 'host' | 'status'>
         return { host, status: res.status, ...answer, ok: res.ok && answer.ok }
       } catch (err) {
@@ -235,8 +233,21 @@ export async function putBlob(hosts: string[], bytes: Uint8Array, type: string):
 }
 
 /**
- * The bytes a record names by `sha256`, from the first of its hosts that serves bytes with that
- * hash; null if none does. A host that serves other bytes, or more than `maxBytes`
+ * Put bytes in a folder on each of its hosts: `request` is the signed put (blobRequest) that names
+ * them, by their hash, type and size (blobNameOf). The same request goes to every host.
+ */
+export function putBlob(hosts: string[], request: SignedBlobRequest & { action: 'put' }, bytes: Uint8Array): Promise<BlobOutcome[]> {
+  return sendBlob(hosts, request, bytes)
+}
+
+/** Delete bytes from a folder on each of its hosts: `request` is the signed delete (blobRequest). */
+export function deleteBlob(hosts: string[], request: SignedBlobRequest & { action: 'delete' }): Promise<BlobOutcome[]> {
+  return sendBlob(hosts, request)
+}
+
+/**
+ * The bytes named by `sha256`, from the first of a folder's hosts that serves bytes with that hash;
+ * null if none does. A host that serves other bytes, or more than `maxBytes`
  * (MAX_BLOB_READ when omitted), is skipped.
  */
 export async function getBlob(hosts: string[], name: string, options: { maxBytes?: number; timeout?: number } = {}): Promise<{ host: string; bytes: Uint8Array; type: string } | null> {

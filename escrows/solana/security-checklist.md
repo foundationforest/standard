@@ -407,7 +407,7 @@ covered:** tokens of another mint sent to the escrow's address (Known limit 9).
   `create`. So nobody else can open an escrow at a deal's address: a stranger with the same terms
   is refused (`NotAParty`), and naming itself a party changes the terms and so the address
   (`ConstraintSeeds` aimed at another's, `AccountNotSigner` without the key). Either party may open
-  the same terms; the second finds the address taken (Known limit 30). Tested by
+  the same terms; the second finds the address taken (Known limit 29). Tested by
   `nobody_can_open_the_address_a_buyer_is_about_to_use`,
   `the_escrow_address_is_its_terms_and_only_a_party_opens_it` and fuzzer I13. Anyone can
   still make the escrow's deposit account first (the associated token program lets anyone), or pay
@@ -612,13 +612,10 @@ Testing and review:
 26. **A fee payer pays only for what its configuration allows.** A fee payer pays for the escrow's
     transactions only if its configuration allows this program's id and Token-2022; that
     configuration lives in `foundationforest/services`.
-27. **No Solana Pay link.** The client builds none: an app does. A Solana Pay recipient would be
-    the escrow's own address, a program-derived address, which has not been tried in a wallet app
-    on a phone.
-28. **Unaudited.** No paid review, no lawyer pass.
-29. **Refunds arrive in SOL,** to whichever key fronted the rent. How an app shows them to a person
+27. **Unaudited.** No paid review, no lawyer pass.
+28. **Refunds arrive in SOL,** to whichever key fronted the rent. How an app shows them to a person
     who fronted their own, without saying "SOL", is the app's choice and open.
-30. **Either party can open the same terms.** The creator is not a term, so the buyer and the seller
+29. **Either party can open the same terms.** The creator is not a term, so the buyer and the seller
     land at the same address with the same terms; whoever is second finds it taken, and a buyer's
     one tap fails whole if the seller opened those terms first. The app then pays the escrow already
     there, which has exactly the terms it meant

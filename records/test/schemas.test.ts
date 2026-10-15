@@ -1,6 +1,6 @@
 // The three record schemas (schemas/*.json), checked with a standard JSON Schema validator: the
-// examples and the bodies the other tests publish fit them; each rule still refuses what it
-// refused; an offer's and a review's other fields are the market's, so none is refused; every
+// examples and the bodies the other tests publish fit them; each of the card's rules still refuses
+// what it refused; an offer's and a review's fields are the market's, so none is refused; every
 // example is a body a record can carry. The example card's proofs are checked with their own
 // verifiers (proofs/human/client, proofs/reputation/client), for the card's own address.
 
@@ -77,36 +77,16 @@ describe('schemas', () => {
     for (const role of [7, null, 'x'.repeat(65)]) assert.ok(!fits('profile', edit('profile', ['role'], role)), String(role))
   })
 
-  test('an offer’s and a review’s fields beside media are the market’s: the standard refuses none of them', () => {
+  test('an offer’s and a review’s body is the market’s: the standard names no field and refuses none', () => {
     // Fields the standard once shaped, in shapes it once refused: each is now the market's to judge.
-    const once = { description: 7, price: { amount: 25, per: 'week' }, terms: { timer: { days: 0, to: 'arbiter' } }, location: { lat: 38.72 }, createdAt: 'yesterday', expires: 1 }
-    assert.ok(fits('offer', { ...example('offer'), ...once }))
-    assert.ok(fits('review', { ...example('review'), subject: 'did:web:example.com', score: 9, offer: 'Maths', evidence: 'x', text: 1, createdAt: 'yesterday' }))
+    const once = { description: 7, price: { amount: 25, per: 'week' }, terms: { timer: { days: 0, to: 'arbiter' } }, media: [{ ref: 'x' }], createdAt: 'yesterday' }
+    assert.ok(fits('offer', once))
+    assert.ok(fits('review', { subject: 'did:web:example.com', score: 9, evidence: 'x', media: 'none', createdAt: 'yesterday' }))
     for (const kind of ['offer', 'review'] as const) {
-      assert.deepEqual(Object.keys(read(`../schemas/${kind}.json`).properties), ['media'], `${kind}: the standard names media alone`)
-      assert.equal(read(`../schemas/${kind}.json`).required, undefined, `${kind}: and requires nothing`)
+      const schema = read(`../schemas/${kind}.json`)
+      assert.deepEqual([schema.type, schema.properties, schema.required, schema.additionalProperties], ['object', undefined, undefined, true], kind)
+      assert.ok(!fits(kind, []) && !fits(kind, 'x'), `${kind}: an object`)
     }
-  })
-
-  test('blobs are SHA-256 references with their types and sizes; which types and how large is each host’s own choice, not the shape’s', () => {
-    for (const type of ['image/png', 'image/gif', 'image/svg+xml', 'application/vnd.oasis.opendocument.text']) {
-      assert.ok(fits('offer', edit('offer', ['media'], [{ sha256: 'b'.repeat(64), mimeType: type, size: 1 }])), type)
-      assert.ok(fits('review', edit('review', ['media'], [{ sha256: 'b'.repeat(64), mimeType: type, size: 1 }])), type)
-    }
-    for (const type of ['Image/PNG', 'image', 'image/', '/png', 'image/png; charset=x', 'image/p ng', '', 'a/' + 'b'.repeat(254)]) {
-      assert.ok(!fits('offer', edit('offer', ['media', 0, 'mimeType'], type)), type)
-    }
-    assert.ok(fits('offer', edit('offer', ['media', 0, 'size'], 1_000_001)))
-    assert.ok(!fits('offer', edit('offer', ['media', 0, 'size'], -1)))
-    assert.ok(!fits('offer', edit('offer', ['media', 0, 'sha256'], 'A'.repeat(64))))
-    assert.ok(!fits('offer', edit('offer', ['media', 0, 'ref'], 'bafkrei…')), 'a reference is nothing but its hash, type and size')
-    const clip = { sha256: 'b'.repeat(64), mimeType: 'video/mp4', size: 50_000_000 }
-    assert.ok(fits('review', edit('review', ['media'], Array(10).fill(clip))))
-    assert.ok(!fits('review', edit('review', ['media'], Array(11).fill(clip))))
-    assert.ok(fits('review', edit('review', ['media'], [{ ...clip, size: 50_000_001 }])))
-    assert.ok(fits('offer', edit('offer', ['media'], [{ ...clip, size: 50_000_001 }])))
-    assert.ok(fits('offer', edit('offer', ['media'], Array(10).fill(clip))), 'an offer carries the same media as a review')
-    assert.ok(!fits('offer', edit('offer', ['media'], Array(11).fill(clip))))
   })
 
   test('a profile’s pay address is keys/’s payKey for its label: an ed25519 key on Solana, in base58', async () => {

@@ -9,7 +9,10 @@
 // permissions, for a message `key` signed, and its card, for an inbox with an issuer's rule. A pull
 // request, `{ v: 1, profile, after, time, key?, sig }`, is signed the same way by the profile's main
 // key, or by `key`, a read key it lists for the inbox, over 0xff || "forest/v1/pull\n" || JCS(the
-// rest). Each signed text differs from a record's, so no signature is ever two of them.
+// rest). A blob request, `{ v: 1, action, profile, sha256, mimeType?, size?, time, key?, sig }`,
+// puts bytes in a folder or deletes them, signed by the main key or a write key it lists, over
+// 0xff || "forest/v1/blob\n" || JCS(the rest). Each signed text differs from a record's, so no
+// signature is ever two of them.
 //
 // Nothing here seals or opens a body: that needs age, and is message() and openMessage() in
 // private.ts.
@@ -22,6 +25,7 @@ import { type Body, MAX_FUTURE_MS, RECIPIENT, RecordError, normalizeOrigin, sign
 
 export const MESSAGE_PREFIX = concat(Uint8Array.of(0xff), utf8('forest/v1/message\n'))
 export const PULL_PREFIX = concat(Uint8Array.of(0xff), utf8('forest/v1/pull\n'))
+export const BLOB_PREFIX = concat(Uint8Array.of(0xff), utf8('forest/v1/blob\n'))
 
 /** A sealed body: an age file, base64url, that only the recipient's inbox key and its readers open. */
 export type SealedBody = { private: string }
@@ -53,6 +57,19 @@ export type UnsignedPull = {
   key?: string
 }
 export type SignedPull = UnsignedPull & { sig: string }
+
+/** A blob's name: what a stranger needs to fetch it from a folder's hosts and check it. */
+export type BlobName = {
+  /** SHA-256 of the bytes, lowercase hex. */
+  sha256: string
+  /** The bytes' media type, type/subtype in lower case, such as image/jpeg. */
+  mimeType: string
+  /** How many bytes. */
+  size: number
+}
+/** Put a blob in a folder, or delete it from the folder: signed by its main key, or by `key`, a write key it lists. */
+export type UnsignedBlobRequest = { v: 1; profile: string; time: number; key?: string } & ({ action: 'put' } & BlobName | { action: 'delete'; sha256: string })
+export type SignedBlobRequest = UnsignedBlobRequest & { sig: string }
 
 function fail(code: string, message: string): never {
   throw new RecordError(code, message)
@@ -224,6 +241,75 @@ export function checkPull(text: string, now: number): SignedPull {
   if (Math.abs(value.time - now) > MAX_FUTURE_MS) fail('stale', 'a pull is signed within ten minutes of the host’s clock')
   const { sig, ...unsigned } = value
   if (!verifySignature(b64u.decode(sig), pullSigningInput(unsigned), value.key ?? value.profile)) fail('signature', value.key === undefined ? 'the profile’s main key did not sign this pull' : 'key did not sign this pull')
+  return value
+}
+
+// ---------------------------------------------------------------------------------------------
+// Blob requests
+
+const SHA256 = /^[0-9a-f]{64}$/
+/** A media type, type/subtype in lower case: what a host serves back as content-type. */
+export const MIME_TYPE = /^[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*$/
+
+/** A blob's name, from its bytes and their media type. */
+export function blobNameOf(bytes: Uint8Array, mimeType: string): BlobName {
+  return { sha256: hex.encode(sha256(bytes)), mimeType, size: bytes.length }
+}
+
+export function blobSigningInput(unsigned: UnsignedBlobRequest): Uint8Array {
+  return concat(BLOB_PREFIX, utf8(canonical(unsigned)))
+}
+
+function checkBlobShape(value: unknown, signed = true): asserts value is SignedBlobRequest {
+  if (!isObject(value)) fail('shape', 'a blob request is an object')
+  if (value.action !== 'put' && value.action !== 'delete') fail('shape', 'action is put or delete')
+  const put = value.action === 'put'
+  only(value, ['v', 'action', 'profile', 'sha256', ...(put ? ['mimeType', 'size'] : []), 'time', 'key', 'sig'], `${value.action} request`)
+  if (value.v !== 1) fail('version', 'v must be 1')
+  if (!publicKeyFromAddress(value.profile)) fail('key', 'profile is not a usable address')
+  if (typeof value.sha256 !== 'string' || !SHA256.test(value.sha256)) fail('shape', 'sha256 is 64 characters of lowercase hex')
+  if (put) {
+    if (typeof value.mimeType !== 'string' || value.mimeType.length > 255 || !MIME_TYPE.test(value.mimeType)) fail('shape', 'mimeType is type/subtype in lower case, at most 255 characters')
+    if (!Number.isSafeInteger(value.size) || (value.size as number) < 0) fail('shape', 'size is a whole number of bytes')
+  }
+  if (!Number.isSafeInteger(value.time) || (value.time as number) < 0) fail('time', 'time is whole milliseconds since 1970')
+  if ('key' in value) checkKey(value, value.profile)
+  checkSig(value, signed)
+}
+
+/**
+ * A request to put a blob in a profile's folder, or to delete it from the folder, signed at `time`
+ * by its main key, or by `key`, a write key its permissions record lists, for `profile`. The same
+ * request goes to each of the folder's hosts.
+ */
+export function blobRequest(owner: Key | { key: Key; profile: string }, request: ({ action: 'put' } & BlobName) | { action: 'delete'; sha256: string }, time: number): SignedBlobRequest {
+  const own = 'scalar' in owner
+  const signer = own ? owner : owner.key
+  const unsigned = { v: 1, ...request, profile: own ? owner.address : owner.profile, time, ...(!own && { key: owner.key.address }) } as UnsignedBlobRequest
+  checkBlobShape(unsigned, false)
+  return { ...unsigned, sig: signAs(signer, unsigned.key ?? unsigned.profile, blobSigningInput(unsigned)) }
+}
+
+/**
+ * A blob request off the wire, at the host's clock `now`: canonical text and shape, then its time
+ * within ten minutes of `now` either way [stale], then the signature of `key`, or else of the
+ * profile's main key [signature]. Whether the profile lists `key` as a write key is the host's
+ * check, against its own copy of the permissions record. Throws RecordError.
+ *
+ * As with a pull, the same request sent again within those ten minutes does what it did: only the
+ * hosts it was sent to see it, and a host may keep or drop bytes whatever it is sent.
+ */
+export function checkBlobRequest(text: string, now: number): SignedBlobRequest {
+  let value: Json
+  try {
+    value = parseCanonical(text)
+  } catch (err) {
+    return fail('canonical', (err as Error).message)
+  }
+  checkBlobShape(value)
+  if (Math.abs(value.time - now) > MAX_FUTURE_MS) fail('stale', 'a blob request is signed within ten minutes of the host’s clock')
+  const { sig, ...unsigned } = value
+  if (!verifySignature(b64u.decode(sig), blobSigningInput(unsigned as UnsignedBlobRequest), value.key ?? value.profile)) fail('signature', value.key === undefined ? 'the profile’s main key did not sign this request' : 'key did not sign this request')
   return value
 }
 

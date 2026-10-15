@@ -1,42 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "review",
-  "description": "A review, at the path `review/<id>` in the reviewer's own profile. Its body is defined by the market the profile lives in (foundationforest/markets). The standard names one field, media, because a host keeps the blobs a record names.",
+  "description": "A review, at the path `review/<id>` in the reviewer's own profile. Its body is the market's: defined by the market the profile lives in (foundationforest/markets). The standard names none of its fields.",
   "type": "object",
-  "properties": {
-    "media": {
-      "type": "array",
-      "description": "Optional. Photos and short videos of the work.",
-      "items": {
-        "$ref": "#/$defs/media"
-      },
-      "maxItems": 10
-    }
-  },
-  "$defs": {
-    "media": {
-      "type": "object",
-      "description": "A photo or a short video, named by the SHA-256 of its bytes.",
-      "required": ["sha256", "mimeType", "size"],
-      "additionalProperties": false,
-      "properties": {
-        "sha256": {
-          "type": "string",
-          "description": "SHA-256 of the file, lowercase hex.",
-          "pattern": "^[0-9a-f]{64}$"
-        },
-        "mimeType": {
-          "type": "string",
-          "description": "The file's media type, type/subtype in lower case, such as image/jpeg. Which types to take is each host's own choice, and each reader's.",
-          "maxLength": 255,
-          "pattern": "^[a-z0-9][a-z0-9!#$&^_.+-]*/[a-z0-9][a-z0-9!#$&^_.+-]*$"
-        },
-        "size": {
-          "type": "integer",
-          "description": "Bytes. How large a blob to take is each host's own choice, and each reader's.",
-          "minimum": 0
-        }
-      }
-    }
-  }
+  "additionalProperties": true
 }

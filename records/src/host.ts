@@ -1,13 +1,15 @@
 // A host: plain HTTP, a SQLite file per folder, and a blob store (storage.ts). It holds no keys,
-// has no accounts and asks for no login: a record's signature is its only credential, and a pull's
-// is the recipient's main key's or read key's. It is open: it takes signed records for any profile
-// and serves them to anyone; it takes messages for any profile whose card here declares an inbox,
-// and serves them only to that profile's main key and read keys; it takes the bytes a current
-// record names, and serves them to anyone. Given readSender, it reads a sender's records from one
-// of the sender's hosts: its permissions, to take a message a write key signed, and its card, for
-// an inbox with an issuer's rule, whose human proofs it checks with verifyHuman. It keeps the
-// newest version at each path; versions that stop being newest, messages, and bytes no current
-// record names any more go after `keepDays`.
+// has no accounts and asks for no login: a record's signature is its only credential, a pull's is
+// the recipient's main key's or read key's, and a blob request's the folder's main key's or a write
+// key's. It is open: it takes signed records for any profile and serves them to anyone; it takes
+// messages for any profile whose card here declares an inbox, and serves them only to that
+// profile's main key and read keys; it takes the bytes a folder's keys put, and serves them to
+// anyone. It never reads an offer's or a review's body: the bodies it reads are the hosts and
+// permissions records', and the card's inbox and proofs. Given readSender, it reads a sender's
+// records from one of the sender's hosts: its permissions, to take a message a write key signed,
+// and its card, for an inbox with an issuer's rule, whose human proofs it checks with verifyHuman.
+// It keeps the newest version at each path; versions that stop being newest, and messages, go
+// after `keepDays`. A folder's blobs stay until its keys delete them.
 //
 //   POST /v1/records                      NDJSON of canonical records; one NDJSON result each
 //   GET  /v1/records?profile=&after=      NDJSON of stored records in the order taken;
@@ -16,8 +18,10 @@
 //   POST /v1/inbox                        NDJSON of canonical messages; one NDJSON result each
 //   POST /v1/inbox/pull                   a signed pull request; NDJSON of that profile's messages
 //                                         after the cursor, in arrival order; header forest-cursor
-//   PUT  /v1/blobs/<sha256>               raw bytes, content-type the type a current record names
-//   GET  /v1/blobs/<sha256>               the bytes, with that type
+//   PUT    /v1/blobs/<sha256>             raw bytes, content-type their type; header forest-blob:
+//                                         the signed put request
+//   GET    /v1/blobs/<sha256>             the bytes, with the type they came in with
+//   DELETE /v1/blobs/<sha256>             header forest-blob: the signed delete request
 //
 // How large a record, a message or a blob it takes, and how many lines a request or a page holds,
 // is this host's own choice (maxLineBytes, maxBlobBytes, maxBatch, maxPageRecords, maxPageBytes); a
@@ -30,10 +34,10 @@ import { sha256 } from '@noble/hashes/sha2.js'
 import { hex, utf8 } from './bytes.ts'
 import { READ_TIMEOUT_MS } from './client.ts'
 import { publicKeyFromAddress } from './keys.ts'
-import { type CheckedMessage, type Inbox, type SignedMessage, checkPull, inboxOf, readMessage, verifyMessage } from './message.ts'
+import { type CheckedMessage, type Inbox, type SignedBlobRequest, type SignedMessage, checkBlobRequest, checkPull, inboxOf, readMessage, verifyMessage } from './message.ts'
 import { type HumanCheck, humanCheck, proofsOf } from './proofs.ts'
 import { type Checked, MAX_FUTURE_MS, RecordError, type SignedRecord, decodeRecord, encodeRecord, isControlPath } from './record.ts'
-import { type BlobDriver, type Row, Storage, blobNames } from './storage.ts'
+import { type BlobDriver, type Row, Storage } from './storage.ts'
 import { type View, allowsArrival, allowsInbox, viewProfile } from './view.ts'
 
 export { type BlobDriver, type S3Options, rebuild } from './storage.ts'
@@ -47,15 +51,17 @@ export const DEFAULT_MAX_BATCH = 100
 export const DEFAULT_MAX_PAGE_RECORDS = 1000
 /** Bytes a page holds, unless the operator says otherwise. A page always holds at least one line. */
 export const DEFAULT_MAX_PAGE_BYTES = 4 * 1024 * 1024
-/** Days a replaced version, a message, or bytes no current record names are kept, unless the operator says otherwise. */
+/** Days a replaced version or a message is kept, unless the operator says otherwise. */
 export const DEFAULT_KEEP_DAYS = 30
-/** The largest blob it reads, unless the operator says otherwise: the largest the record shapes name. */
+/** The largest blob it reads, unless the operator says otherwise: a short video. */
 export const DEFAULT_MAX_BLOB_BYTES = 50_000_000
-/** The blob types it takes, unless the operator says otherwise: the ones the record shapes name. */
+/** The blob types it takes, unless the operator says otherwise: photos and short videos. */
 export const DEFAULT_BLOB_TYPES = ['image/png', 'image/jpeg', 'video/mp4']
 /** A pull request is about 200 bytes, and a read request under 100. */
 const MAX_ASK_BYTES = 1024
 const BLOB_PATH = /^\/v1\/blobs\/([0-9a-f]{64})$/
+/** A blob request is about 300 bytes. */
+const MAX_BLOB_REQUEST_BYTES = 1024
 
 /**
  * A host's own choice for content records: null takes the record, a reason refuses it. It is
@@ -66,10 +72,10 @@ export type RecordChoice = (record: SignedRecord, stored: { records: number; byt
 /** A host's own choice for messages, from the message and what it holds for that recipient. */
 export type MessageChoice = (message: SignedMessage, stored: { messages: number; bytes: number }) => string | null | Promise<string | null>
 /**
- * A host's own choice for blobs, past its size cap. `folders` are the folders whose current records
- * here name the bytes as that type, so a rule may go by folder: a quota, say.
+ * A host's own choice for blobs, past its size cap: bytes a folder puts here, from what the folder
+ * holds here already, so a rule may go by folder: a quota, say.
  */
-export type BlobChoice = (blob: { sha256: string; type: string; size: number; folders: string[] }) => string | null | Promise<string | null>
+export type BlobChoice = (blob: { sha256: string; type: string; size: number; profile: string }, stored: { blobs: number; bytes: number }) => string | null | Promise<string | null>
 
 export const defaultBlobChoice: BlobChoice = (blob) => (DEFAULT_BLOB_TYPES.includes(blob.type) ? null : `this host takes ${DEFAULT_BLOB_TYPES.join(', ')}`)
 
@@ -203,12 +209,10 @@ export class Host {
     }
     // From here on, no wait: its own choice may have let other requests store records for this
     // profile, so what is current is worked out again. What is current is kept; what stopped being
-    // current gets a date, and goes `keepDays` later. So do the bytes the profile's records name,
-    // once no current record names them.
+    // current gets a date, and goes `keepDays` later.
     if (this.storage.hasRecord(record.profile, c.id)) return { ok: true, message: 'already here' }
     const settled = [...viewProfile(record.profile, [...this.stored(record.profile), c], now).current.values()]
     this.storage.addRecord(record.profile, c.id, encodeRecord(record), now, new Set(settled.map((s) => s.id)))
-    this.storage.setNames(record.profile, settled.flatMap((s) => blobNames(s.record.body)), now)
     return { ok: true }
   }
 
@@ -217,7 +221,7 @@ export class Host {
    * current record has named, more than `keepDays` ago. Returns how many it deleted.
    */
   prune(now = this.now()): Promise<number> {
-    return this.storage.prune(now - this.keepDays * DAY, now)
+    return this.storage.prune(now - this.keepDays * DAY)
   }
 
   /**
@@ -375,17 +379,69 @@ export class Host {
   // Blobs
 
   /**
-   * Take bytes: they must hash to `sha256` [hash], a current record here must name that hash as
-   * `type` [unnamed], and this host must take their size and type [refused].
+   * A blob request off the wire, for the bytes at `name`: checked at this host's clock
+   * (checkBlobRequest), then the action asked for and the bytes it names [shape]. One a write key
+   * signed also needs this host's current permissions record for the profile to list it with scope
+   * write, whatever its paths [permission]. Throws RecordError.
    */
-  async putBlob(name: string, type: string, bytes: Uint8Array): Promise<Answer> {
+  private checkBlob(text: string, action: 'put' | 'delete', name: string, now: number): SignedBlobRequest {
+    if (utf8(text).length > MAX_BLOB_REQUEST_BYTES) throw new RecordError('size', `a blob request is at most ${MAX_BLOB_REQUEST_BYTES} bytes`)
+    const request = checkBlobRequest(text, now)
+    if (request.action !== action) throw new RecordError('shape', `this is a ${action} request`)
+    if (request.sha256 !== name) throw new RecordError('shape', 'the request names other bytes')
+    if (request.key !== undefined && !this.view(request.profile, now).access.some((k) => k.key === request.key && k.scope === 'write')) {
+      throw new RecordError('permission', 'the profile’s permissions record here does not list key as a write key')
+    }
+    return request
+  }
+
+  /**
+   * Put bytes in a folder: the signed put request (checkBlob) names them by their hash, type and
+   * size [shape], and they hash to it [hash]. Bytes the folder holds already are `already here`.
+   * Otherwise this host must take their size and type [refused]. Bytes another folder holds are
+   * stored once.
+   */
+  async putBlob(name: string, type: string, request: string, bytes: Uint8Array): Promise<Answer> {
+    const now = this.now()
+    let put: SignedBlobRequest & { action: 'put' }
+    try {
+      put = this.checkBlob(request, 'put', name, now) as SignedBlobRequest & { action: 'put' }
+    } catch (err) {
+      if (!(err instanceof RecordError)) throw err
+      return { ok: false, error: err.code, message: err.message }
+    }
+    if (put.mimeType !== type || put.size !== bytes.length) return { ok: false, error: 'shape', message: 'the bytes are not the type and size the request names' }
     if (hex.encode(sha256(bytes)) !== name) return { ok: false, error: 'hash', message: 'the bytes do not hash to their name' }
-    const folders = this.storage.namedBy(name, type)
-    if (!folders.length) return { ok: false, error: 'unnamed', message: 'no current record here names these bytes as this type' }
-    if (this.storage.holdsBlob(name)) return { ok: true, message: 'already here' }
-    const refused = bytes.length > this.maxBlobBytes ? `at most ${this.maxBlobBytes} bytes` : await this.blobChoice({ sha256: name, type, size: bytes.length, folders })
-    if (refused) return { ok: false, error: 'refused', message: refused }
-    await this.storage.putBlob(name, type, bytes, this.now())
+    const by = put.key ?? null
+    const held = this.storage.blobOf(put.profile, name)
+    // The main key takes over bytes a write key put, so only it deletes them from then on.
+    if (held && (held.by === null || by !== null)) return { ok: true, message: 'already here' }
+    if (!held) {
+      const refused = bytes.length > this.maxBlobBytes ? `at most ${this.maxBlobBytes} bytes` : await this.blobChoice({ sha256: name, type, size: bytes.length, profile: put.profile }, this.storage.blobTotals(put.profile))
+      if (refused) return { ok: false, error: 'refused', message: refused }
+    }
+    await this.storage.putBlob(put.profile, name, type, bytes.length, by, bytes, now)
+    return { ok: true }
+  }
+
+  /**
+   * Delete bytes from a folder: the signed delete request (checkBlob). Bytes the main key put go
+   * only at its request [permission], as the owner's records do. Bytes the folder does not hold are
+   * `not here`. Once no folder holds them, they leave the store.
+   */
+  async deleteBlob(name: string, request: string): Promise<Answer> {
+    const now = this.now()
+    let ask: SignedBlobRequest
+    try {
+      ask = this.checkBlob(request, 'delete', name, now)
+    } catch (err) {
+      if (!(err instanceof RecordError)) throw err
+      return { ok: false, error: err.code, message: err.message }
+    }
+    const held = this.storage.blobOf(ask.profile, name)
+    if (!held) return { ok: true, message: 'not here' }
+    if (held.by === null && ask.key !== undefined) return { ok: false, error: 'permission', message: 'the main key put these bytes: only it deletes them' }
+    await this.storage.deleteBlob(ask.profile, name)
     return { ok: true }
   }
 
@@ -426,11 +482,11 @@ export class Host {
       return
     }
     if (req.method === 'OPTIONS') {
-      res.writeHead(204, { 'access-control-allow-methods': 'GET, POST, PUT', 'access-control-allow-headers': 'content-type' }).end()
+      res.writeHead(204, { 'access-control-allow-methods': 'GET, POST, PUT, DELETE', 'access-control-allow-headers': 'content-type, forest-blob' }).end()
       return
     }
     const blob = BLOB_PATH.exec(url.pathname)?.[1]
-    const methods = url.pathname === '/v1/records' ? ['GET', 'POST'] : ['/v1/records/read', '/v1/inbox', '/v1/inbox/pull'].includes(url.pathname) ? ['POST'] : blob ? ['GET', 'PUT'] : []
+    const methods = url.pathname === '/v1/records' ? ['GET', 'POST'] : ['/v1/records/read', '/v1/inbox', '/v1/inbox/pull'].includes(url.pathname) ? ['POST'] : blob ? ['GET', 'PUT', 'DELETE'] : []
     if (!methods.length) {
       res.writeHead(404).end()
       return
@@ -447,11 +503,21 @@ export class Host {
       return
     }
     if (blob) {
+      const request = req.headers['forest-blob']
+      if (typeof request !== 'string') {
+        req.resume()
+        return sendJson(res, 400, { ok: false, error: 'shape', message: 'a blob request is signed, in the header forest-blob' })
+      }
+      if (req.method === 'DELETE') {
+        req.resume()
+        const answer = await this.deleteBlob(blob, request)
+        return sendJson(res, answer.ok ? 200 : 400, answer)
+      }
       const tooBig = { ok: false, error: 'refused', message: `at most ${this.maxBlobBytes} bytes` }
       if (Number(req.headers['content-length'] ?? 0) > this.maxBlobBytes) return sendJson(res, 413, tooBig)
       const bytes = await readBody(req, this.maxBlobBytes)
       if (bytes === null) return sendJson(res, 413, tooBig)
-      const answer = await this.putBlob(blob, (req.headers['content-type'] ?? '').trim(), bytes)
+      const answer = await this.putBlob(blob, (req.headers['content-type'] ?? '').trim(), request, bytes)
       return sendJson(res, answer.ok ? 200 : 400, answer)
     }
 

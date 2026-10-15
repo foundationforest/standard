@@ -174,16 +174,15 @@ fn substitution_payout_accounts_of_the_wrong_mint_owner_or_program_are_refused()
 
 #[test]
 fn substitution_an_escrow_shaped_account_owned_by_another_program_is_refused() {
-    // The registry's program id, or any program's: an account laid out exactly like an escrow,
-    // with the attacker as seller, owned by something other than the escrow program.
+    // Any other program's id: an account laid out exactly like an escrow, with the attacker as
+    // seller, owned by something other than the escrow program.
     let mut h = Harness::new();
     let buyer = h.buyer.insecure_clone();
     let stranger = Keypair::new();
     let escrow = h.funded(&h.terms(1));
     let mut data = h.account(&escrow).data;
     data[8 + 41..8 + 73].copy_from_slice(stranger.pubkey().as_ref()); // seller
-    let registry = solana_address::address!("FoRPzGfMyWjK8uLjMoZfae2yevnviyCsGsHM7AwBwK8B");
-    for owner in [registry, SYSTEM_PROGRAM, TOKEN_PROGRAM] {
+    for owner in [Address::new_unique(), SYSTEM_PROGRAM, TOKEN_PROGRAM] {
         let forged = Address::new_unique();
         h.svm
             .set_account(forged, Account { lamports: 10_000_000, data: data.clone(), owner, executable: false, rent_epoch: 0 })
@@ -288,25 +287,18 @@ fn nobody_can_open_the_address_a_buyer_is_about_to_use() {
 }
 
 #[test]
-fn pda_the_two_programs_cannot_share_an_address() {
-    // Every address either program derives includes its own program id, so the same seeds under
-    // the two programs land apart; and each program refuses accounts the other owns (see the
-    // forged-escrow test above). Checked here for the seed strings both programs use.
-    let registry = solana_address::address!("FoRPzGfMyWjK8uLjMoZfae2yevnviyCsGsHM7AwBwK8B");
+fn pda_another_program_cannot_share_an_address() {
+    // Every address a program derives includes its own program id, so the escrow's seeds under any
+    // other program land apart; and the escrow refuses accounts another program owns (see the
+    // forged-escrow test above).
+    let other = Address::new_unique();
     let buyer = Keypair::new().pubkey();
-    for seeds in [
-        vec![b"escrow".to_vec(), terms_hash(&Terms { id: 7, seller: buyer, amount: 1, arbiter: None, timer: None }, &buyer, &buyer).to_vec()],
-        vec![b"config".to_vec()],
-        vec![b"list".to_vec(), 0u32.to_le_bytes().to_vec()],
-        vec![b"code-tree".to_vec()],
-        vec![b"code".to_vec(), [7u8; 32].to_vec()],
-    ] {
-        let s: Vec<&[u8]> = seeds.iter().map(|v| v.as_slice()).collect();
-        assert_ne!(Address::find_program_address(&s, &PROGRAM_ID).0, Address::find_program_address(&s, &registry).0);
-    }
+    let seeds = [b"escrow".to_vec(), terms_hash(&Terms { id: 7, seller: buyer, amount: 1, arbiter: None, timer: None }, &buyer, &buyer).to_vec()];
+    let s: Vec<&[u8]> = seeds.iter().map(|v| v.as_slice()).collect();
+    assert_ne!(Address::find_program_address(&s, &PROGRAM_ID).0, Address::find_program_address(&s, &other).0);
     // Within the escrow, the seeds are the tag and one 32-byte hash of terms that are each a fixed
     // length, so two different sets of terms meet only if SHA-256 collides.
-    println!("rejected as expected: no seed collides across the two programs");
+    println!("rejected as expected: the escrow's seeds land elsewhere under another program");
 }
 
 // ---------------------------------------------------------------------------------------------

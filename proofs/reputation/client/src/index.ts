@@ -43,9 +43,9 @@ export type Leaf = {
   stamp: bigint
   /** The scope of the profile's label (`scopeOf`). */
   scope: bigint
-  /** The index's score for the profile: a whole number below 2^32, meaning what the index says. */
+  /** The leaf's value (README.md: value): a whole number below 2^32, meaning what the index says. */
   score: bigint
-  /** The weight of the score, below 2^32, such as how many reviews it comes from: the index's choice. */
+  /** The leaf's weight (README.md: weight): a whole number below 2^32, the index's choice. */
   count: bigint
 }
 
@@ -69,7 +69,7 @@ export type Artifacts = {
 }
 
 export type ReputationProof = {
-  /** The count-weighted score of the profiles counted, rounded down. */
+  /** The weighted average of the values of the profiles counted, rounded down. */
   score: bigint
   root: bigint
   /** The key of the profile the proof is shown on. */

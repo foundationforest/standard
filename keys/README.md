@@ -120,8 +120,9 @@ inside a proof, made from the scalar itself.
   `verifySignature` and circomlib's `EdDSAPoseidonVerifier` check. The key must be in the
   prime-order subgroup; R8 need not be checked for it, since the equation holds only when it is.
 - Bytes are signed as one field element: SHA-256 of the bytes, read big-endian, shifted right one
-  byte. Records, messages and pulls ([records](../records/README.md)) and an index's roots
-  ([proofs/reputation](../proofs/reputation/README.md)) are signed so, each over bytes of its own.
+  byte. Records, messages, pulls and blob requests ([records](../records/README.md)) and an index's
+  roots ([proofs/reputation](../proofs/reputation/README.md)) are signed so, each over bytes of its
+  own.
 - A signature travels as 64 bytes, as zk-kit packs it: R8 packed as an address is, then S, 32
   bytes little-endian. Read back, R8 must be a point on the curve in its one spelling and S below
   `l`; anything else is refused.
@@ -207,8 +208,8 @@ profile.
   `deriveSecretScalar`). It signs as a main key does, and its address is spelled as one is.
 - Each has one scope, the one kind of thing it may do:
   - **write key:** signs records into the profile's folder, at the paths it is allowed (a path is
-    where a record sits in the folder, such as `offer/maths`), and the profile's messages when its
-    paths cover `inbox`;
+    where a record sits in the folder, such as `offer/maths`); the profile's messages when its
+    paths cover `inbox`; and requests to put and delete the folder's blobs, whatever its paths;
   - **read key:** signs pulls of the profile's inbox when its paths cover `inbox`, and opens what
     is encrypted to it. Its 32 bytes also give an age identity, mixed by `forest/v1/read` as an
     inbox key is from a profile's secret; others encrypt to its recipient.
