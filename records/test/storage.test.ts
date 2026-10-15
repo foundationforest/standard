@@ -1,7 +1,8 @@
 // The reference host's storage: a SQLite file per folder, host.sqlite for the log and the blob
-// index, and the bytes on disk or in an S3-compatible bucket. None of it is the standard: the six
+// index, and the bytes on disk or in an S3-compatible bucket. None of it is the standard: the eight
 // requests answer the same whatever the storage. Here: where things land, the feed across
-// folders, removing a folder, a malformed address, rebuilding host.sqlite, and the S3 driver.
+// folders, removing a folder, a malformed address, a folder file from before blobs were folders',
+// rebuilding host.sqlite, and the S3 driver.
 
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
@@ -12,9 +13,9 @@ import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { after, describe, test } from 'node:test'
 import { inboxKey } from '../../keys/src/index.ts'
-import { deliver, getBlob, publish, pull, putBlob, readAll, readPage } from '../src/client.ts'
+import { deleteBlob, deliver, getBlob, publish, pull, putBlob, readAll, readPage } from '../src/client.ts'
 import { type BlobDriver, DAY, Host, rebuild } from '../src/host.ts'
-import { pullRequest } from '../src/message.ts'
+import { blobNameOf, blobRequest, pullRequest } from '../src/message.ts'
 import { message } from '../src/private.ts'
 import type { Body } from '../src/record.ts'
 import { s3Url, signS3 } from '../src/storage.ts'
@@ -32,16 +33,20 @@ after(() => dirs.forEach((dir) => rmSync(dir, { recursive: true, force: true }))
 
 const sha256Hex = (bytes: Uint8Array | string) => createHash('sha256').update(bytes).digest('hex')
 const bytesOf = (seed: number, length = 2000) => Uint8Array.from({ length }, (_, i) => (i * 7 + seed * 13) & 255)
-const ref = (bytes: Uint8Array, mimeType: string) => ({ sha256: sha256Hex(bytes), mimeType, size: bytes.length })
 const photo = bytesOf(1)
 const clip = bytesOf(2, 3000)
+/** Bytes a folder's main key puts, or deletes, with a signed request at T0. */
+const putAs = (key: typeof alice, bytes: Uint8Array, type: string, time = T0) => blobRequest(key, { action: 'put', ...blobNameOf(bytes, type) }, time) as Parameters<typeof putBlob>[1]
+const deleteAs = (key: typeof alice, bytes: Uint8Array, time = T0) => blobRequest(key, { action: 'delete', sha256: sha256Hex(bytes) }, time) as Parameters<typeof deleteBlob>[1]
+/** Alice's photo and Bob's clip, each put by its folder's main key. */
+const putBoth = async (url: string) => [...(await putBlob([url], putAs(alice, photo, 'image/jpeg'), photo)), ...(await putBlob([url], putAs(bob, clip, 'video/mp4'), clip))].map((o) => o.ok)
 
 const [aliceInbox, bobInbox] = await Promise.all([inboxKey(alice.secret), inboxKey(bob.secret)])
 const aliceCard: Body = { ...profileBody('calculus'), inboxKey: aliceInbox.recipient, inbox: { senders: 'anyone' } }
-/** Alice's offer with a photo: the one record that names it. */
-const photoOffer = ownerRecord(alice, 'offer/photo', { ...offerBody('5'), media: [ref(photo, 'image/jpeg')] }, T0)
+/** Alice's offer pointing at her photo, by a field of its own: where a record points at a blob is the market's. */
+const photoOffer = ownerRecord(alice, 'offer/photo', { ...offerBody('5'), files: [blobNameOf(photo, 'image/jpeg')] }, T0)
 const bobCard: Body = { ...profileBody('chemistry'), role: 'buyer', inboxKey: bobInbox.recipient, inbox: { senders: 'anyone' } }
-const withClip = (price: string): Body => ({ ...offerBody(price), media: [ref(clip, 'video/mp4')] })
+const withClip = (about: string): Body => ({ ...offerBody(about), files: [blobNameOf(clip, 'video/mp4')] })
 
 /** Every page of the feed, as [cursor, ids]: what a crawler sees, number for number. */
 async function pages(url: string, profile?: string) {
@@ -77,7 +82,7 @@ describe('a file per folder', () => {
       assert.deepEqual(profiles(bob.address), [bob.address])
 
       const host = join(dir, 'host.sqlite')
-      assert.deepEqual(query<{ name: string }>(host, "SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").map((t) => t.name), ['blobs', 'log', 'names', 'sqlite_sequence'])
+      assert.deepEqual(query<{ name: string }>(host, "SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").map((t) => t.name), ['blobs', 'log', 'owners', 'sqlite_sequence'])
       assert.deepEqual(query<{ folder: string }>(host, 'SELECT folder FROM log ORDER BY seq').map((r) => r.folder), [alice.address, bob.address, alice.address])
       const shared = Buffer.concat([host, `${host}-wal`].filter(existsSync).map((f) => readFileSync(f)))
       for (const r of records) assert.ok(!shared.includes(r.sig), 'no record text in host.sqlite')
@@ -115,7 +120,8 @@ describe('a file per folder', () => {
       await publish([h.url], [ownerRecord(bob, 'profile', bobCard, T0)])
       await publish([h.url], [ownerRecord(alice, 'offer/a', offerBody('1'), T0)])
       await publish([h.url], [ownerRecord(bob, 'offer/b', withClip('2'), T0)])
-      assert.deepEqual([...(await putBlob([h.url], photo, 'image/jpeg')), ...(await putBlob([h.url], clip, 'video/mp4'))].map((o) => o.ok), [true, true])
+      assert.deepEqual(await putBoth(h.url), [true, true])
+      assert.ok((await putBlob([h.url], putAs(alice, clip, 'video/mp4'), clip))[0]!.ok, 'Alice holds the clip too')
       await deliver([h.url], [await message(bob, alice.address, { text: 'Tuesday?' }, T0, aliceCard)])
       await deliver([h.url], [await message(alice, bob.address, { text: 'Tuesday.' }, T0, bobCard)])
       was = await reread()
@@ -136,14 +142,13 @@ describe('a file per folder', () => {
       assert.deepEqual(now.bob, was.bob)
       assert.deepEqual([now.bobInbox.messages.map((m) => m.id), now.bobInbox.cursor], [was.bobInbox.messages.map((m) => m.id), was.bobInbox.cursor])
 
-      // The next prune drops what host.sqlite said of her; the bytes only she named go after keep days.
+      // The next prune drops what host.sqlite said of her, and the bytes only she held.
+      assert.ok(await h.getBlob(sha256Hex(photo)), 'until the next prune')
       await h.prune(T0)
       const host = join(dir, 'host.sqlite')
-      assert.deepEqual(query<{ folder: string }>(host, 'SELECT DISTINCT folder FROM log UNION SELECT folder FROM names').map((r) => r.folder), [bob.address])
-      assert.ok(await h.getBlob(sha256Hex(photo)), 'within keep days')
-      await h.prune(T0 + 31 * DAY)
+      assert.deepEqual(query<{ folder: string }>(host, 'SELECT DISTINCT folder FROM log UNION SELECT folder FROM owners').map((r) => r.folder), [bob.address])
       assert.equal(await h.getBlob(sha256Hex(photo)), undefined)
-      assert.ok(await h.getBlob(sha256Hex(clip)), 'Bob’s offer still names it')
+      assert.ok(await h.getBlob(sha256Hex(clip)), 'Bob holds it still')
     } finally {
       await h.close()
     }
@@ -191,7 +196,7 @@ describe('host.sqlite holds nothing that exists only there', () => {
     rmSync(join(dir, 'folders', `${alice.address}.sqlite`))
     for (const suffix of ['', '-wal', '-shm']) rmSync(join(dir, `host.sqlite${suffix}`), { force: true })
     clock.advance(1)
-    await rebuild(dir, { kind: 'disk' }, clock.t)
+    await rebuild(dir, { kind: 'disk' })
     h = await startHost(options)
     try {
       await publish([h.url], [ownerRecord(alice, 'profile', aliceCard, clock.t)])
@@ -204,7 +209,7 @@ describe('host.sqlite holds nothing that exists only there', () => {
     }
   })
 
-  test('delete it and rebuild: the same feed, the same numbers, the same blobs', async () => {
+  test('delete it and rebuild: the same feed, the same numbers, the same blobs, each held by the same folders', async () => {
     const dir = scratch()
     const clock = new Clock(T0)
     const options = { dir, now: clock.now, maxPageRecords: 2 }
@@ -213,8 +218,7 @@ describe('host.sqlite holds nothing that exists only there', () => {
     try {
       await publish([h.url], [ownerRecord(alice, 'profile', aliceCard, T0), photoOffer, ownerRecord(alice, 'offer/a', withClip('1'), T0)])
       await publish([h.url], [ownerRecord(bob, 'profile', bobCard, T0)])
-      assert.deepEqual([...(await putBlob([h.url], photo, 'image/jpeg')), ...(await putBlob([h.url], clip, 'video/mp4'))].map((o) => o.ok), [true, true])
-      await publish([h.url], [ownerRecord(alice, 'offer/a', offerBody('2'), clock.advance(MINUTE))]) // nothing names the clip now
+      assert.deepEqual(await putBoth(h.url), [true, true])
       was = await pages(h.url)
     } finally {
       await h.close()
@@ -222,24 +226,51 @@ describe('host.sqlite holds nothing that exists only there', () => {
 
     for (const suffix of ['', '-wal', '-shm']) rmSync(join(dir, `host.sqlite${suffix}`), { force: true })
     assert.throws(() => new Host(options), /rebuild/, 'a host does not start without it: new records would take numbers already given')
-    const rebuilt = clock.advance(MINUTE)
-    await rebuild(dir, { kind: 'disk' }, rebuilt)
+    clock.advance(MINUTE)
+    await rebuild(dir, { kind: 'disk' })
     h = await startHost(options)
     try {
       assert.deepEqual(await pages(h.url), was)
       assert.deepEqual(await getBlob([h.url], sha256Hex(photo)).then((g) => [g!.type, g!.bytes]), ['image/jpeg', photo])
-      assert.deepEqual((await putBlob([h.url], photo, 'image/jpeg'))[0]!.message, 'already here')
+      assert.deepEqual((await putBlob([h.url], putAs(alice, photo, 'image/jpeg'), photo))[0]!.message, 'already here')
       // New records go on past the numbers given before, from the clock.
       const last = was.at(-1)![0]
       await publish([h.url], [ownerRecord(bob, 'offer/b', offerBody('3'), clock.t)])
       assert.equal((await readPage(h.url, { after: last })).cursor, clock.t * 1000)
       assert.ok(clock.t * 1000 > last)
-      // The photo is still named: kept. The clip was not: dated at the rebuild, which only keeps it longer.
-      await h.prune(rebuilt + 30 * DAY - 1)
-      assert.ok(await h.getBlob(sha256Hex(clip)))
-      await h.prune(rebuilt + 30 * DAY)
-      assert.equal(await h.getBlob(sha256Hex(clip)), undefined)
+      // Each folder still holds its own: a prune keeps both, and the clip goes when Bob deletes it.
+      await h.prune(clock.t + 365 * DAY)
       assert.ok(await h.getBlob(sha256Hex(photo)))
+      assert.ok((await deleteBlob([h.url], deleteAs(bob, clip)))[0]!.ok)
+      assert.equal(await h.getBlob(sha256Hex(clip)), undefined)
+    } finally {
+      await h.close()
+    }
+  })
+
+  test('a folder file from before blobs were folders’ opens, and holds no blob until its keys put one', async () => {
+    const dir = scratch()
+    const options = { dir, now: () => T0 }
+    let h = await startHost(options)
+    try {
+      await publish([h.url], [ownerRecord(alice, 'profile', aliceCard, T0)])
+      assert.deepEqual(await putBoth(h.url), [true, true])
+    } finally {
+      await h.close()
+    }
+    // Version 1: no blobs table.
+    const file = join(dir, 'folders', `${alice.address}.sqlite`)
+    const old = new DatabaseSync(file)
+    old.exec('DROP TABLE blobs; PRAGMA user_version = 1;')
+    old.close()
+    h = await startHost(options)
+    try {
+      assert.equal((await readAll(h.url, { profile: alice.address })).records.length, 1, 'its records as they were')
+      await h.prune(T0)
+      assert.equal(await h.getBlob(sha256Hex(photo)), undefined, 'the photo no folder holds any more')
+      assert.ok(await h.getBlob(sha256Hex(clip)), 'Bob’s clip')
+      assert.ok((await putBlob([h.url], putAs(alice, photo, 'image/jpeg'), photo))[0]!.ok)
+      assert.equal(query<{ v: number }>(file, 'SELECT user_version AS v FROM pragma_user_version')[0]!.v, 2)
     } finally {
       await h.close()
     }
@@ -290,7 +321,7 @@ describe('the S3 driver', () => {
     return { objects, url: `http://127.0.0.1:${(server.address() as { port: number }).port}`, close: () => new Promise((resolve) => server.close(resolve)) }
   }
 
-  test('blobs go to a bucket: put, get, 404, and gone after keep days; a rebuild lists them back', async () => {
+  test('blobs go to a bucket: put, get, 404, deleted; a rebuild lists them back', async () => {
     const stub = await s3Stub()
     const dir = scratch()
     const clock = new Clock(T0)
@@ -299,31 +330,27 @@ describe('the S3 driver', () => {
     let h = await startHost(options)
     try {
       await publish([h.url], [ownerRecord(alice, 'profile', aliceCard, T0), photoOffer, ownerRecord(alice, 'offer/a', withClip('1'), T0)])
-      assert.deepEqual([...(await putBlob([h.url], photo, 'image/jpeg')), ...(await putBlob([h.url], clip, 'video/mp4'))].map((o) => o.ok), [true, true])
+      assert.deepEqual(await putBoth(h.url), [true, true])
       assert.deepEqual([...stub.objects].map(([k, o]) => [k, o.type]).sort(), [[sha256Hex(photo), 'image/jpeg'], [sha256Hex(clip), 'video/mp4']].sort())
       assert.ok(!existsSync(join(dir, 'blobs')), 'nothing on disk')
       assert.deepEqual(await getBlob([h.url], sha256Hex(clip)).then((g) => [g!.type, g!.bytes]), ['video/mp4', clip])
       assert.equal((await fetch(`${h.url}/v1/blobs/${sha256Hex(bytesOf(9))}`)).status, 404)
 
-      // Nothing names the clip once the offer changes: it leaves the bucket after keep days.
-      const gone = clock.advance(MINUTE)
-      await publish([h.url], [ownerRecord(alice, 'offer/a', offerBody('2'), gone)])
-      await h.prune(gone + 29 * DAY)
-      assert.ok(stub.objects.has(sha256Hex(clip)))
-      await h.prune(gone + 31 * DAY)
+      // Bob deletes the clip: it leaves the bucket. He puts it again: it is back.
+      assert.ok((await deleteBlob([h.url], deleteAs(bob, clip)))[0]!.ok)
       assert.deepEqual([...stub.objects.keys()], [sha256Hex(photo)])
-      await publish([h.url], [ownerRecord(alice, 'offer/b', withClip('3'), clock.advance(MINUTE))])
-      assert.ok((await putBlob([h.url], clip, 'video/mp4'))[0]!.ok)
+      assert.ok((await putBlob([h.url], putAs(bob, clip, 'video/mp4'), clip))[0]!.ok)
     } finally {
       await h.close()
     }
 
     rmSync(join(dir, 'host.sqlite'))
-    await rebuild(dir, driver, clock.t)
+    await rebuild(dir, driver)
     h = await startHost(options)
     try {
-      assert.deepEqual((await putBlob([h.url], photo, 'image/jpeg'))[0]!.message, 'already here', 'listed back, page by page')
-      assert.deepEqual((await putBlob([h.url], clip, 'video/mp4'))[0]!.message, 'already here')
+      assert.deepEqual(await getBlob([h.url], sha256Hex(clip)).then((g) => [g!.type, g!.bytes]), ['video/mp4', clip], 'listed back, page by page')
+      assert.deepEqual((await putBlob([h.url], putAs(alice, photo, 'image/jpeg'), photo))[0]!.message, 'already here')
+      assert.deepEqual((await putBlob([h.url], putAs(bob, clip, 'video/mp4'), clip))[0]!.message, 'already here')
     } finally {
       await h.close()
     }
@@ -331,8 +358,7 @@ describe('the S3 driver', () => {
     // The stub checks signatures: a wrong secret is refused, and the host answers 500.
     const wrong = await startHost({ now: () => T0, blobs: { ...driver, secretAccessKey: 'wrong' } })
     try {
-      await publish([wrong.url], [ownerRecord(alice, 'profile', aliceCard, T0), photoOffer])
-      assert.equal((await putBlob([wrong.url], photo, 'image/jpeg'))[0]!.status, 500)
+      assert.equal((await putBlob([wrong.url], putAs(alice, photo, 'image/jpeg'), photo))[0]!.status, 500)
     } finally {
       await wrong.close()
       await stub.close()

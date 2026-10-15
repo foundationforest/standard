@@ -2,10 +2,11 @@
 // SQLite file for what crosses folders, and a blob store with two drivers.
 //
 //   <dir>/folders/<address>.sqlite   one folder: its records (current, and replaced within keep
-//                                    days), the messages to its inbox, and its once pairs
+//                                    days), the messages to its inbox, its once pairs, and the
+//                                    blobs it holds
 //   <dir>/host.sqlite                the log, numbering every record across folders in the order
-//                                    taken, and the blob index: which folders' current records
-//                                    name which bytes, and which bytes are held
+//                                    taken, and the blob index: which folders hold which bytes,
+//                                    and which bytes are stored
 //   <dir>/blobs/<sha256>             the bytes, with <sha256>.type beside them (the disk driver);
 //                                    or <sha256> in an S3-compatible bucket, typed by content-type
 //
@@ -20,7 +21,6 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync, type StatementSync } from 'node:sqlite'
 import { base58, utf8 } from './bytes.ts'
-import type { Body } from './record.ts'
 
 /** Folder files kept open at once; the least recently used closes first, so many folders never run out of file handles. */
 const OPEN_FOLDERS = 128
@@ -29,7 +29,7 @@ const HASH = /^[0-9a-f]{64}$/
 const S3_TIMEOUT_MS = 60_000
 
 export type Row = { seq: number; text: string; bytes: number }
-export type BlobName = { sha256: string; type: string }
+export type Stored = { sha256: string; type: string }
 export type Blob = { type: string; bytes: Uint8Array }
 
 /** Where blob bytes go: the one setting. */
@@ -56,19 +56,7 @@ export interface BlobStore {
   get(sha256: string): Promise<Blob | undefined>
   delete(sha256: string): Promise<void>
   /** Every hash held, with its type. */
-  list(): AsyncIterable<BlobName>
-}
-
-/** The bytes a record's body names: each of its media. */
-export function blobNames(body: Body | null): BlobName[] {
-  if (!body) return []
-  const refs = Array.isArray(body.media) ? body.media : []
-  const names: BlobName[] = []
-  for (const ref of refs) {
-    if (ref === null || typeof ref !== 'object' || Array.isArray(ref)) continue
-    if (typeof ref.sha256 === 'string' && HASH.test(ref.sha256) && typeof ref.mimeType === 'string') names.push({ sha256: ref.sha256, type: ref.mimeType })
-  }
-  return names
+  list(): AsyncIterable<Stored>
 }
 
 // ------------------------------------------------------------------------------------------
@@ -129,7 +117,21 @@ const FOLDER_SCHEMA = `
   -- the inbox says so, so who wrote to whom is not kept past the messages for other inboxes. Kept
   -- for as long as the folder is: this host never deletes a current record.
   CREATE TABLE once (sender TEXT PRIMARY KEY) WITHOUT ROWID;
-  PRAGMA user_version = 1;
+`
+
+// Version 2 adds the blobs a folder holds. A folder file from version 1 holds none: bytes a record
+// once named there are held by no folder, and go at the next prune, until its keys put them again.
+const FOLDER_BLOBS = `
+  -- The bytes this folder holds, by hash: put by its main key (by is null) or by a write key (by
+  -- is its address), and kept until a key that may deletes them.
+  CREATE TABLE blobs (
+    sha256 TEXT PRIMARY KEY,
+    type TEXT NOT NULL,
+    size INTEGER NOT NULL,
+    by TEXT,
+    arrived INTEGER NOT NULL   -- this host's clock
+  ) WITHOUT ROWID;
+  PRAGMA user_version = 2;
 `
 
 const HOST_SCHEMA = `
@@ -141,17 +143,16 @@ const HOST_SCHEMA = `
     arrived INTEGER NOT NULL   -- this host's clock
   );
   CREATE INDEX IF NOT EXISTS log_by_folder ON log (folder);
-  CREATE TABLE IF NOT EXISTS names (   -- the bytes each folder's current records name, by hash and type
+  DROP TABLE IF EXISTS names;   -- from when records named blobs
+  CREATE TABLE IF NOT EXISTS owners (   -- which folders hold which bytes, as their files say
     sha256 TEXT NOT NULL,
-    type TEXT NOT NULL,
     folder TEXT NOT NULL,
-    PRIMARY KEY (sha256, type, folder)
+    PRIMARY KEY (sha256, folder)
   ) WITHOUT ROWID;
-  CREATE INDEX IF NOT EXISTS names_by_folder ON names (folder);
-  CREATE TABLE IF NOT EXISTS blobs (   -- the bytes held; the store keeps them and their type
+  CREATE INDEX IF NOT EXISTS owners_by_folder ON owners (folder);
+  CREATE TABLE IF NOT EXISTS blobs (   -- the bytes stored; the store keeps them and their type
     sha256 TEXT PRIMARY KEY,
-    type TEXT NOT NULL,
-    unnamed_since INTEGER   -- this host's clock when no current record named it any more
+    type TEXT NOT NULL
   ) WITHOUT ROWID;
 `
 
@@ -185,7 +186,9 @@ function nextNumber(db: Db, table: string, now: number): number {
 
 function openFolder(file: string): Db {
   const folder = new Db(file)
-  if ((folder.db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version === 0) folder.db.exec(FOLDER_SCHEMA)
+  const version = (folder.db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version
+  if (version === 0) folder.db.exec(FOLDER_SCHEMA + FOLDER_BLOBS)
+  else if (version === 1) folder.db.exec(FOLDER_BLOBS)
   return folder
 }
 
@@ -208,7 +211,7 @@ export class Storage {
   private readonly temporary: boolean
   /** Open folder files, least recently used first. */
   private readonly open = new Map<string, Db>()
-  /** One blob operation at a time per hash, so a prune never deletes bytes a put is adding. */
+  /** One blob operation at a time per hash, so a delete or a prune never deletes bytes a put is adding. */
   private readonly blobQueue = new Map<string, Promise<unknown>>()
 
   /** `dir` omitted: a fresh temporary directory, removed on close. */
@@ -357,40 +360,45 @@ export class Storage {
   // ----------------------------------------------------------------------------------------
   // Blobs
 
+  /** Whether a folder holds these bytes, and who put them: null for its main key, else the write key's address. */
+  blobOf(folder: string, sha256: string): { by: string | null } | undefined {
+    return this.folder(folder)?.q('SELECT by FROM blobs WHERE sha256 = ?').get(sha256) as { by: string | null } | undefined
+  }
+
+  blobTotals(folder: string): { blobs: number; bytes: number } {
+    return (this.folder(folder)?.q('SELECT COUNT(*) AS blobs, COALESCE(SUM(size), 0) AS bytes FROM blobs').get() ?? { blobs: 0, bytes: 0 }) as { blobs: number; bytes: number }
+  }
+
   /**
-   * Say which bytes a folder's current records name. Bytes no folder names any more get a date,
-   * and go keep days later; bytes named again lose it.
+   * Put bytes in a folder, `by` the write key that signed, or null for the main key, which takes over
+   * bytes a write key put. The bytes are stored once, whichever folders hold them. host.sqlite's
+   * index first: a crash in between keeps bytes until the next prune puts the index right, and never
+   * deletes bytes a folder holds.
    */
-  setNames(folder: string, names: BlobName[], now: number) {
-    const key = (n: BlobName) => `${n.sha256} ${n.type}`
-    const want = new Map(names.map((n) => [key(n), n]))
-    const had = new Map((this.host.q('SELECT sha256, type FROM names WHERE folder = ?').all(folder) as BlobName[]).map((n) => [key(n), n]))
-    const gone = [...had].filter(([k]) => !want.has(k)).map(([, n]) => n)
-    const added = [...want].filter(([k]) => !had.has(k)).map(([, n]) => n)
-    if (!gone.length && !added.length) return
-    this.host.tx(() => {
-      for (const n of gone) this.host.q('DELETE FROM names WHERE sha256 = ? AND type = ? AND folder = ?').run(n.sha256, n.type, folder)
-      for (const n of added) this.host.q('INSERT INTO names (sha256, type, folder) VALUES (?, ?, ?)').run(n.sha256, n.type, folder)
-      for (const sha256 of new Set([...gone, ...added].map((n) => n.sha256))) {
-        this.host.q('UPDATE blobs SET unnamed_since = CASE WHEN EXISTS (SELECT 1 FROM names n WHERE n.sha256 = blobs.sha256 AND n.type = blobs.type) THEN NULL ELSE COALESCE(unnamed_since, ?) END WHERE sha256 = ?').run(now, sha256)
+  async putBlob(folder: string, sha256: string, type: string, size: number, by: string | null, bytes: Uint8Array, now: number): Promise<void> {
+    await this.oneAtATime(sha256, async () => {
+      if (this.host.q('SELECT 1 FROM blobs WHERE sha256 = ?').get(sha256) === undefined) {
+        await this.blobs.put(sha256, type, bytes)
+        this.host.q('INSERT OR IGNORE INTO blobs (sha256, type) VALUES (?, ?)').run(sha256, type)
       }
+      this.host.q('INSERT OR IGNORE INTO owners (sha256, folder) VALUES (?, ?)').run(sha256, folder)
+      this.folder(folder, true)!
+        .q('INSERT INTO blobs (sha256, type, size, by, arrived) VALUES (?, ?, ?, ?, ?) ON CONFLICT (sha256) DO UPDATE SET by = NULL WHERE excluded.by IS NULL')
+        .run(sha256, type, size, by, now)
     })
   }
 
-  /** The folders, each still with its file, whose current records name these bytes as this type, in order. */
-  namedBy(sha256: string, type: string): string[] {
-    const folders = this.host.q('SELECT folder FROM names WHERE sha256 = ? AND type = ? ORDER BY folder').all(sha256, type) as Array<{ folder: string }>
-    return folders.map((f) => f.folder).filter((f) => this.folder(f) !== undefined)
-  }
-
-  holdsBlob(sha256: string): boolean {
-    return this.host.q('SELECT 1 FROM blobs WHERE sha256 = ?').get(sha256) !== undefined
-  }
-
-  async putBlob(sha256: string, type: string, bytes: Uint8Array, now: number): Promise<void> {
+  /**
+   * Delete bytes from a folder; once no folder holds them, from the store. The folder's file first,
+   * then the index, then the store: a crash in between leaves bytes the next prune deletes.
+   */
+  async deleteBlob(folder: string, sha256: string): Promise<void> {
     await this.oneAtATime(sha256, async () => {
-      await this.blobs.put(sha256, type, bytes)
-      this.host.q('INSERT OR IGNORE INTO blobs (sha256, type, unnamed_since) VALUES (?, ?, CASE WHEN EXISTS (SELECT 1 FROM names WHERE sha256 = ? AND type = ?) THEN NULL ELSE ? END)').run(sha256, type, sha256, type, now)
+      this.folder(folder)?.q('DELETE FROM blobs WHERE sha256 = ?').run(sha256)
+      this.host.q('DELETE FROM owners WHERE sha256 = ? AND folder = ?').run(sha256, folder)
+      if (this.host.q('SELECT 1 FROM owners WHERE sha256 = ?').get(sha256) !== undefined) return
+      this.host.q('DELETE FROM blobs WHERE sha256 = ?').run(sha256)
+      await this.blobs.delete(sha256)
     })
   }
 
@@ -415,11 +423,11 @@ export class Storage {
   // Keeping
 
   /**
-   * Delete what stopped being current, the messages that arrived, and the bytes no current record
-   * has named, at or before `before`; and what host.sqlite says of folders whose file is gone.
-   * Returns how many records, messages and blobs it deleted.
+   * Delete what stopped being current and the messages that arrived, at or before `before`; what
+   * host.sqlite says of folders whose file is gone; and the bytes no folder holds any more. Returns
+   * how many records, messages and blobs it deleted.
    */
-  async prune(before: number, now: number): Promise<number> {
+  async prune(before: number): Promise<number> {
     let deleted = 0
     const onDisk = new Set(this.folders())
     for (const address of onDisk) {
@@ -430,18 +438,27 @@ export class Storage {
       if (old.length) this.host.tx(() => old.forEach((r) => this.host.q('DELETE FROM log WHERE seq = ?').run(r.seq)))
       deleted += Number(folder.q('DELETE FROM records WHERE older_since IS NOT NULL AND older_since <= ?').run(before).changes)
       deleted += Number(folder.q('DELETE FROM messages WHERE arrived <= ?').run(before).changes)
+      // The index follows the folder's file, which is the truth of what it holds.
+      const holds = folder.q('SELECT sha256 FROM blobs').all() as Array<{ sha256: string }>
+      this.host.tx(() => {
+        this.host.q('DELETE FROM owners WHERE folder = ?').run(address)
+        for (const { sha256 } of holds) this.host.q('INSERT INTO owners (sha256, folder) VALUES (?, ?)').run(sha256, address)
+      })
     }
-    const listed = this.host.q('SELECT folder FROM log UNION SELECT folder FROM names').all() as Array<{ folder: string }>
+    const listed = this.host.q('SELECT folder FROM log UNION SELECT folder FROM owners').all() as Array<{ folder: string }>
     for (const { folder } of listed.filter((f) => !onDisk.has(f.folder))) {
-      this.host.q('DELETE FROM log WHERE folder = ?').run(folder)
-      this.setNames(folder, [], now)
+      this.host.tx(() => {
+        this.host.q('DELETE FROM log WHERE folder = ?').run(folder)
+        this.host.q('DELETE FROM owners WHERE folder = ?').run(folder)
+      })
     }
-    for (const { sha256 } of this.host.q('SELECT sha256 FROM blobs WHERE unnamed_since IS NOT NULL AND unnamed_since <= ?').all(before) as Array<{ sha256: string }>) {
+    const unheld = 'SELECT sha256 FROM blobs WHERE NOT EXISTS (SELECT 1 FROM owners o WHERE o.sha256 = blobs.sha256)'
+    for (const { sha256 } of this.host.q(unheld).all() as Array<{ sha256: string }>) {
       await this.oneAtATime(sha256, async () => {
-        // Named again while waiting its turn: kept.
-        if (this.host.q('SELECT 1 FROM blobs WHERE sha256 = ? AND unnamed_since IS NOT NULL AND unnamed_since <= ?').get(sha256, before) === undefined) return
-        await this.blobs.delete(sha256)
+        // Put again while waiting its turn: kept.
+        if (this.host.q('SELECT 1 FROM owners WHERE sha256 = ?').get(sha256) !== undefined) return
         this.host.q('DELETE FROM blobs WHERE sha256 = ?').run(sha256)
+        await this.blobs.delete(sha256)
         deleted++
       })
     }
@@ -454,12 +471,12 @@ export class Storage {
 
 /**
  * Make host.sqlite again from what is outside it: the log from each folder's records and their
- * numbers, the names from its current records, the blobs from the store. Bytes no current record
- * names are dated `now`, which only keeps them longer. The log goes on from the highest number any
- * folder file ever took, and a new number is never below the clock (nextNumber), so one held only
- * by a folder whose file was deleted is not given again.
+ * numbers, which folders hold which bytes from each folder's blobs, the stored bytes from the
+ * store. Bytes no folder holds stay listed, and go at the next prune. The log goes on from the
+ * highest number any folder file ever took, and a new number is never below the clock
+ * (nextNumber), so one held only by a folder whose file was deleted is not given again.
  */
-export async function rebuild(dir: string, driver: BlobDriver = { kind: 'disk' }, now = Date.now()): Promise<void> {
+export async function rebuild(dir: string, driver: BlobDriver = { kind: 'disk' }): Promise<void> {
   for (const suffix of ['', '-wal', '-shm']) rmSync(join(dir, `host.sqlite${suffix}`), { force: true })
   const host = new Db(join(dir, 'host.sqlite'))
   try {
@@ -469,10 +486,11 @@ export async function rebuild(dir: string, driver: BlobDriver = { kind: 'disk' }
       for (const address of foldersIn(dir)) {
         const folder = openFolder(folderFile(dir, address))
         try {
-          for (const r of folder.q('SELECT seq, id, text, arrived, older_since FROM records ORDER BY seq').all() as Array<{ seq: number; id: string; text: string; arrived: number; older_since: number | null }>) {
+          for (const r of folder.q('SELECT seq, id, arrived FROM records ORDER BY seq').all() as Array<{ seq: number; id: string; arrived: number }>) {
             host.q('INSERT INTO log (seq, folder, id, arrived) VALUES (?, ?, ?, ?)').run(r.seq, address, r.id, r.arrived)
-            if (r.older_since !== null) continue
-            for (const n of blobNames((JSON.parse(r.text) as { body: Body | null }).body)) host.q('INSERT OR IGNORE INTO names (sha256, type, folder) VALUES (?, ?, ?)').run(n.sha256, n.type, address)
+          }
+          for (const b of folder.q('SELECT sha256 FROM blobs').all() as Array<{ sha256: string }>) {
+            host.q('INSERT INTO owners (sha256, folder) VALUES (?, ?)').run(b.sha256, address)
           }
           const taken = folder.q("SELECT seq FROM sqlite_sequence WHERE name = 'records'").get() as { seq: number } | undefined
           top = Math.max(top, taken?.seq ?? 0)
@@ -483,9 +501,8 @@ export async function rebuild(dir: string, driver: BlobDriver = { kind: 'disk' }
       host.q("DELETE FROM sqlite_sequence WHERE name = 'log'").run()
       host.q("INSERT INTO sqlite_sequence (name, seq) VALUES ('log', ?)").run(top)
     })
-    const named = host.q('SELECT 1 FROM names WHERE sha256 = ? AND type = ?')
     for await (const blob of blobStore(dir, driver).list()) {
-      host.q('INSERT OR IGNORE INTO blobs (sha256, type, unnamed_since) VALUES (?, ?, ?)').run(blob.sha256, blob.type, named.get(blob.sha256, blob.type) ? null : now)
+      host.q('INSERT OR IGNORE INTO blobs (sha256, type) VALUES (?, ?)').run(blob.sha256, blob.type)
     }
   } finally {
     host.close()

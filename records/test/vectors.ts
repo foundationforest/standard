@@ -6,9 +6,10 @@
 // `node test/vectors.ts` prints them; vectors.test.ts checks them against test/vectors.json, each
 // with a second implementation.
 
+import { sha256 } from '@noble/hashes/sha2.js'
 import { hex } from '../src/bytes.ts'
 import { canonical } from '../src/canonical.ts'
-import { type SignedMessage, type SignedPull, messageId, messageSigningInput, pullRequest, pullSigningInput, signMessage, unsignedMessageOf } from '../src/message.ts'
+import { type SignedBlobRequest, type SignedMessage, type SignedPull, blobRequest, blobSigningInput, messageId, messageSigningInput, pullRequest, pullSigningInput, signMessage, unsignedMessageOf } from '../src/message.ts'
 import { type SignedRecord, recordId, signingInput, unsignedOf } from '../src/record.ts'
 import { accessRecord, hostsRecord, ownerRecord, permissionsRecord } from '../src/write.ts'
 import { KEYS, accessKey, alice, aliceBuyer, reader } from './fixtures.ts'
@@ -92,16 +93,26 @@ const describePull = (pull: SignedPull) => {
   return { wire: canonical(pull), signingInputHex: hex.encode(pullSigningInput(unsigned)) }
 }
 
+const describeBlob = (request: SignedBlobRequest) => {
+  const { sig: _sig, ...unsigned } = request
+  return { wire: canonical(request), signingInputHex: hex.encode(blobSigningInput(unsigned)) }
+}
+
+/** The blob vectors' bytes: the 26 letters, as text/plain. */
+const LETTERS = new TextEncoder().encode('abcdefghijklmnopqrstuvwxyz')
+
 export async function vectors() {
   const inbox = KEYS.mainKeys[0].inbox
   const hostA = 'https://host-a.example'
-  // An offer's fields are its market's; the standard names only media (README.md, Folders).
-  const offer = { media: [{ sha256: '9f2c4e6a8b0d1f3e5a7c9b1d3f5e7a9c0b2d4f6e8a1c3e5b7d9f0a2c4e6b8d1f', mimeType: 'image/jpeg', size: 48213 }] }
-  const written = { media: [{ sha256: '0c7e5a3f1d9b7e5c3a1f8d6b4e2c0a9f7d5b3e1c8a6f4d2b0e9c7a5f3d1b8e6c', mimeType: 'video/mp4', size: 1048576 }] }
+  // An offer's fields are its market's, and the standard names none (README.md, Folders): `about`
+  // stands in for them.
+  const offer = { about: 'One hour of maths, online.' }
+  const written = { about: 'Physics, one hour.' }
+  const letters = { sha256: hex.encode(sha256(LETTERS)), mimeType: 'text/plain', size: LETTERS.length }
   const writeEntry = { key: accessKey.address, scope: 'write' as const, paths: ['offer', 'inbox'] }
   const readEntry = { key: reader.address, recipient: reader.recipient, scope: 'read' as const, paths: ['inbox'] }
   return {
-    about: "Forest records vectors. The profile is keys/'s tutoring/seller profile, from its test seed, and the profile record's inboxKey field is that profile's inbox key; the write key and the read key are keys/'s, from 32 bytes of 0x2a and of 0x2b: all pinned in keys/test/vectors.json. Every signature is EdDSA-Poseidon on Baby Jubjub over SHA-256 of the signed bytes, shifted right one byte. The permissions record lists the write key for offers and the inbox, and the read key, with its recipient, for the inbox. The message is from keys/'s tutoring/buyer profile, from the same seed, to tutoring/seller; its body is sealed to tutoring/seller's inbox key. keyMessage is from tutoring/seller, signed by its write key and naming host-a, to tutoring/buyer; its body is sealed to tutoring/buyer's inbox key. Both bodies were made once and are pinned as made, since age's sealing is random. The pull is tutoring/seller's, for everything; keyPull is the same pull signed by its read key. past is a later permissions record in which the write key is past and the read key still listed.",
+    about: "Forest records vectors. The profile is keys/'s tutoring/seller profile, from its test seed, and the profile record's inboxKey field is that profile's inbox key; the write key and the read key are keys/'s, from 32 bytes of 0x2a and of 0x2b: all pinned in keys/test/vectors.json. Every signature is EdDSA-Poseidon on Baby Jubjub over SHA-256 of the signed bytes, shifted right one byte. The permissions record lists the write key for offers and the inbox, and the read key, with its recipient, for the inbox. The message is from keys/'s tutoring/buyer profile, from the same seed, to tutoring/seller; its body is sealed to tutoring/seller's inbox key. keyMessage is from tutoring/seller, signed by its write key and naming host-a, to tutoring/buyer; its body is sealed to tutoring/buyer's inbox key. Both bodies were made once and are pinned as made, since age's sealing is random. The pull is tutoring/seller's, for everything; keyPull is the same pull signed by its read key. past is a later permissions record in which the write key is past and the read key still listed. blobPut is tutoring/seller's main key putting the 26 letters a to z, as text/plain, in its folder; blobDelete is its write key deleting them.",
     profile: alice.address,
     writeKey: accessKey.address,
     readKey: reader.address,
@@ -116,6 +127,8 @@ export async function vectors() {
     pull: describePull(pullRequest(alice, 0, TIME + 240_000)),
     keyPull: describePull(pullRequest({ key: reader, profile: alice.address }, 0, TIME + 360_000)),
     past: describe(permissionsRecord(alice, [{ key: accessKey.address, was: 'write', paths: ['offer', 'inbox'] }, readEntry], TIME + 420_000)),
+    blobPut: describeBlob(blobRequest(alice, { action: 'put', ...letters }, TIME + 480_000)),
+    blobDelete: describeBlob(blobRequest({ key: accessKey, profile: alice.address }, { action: 'delete', sha256: letters.sha256 }, TIME + 540_000)),
   }
 }
 

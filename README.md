@@ -26,7 +26,7 @@ A **label** is `<market>/<role>`, such as `plumbing/seller`; the market defines 
 |---|---|---|---|
 | [`keys/`](keys/README.md) | The recipe that mixes every profile key, payment address, encryption key and issuer secret from the person's seed | a library | on the person's device |
 | [`proofs/`](proofs/README.md) | The zero-knowledge proofs a device makes and anyone can check: [`human/`](proofs/human/README.md) (proving a profile's key and stamp come from an issuer-checked seed) and [`reputation/`](proofs/reputation/README.md) (proving a score across hidden profiles from an index's tree) | circuits and client libraries | made on the device; checked by anyone in milliseconds |
-| [`records/`](records/README.md) | How a profile speaks: versioned folder entries (`card`, `hosts`, `permissions`, `offer`, `review`, `private`), scoped `write` and `read` access keys for AI and apps, the encrypted `inbox`, the `vault`, blobs, and the reference host | a library and reference host | wherever an app, AI, host or index runs |
+| [`records/`](records/README.md) | How a profile speaks: versioned folder entries (`card`, `hosts`, `permissions`, `offer`, `review`, `private`), scoped `write` and `read` access keys for AI and apps, the encrypted `inbox`, the `vault`, the blobs a folder holds (photos and videos its keys put and delete), and the reference host | a library and reference host | wherever an app, AI, host or index runs |
 | [`escrows/`](escrows/README.md) | On-chain lockboxes that release money when the buyer approves, both sides agree, a chosen arbiter decides, or a timer expires ([`solana/`](escrows/solana/README.md) today, other chains later) | an on-chain program and client library | on chain when a deal uses escrow |
 
 Each folder's README follows the same structure: What it is, How it works, Promises, Limits, Who decides what, FAQ.
@@ -44,7 +44,7 @@ Each folder's README follows the same structure: What it is, How it works, Promi
 - **Verify a profile.** Read the profile's `card` record from its folder on any host. The `card` holds the profile's `market`, `role`, `inboxKey` encryption key, seed-derived `pay` address, and its `proofs` array. Verify each `human` proof against the issuer's public key to see which issuers stand behind the profile.
 - **Find a profile's folder.** A profile's address is the public half of its main key (`Baby Jubjub`). Ask any host you know for its records, and check its signed `hosts` record to see every host that mirrors the folder.
 - **Delegate to an AI.** The person's app writes scoped `write` and `read` keys into the folder's `permissions` record and hands the private halves to the AI. With a `write` key, the AI signs offers, reviews and outgoing messages without ever touching the person's seed or main key. With a `read` key, the AI pulls and decrypts the paths it was granted (such as `inbox`).
-- **Write offers and reviews.** Their bodies are defined by the market the profile lives in ([markets](https://github.com/foundationforest/markets)); the standard names only `media`, the photos and videos a host keeps for a record.
+- **Write offers and reviews.** Their bodies are defined by the market the profile lives in ([markets](https://github.com/foundationforest/markets)); the standard names none of their fields. A photo or a video is a blob the folder holds, put and deleted by its keys; where a record points at one is the market's.
 
 ## Privacy
 

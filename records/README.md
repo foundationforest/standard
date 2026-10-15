@@ -10,8 +10,8 @@ value at a path in the profile's folder. A card is shown by its market and role,
 the profile's payment address, its inbox and its proofs. Hosts keep folders and serve them to anyone.
 Any app, index (a service that reads records and scores profiles) or AI reads them and checks
 every signature itself, so a host can withhold a record but never forge one. Beside each folder a
-host keeps the profile's inbox, where anyone may leave an encrypted message, and the photos and
-videos its records name.
+host keeps the profile's inbox, where anyone may leave an encrypted message, and its blobs: photos
+and videos the folder's keys put there.
 
 This README is the standard. The library in `src/` does every MUST in it, and `test/` checks it;
 MUST, SHOULD and MAY are as in RFC 2119. The directory also holds a reference host, the three
@@ -47,8 +47,8 @@ Its folder is everything signed for it, one current record per path:
   fields are the standard's, and its market (the trade a label names, such as `tutoring`) adds
   fields beside them. An offer's and a review's body is defined by the market the profile lives in,
   in [foundationforest/markets](https://github.com/foundationforest/markets): the standard names
-  only `media`, since a host keeps the blobs a record names (Blobs). Neither names a market: its
-  profile's label does.
+  none of their fields. A blob a record points at is the folder's (Blobs). Neither names a market:
+  its profile's label does.
 - A review sits in the folder of the profile that wrote it: the one it is about cannot erase it;
   the one who wrote it can.
 
@@ -91,10 +91,10 @@ record, a message, a pull (a signed request to fetch an inbox's messages) or the
 record, MUST be a point of the prime-order subgroup other than the identity; anything else is
 refused.
 
-**One key, three kinds of signature.** A main key or an access key signs records, messages and
-pulls. The signed bytes of each begin with `0xff`, then each with its own text
-(`forest/v1/record\n`, `forest/v1/message\n`, `forest/v1/pull\n`), so no signature is ever two of
-them, nor an index's (`forest/v1/reputation\n`,
+**One key, four kinds of signature.** A main key or an access key signs records, messages, pulls
+and blob requests. The signed bytes of each begin with `0xff`, then each with its own text
+(`forest/v1/record\n`, `forest/v1/message\n`, `forest/v1/pull\n`, `forest/v1/blob\n`), so no
+signature is ever two of them, nor an index's (`forest/v1/reputation\n`,
 [proofs/reputation](../proofs/reputation/README.md)). Payments are the payment key's, on Solana.
 
 **Which record counts.** A reader's view of a profile is a pure function of the records it holds
@@ -125,10 +125,11 @@ scope, and hands its 32 bytes to whoever it is for.
 
 | Scope | What its holder can do |
 |---|---|
-| `write` | sign records into the folder, by the access rule below; and messages for the main key, when its paths cover `inbox` (Inbox) |
+| `write` | sign records into the folder, by the access rule below; messages for the main key, when its paths cover `inbox` (Inbox); and blob requests, whatever its paths (Blobs) |
 | `read` | pull the inbox, when its paths cover `inbox` (Inbox); and open what is encrypted to it (Private records) |
 
-- `key` is the access key's address: the key that signs its records, messages or pulls.
+- `key` is the access key's address: the key that signs its records, messages, pulls or blob
+  requests.
 - `recipient`, on a read key and only there, is its age recipient (`age1pq1…`), what others
   encrypt to. A key or a recipient listed twice makes the record invalid.
 - `was`, in place of `scope`, marks a past key: `"was": "write"`, a write key the owner removed
@@ -151,12 +152,12 @@ counts while it is listed, past or not. A read key writes nothing.
   an access key's record.
 
 **Removing a key.** To remove a write key, the owner replaces its `scope` with `was`, the scope it
-had, and keeps its entry and its paths: it can no longer write, send or pull. Readers count a past
-write key's records, at its paths, only because the permissions record, signed by the main key,
-still lists it, so a host cannot slip in a key never allowed. Deleting the entry instead disowns
-what the key wrote: none of it counts any more. To keep one of a past key's records as the owner's
-own, the owner publishes it again with the main key. A read key is removed by deleting its entry:
-nothing it did needs to count.
+had, and keeps its entry and its paths: it can no longer write, send, pull, or put or delete blobs.
+Readers count a past write key's records, at its paths, only because the permissions record, signed
+by the main key, still lists it, so a host cannot slip in a key never allowed. Deleting the entry
+instead disowns what the key wrote: none of it counts any more. To keep one of a past key's records
+as the owner's own, the owner publishes it again with the main key. A read key is removed by
+deleting its entry: nothing it did needs to count.
 
 ### Private records
 
@@ -345,22 +346,48 @@ verifier takes, for the profile that carries it.
 
 ### Blobs
 
-A blob is bytes a record names by SHA-256: an item of the `media` a record's body lists, as an
-offer's and a review's do. Each item gives the hash, the type (`mimeType`) and the size. An app
-posts the record first, then the bytes, to each host (`PUT /v1/blobs/<sha256>`): a host takes bytes
-only while a current record on it names them, so it is never a free file store for anyone. Readers
-fetch a blob from the record's hosts, and check its SHA-256 themselves.
+A blob is bytes a folder holds, such as a photo or a video. It is the folder's, not a record's: no
+record needs to name it, and none keeps it on a host. Where a record points at a blob, and under
+what field, is the market's.
+
+- **Its name** is what a stranger needs to fetch it and check it: `sha256`, the SHA-256 of the
+  bytes in lowercase hex; `mimeType`, their media type, `type/subtype` in lower case, at most 255
+  characters; and `size`, how many bytes.
+- **Put.** The folder's main key, or a write key its permissions record lists, whatever the key's
+  paths, signs a put and sends it with the bytes to each of the folder's hosts
+  (`PUT /v1/blobs/<sha256>`). The main key putting bytes a write key put makes them its own.
+
+  ```
+  { "v": 1, "action": "put", "profile": <address>, "sha256": <hex>, "mimeType": <type>,
+    "size": <bytes>, "time": <ms since 1970>, "key"?: <address>, "sig": <base64url> }
+  ```
+
+- **Delete.** `{ "v": 1, "action": "delete", "profile", "sha256", "time", "key"?, "sig" }`, to each
+  host (`DELETE /v1/blobs/<sha256>`). Bytes the main key put go only at its request, as the owner's
+  records do; bytes a write key put go at the main key's or any write key's.
+- `key` is there when a write key signed. `sig` is EdDSA-Poseidon by `key` if present, else by
+  `profile`, strict as a record's, over `0xff` ‖ UTF-8(`forest/v1/blob\n`) ‖ UTF-8(canonical text
+  without `sig`). The request travels in the header `forest-blob`, as its canonical text, and its
+  `time` is within 600,000 ms of the host's clock, either way, as a pull's.
+- **Kept** until a key that may deletes it, or by the host's own retention rule, which each host
+  chooses and says where it describes itself, as Forest's host does in
+  [How we run it](https://github.com/foundationforest/services/tree/main/host#how-we-run-it). The
+  reference host keeps blobs until they are deleted. Bytes two folders hold stay until the last of
+  them deletes them.
+- **Fetch.** Anyone fetches a blob from the folder's hosts (`GET /v1/blobs/<sha256>`), with no
+  request to sign, and checks its SHA-256 itself: a host that serves other bytes is skipped.
 
 ### Hosts
 
-A host is an address that answers seven requests, the host socket, however many machines stand
-behind it. It has no keys, no accounts and no login: a record's signature is all it asks for,
-and a pull's is the recipient's main key's or read key's. It is open: it takes signed records for
-any profile and serves them to anyone; it takes messages for any profile whose profile record on
-it declares an inbox, and serves them only to that profile's main key and read keys; it takes the
-bytes a current record names, and serves them to anyone. A host never talks to an index; to take
-a message a write key signed, or one to an inbox with an issuer's rule, it reads the sender's
-records from the sender's host.
+A host is an address that answers eight requests, the host socket, however many machines stand
+behind it. It has no keys, no accounts and no login: a record's signature is all it asks for, a
+pull's is the recipient's main key's or read key's, and a blob request's the folder's main key's or
+a write key's. It is open: it takes signed records for any profile and serves them to anyone; it
+takes messages for any profile whose profile record on it declares an inbox, and serves them only
+to that profile's main key and read keys; it takes the bytes a folder's keys put, and serves them
+to anyone. It reads no offer's or review's body. A host never talks to an index; to take a message
+a write key signed, or one to an inbox with an issuer's rule, it reads the sender's records from
+the sender's host.
 
 | Request | Body | Answer |
 |---|---|---|
@@ -369,8 +396,9 @@ records from the sender's host.
 | `POST /v1/records/read` | `{ "profile"?: <address>, "after"?: <cursor> }` | the same |
 | `POST /v1/inbox` | NDJSON, one canonical message a line | as for records (Taking a message in) |
 | `POST /v1/inbox/pull` | a pull's canonical text | NDJSON of the messages to that profile that arrived after the cursor, in arrival order |
-| `PUT /v1/blobs/<sha256>` | the raw bytes, `content-type` their type | `{ok, error?, message?}` (Taking a blob in) |
-| `GET /v1/blobs/<sha256>` | none | the bytes, with the type a record named when they came in, or 404 |
+| `PUT /v1/blobs/<sha256>` | the raw bytes, `content-type` their type; the signed put in the header `forest-blob` | `{ok, error?, message?}` (Taking a blob in) |
+| `GET /v1/blobs/<sha256>` | none | the bytes, with the type they came in with, or 404 |
+| `DELETE /v1/blobs/<sha256>` | none; the signed delete in the header `forest-blob` | `{ok, error?, message?}` (Deleting a blob) |
 
 - A page's header `forest-cursor` is the last sequence number on it: the next page is after it.
   A page always holds at least one line.
@@ -428,13 +456,26 @@ records from the sender's host.
 
 A message whose `from` is its `to` skips steps 6 to 8: an inbox's rules are for others.
 
-**Taking a blob in**, in this order:
+**Taking a blob in**, in this order, error code in brackets:
 
-1. The bytes' SHA-256 is the name in the path [`hash`].
-2. A current record on this host names that hash, with the `content-type` sent as its type
-   [`unnamed`]. So the record comes first.
-3. The host's own choice allows them, by their size, their type or the folders whose current
-   records name them [`refused`].
+1. The signed put (Blobs): no larger than the host takes, then its canonical text and shape
+   [`size`, `canonical`, `shape`, `version`, `key`, `time`], a put for the name in the path
+   [`shape`], its time within 600,000 ms of the host's clock [`stale`], and its signature, by `key`
+   if it names one, else by the profile's main key [`signature`].
+2. A write key: the current permissions record on this host lists `key` with scope `write`
+   [`permission`].
+3. The bytes are the type (`content-type`) and the size the put names [`shape`], and their SHA-256
+   is the name in the path [`hash`].
+4. Bytes the folder holds already are `already here`.
+5. The host's own choice allows them, by their size, their type, or what the folder holds there
+   already [`refused`]. A declared size larger than the host takes is answered 413, unread.
+
+**Deleting a blob**, in this order:
+
+1. The signed delete, as step 1 and step 2 of taking a blob in.
+2. Bytes the folder does not hold are `not here`.
+3. Bytes the main key put go only at its request [`permission`].
+4. Once no folder holds the bytes, the host deletes them.
 
 A busy host SHOULD verify in native code, with these same strict rules: another library may skip
 one (zk-kit's `verifySignature` does not check that the key is in the prime-order subgroup).
@@ -450,8 +491,8 @@ reference host does (Run it).
   record, a message or a blob it finds too big.
 - **Keeping.** A record that stops being current is kept for a number of days the host chooses,
   by its own clock, then deleted. A message is kept for a number of days from when it arrived; a
-  pull does not delete it. Bytes no current record names any more may go after the host's keep
-  days. A host that drops a current record withholds it.
+  pull does not delete it. A blob stays until the folder deletes it, unless the host has a
+  retention rule of its own, which it says. A host that drops a current record withholds it.
 
 ### Indexes
 
@@ -471,9 +512,10 @@ it to look now. An app sends the hosts record to the indexes the person chose.
   signing, checking and encoding records; the view (`viewProfile`, `liveContent`, `allows`,
   `allowsInbox`, `covers`); writing (`ownerRecord`, `accessRecord`, `hostsRecord`,
   `permissionsRecord`, `nextTime`); messages and pulls (`signMessage`, `decodeMessage`,
-  `messageId`, `pullRequest`, `checkPull`, `inboxOf`, `sealedTo`); a card's proofs as their
-  verifiers take them (`proofsOf`, `humanCheck`, `reputationCheck`); talking to hosts (`publish`,
-  `readPage`, `readAll`, `readProfile`, `deliver`, `pull`, `putBlob`, `getBlob`). A host that fails
+  `messageId`, `pullRequest`, `checkPull`, `inboxOf`, `sealedTo`); blob requests (`blobNameOf`,
+  `blobRequest`, `checkBlobRequest`); a card's proofs as their verifiers take them (`proofsOf`,
+  `humanCheck`, `reputationCheck`); talking to hosts (`publish`, `readPage`, `readAll`,
+  `readProfile`, `deliver`, `pull`, `putBlob`, `getBlob`, `deleteBlob`). A host that fails
   does not stop `readProfile`: it reads the others and lists that host, with the error, in
   `failed`. A read asks by POST with `post: true`. A read, a publish, a delivery and a pull go
   through the caller's own `fetch` if given, and refuse a host that redirects with
@@ -491,13 +533,14 @@ it to look now. An app sends the hosts record to the indexes the person chose.
   only, like the host.
 - `@forest/records/schemas/<kind>.json`: the three shapes, as JSON Schemas.
 
-Publish a profile with one offer, read it back, then let another app write offers:
+Publish a profile with one offer, read it back, put a photo in the folder, then let another app
+write offers:
 
 ```ts
 import { randomBytes } from 'node:crypto'
 import { accessKey, mainKey } from '@forest/keys' // keys/
-import { accessRecord, hostsRecord, ownerRecord, permissionsRecord, publish,
-  readProfile } from '@forest/records'
+import { accessRecord, blobNameOf, blobRequest, hostsRecord, ownerRecord, permissionsRecord,
+  publish, putBlob, readProfile } from '@forest/records'
 
 const me = await mainKey(seed, 'tutoring/seller') // seed: its 32 bytes
 const now = Date.now()
@@ -506,6 +549,8 @@ await publish([host], [hostsRecord(me, [host], now), ownerRecord(me, 'offer/math
 // Your own profile: by POST, so its address is in the body, not the URL.
 const view = await readProfile([host], me.address, Date.now(), { post: true })
 view.current.get('offer/maths')?.record.body
+const photo = blobNameOf(jpeg, 'image/jpeg') // jpeg: the photo's bytes
+await putBlob(view.hosts, blobRequest(me, { action: 'put', ...photo }, Date.now()), jpeg)
 
 const helper = accessKey(randomBytes(32)) // the other app's write key: these 32 bytes go to it
 const access = [{ key: helper.address, scope: 'write' as const, paths: ['offer'] }]
@@ -579,19 +624,20 @@ Node 22.18 or later. Built from existing pieces, unchanged: `@noble/curves`, `@n
 
 **The reference host.** One process, listening on `127.0.0.1` unless told otherwise; TLS is the
 operator's. What it chooses, unless told otherwise: records and messages of up to 65,536 bytes, and
-100 a request; pages of at most 1,000 lines and 4,194,304 bytes; a replaced record, a message, and
-bytes no current record names any more, kept for 30 days; png, jpeg and mp4 blobs of up to
-50,000,000 bytes. Give it `readSender` to take messages a write key signed, and `verifyHuman` with
+100 a request; pages of at most 1,000 lines and 4,194,304 bytes; a replaced record and a message,
+kept for 30 days; png, jpeg and mp4 blobs of up to 50,000,000 bytes, kept until their folder
+deletes them. Give it `readSender` to take messages a write key signed, and `verifyHuman` with
 it to take messages for inboxes with an issuer's rule: it reads the sender's records again for each
 request.
 
 It keeps everything in its data directory, `dir` (a temporary one, removed on close, when none is
 given), through one module, `src/storage.ts`:
 
-- `folders/<address>.sqlite`: one file per folder, with its records, the messages to its inbox and
-  its once pairs. With the host stopped, deleting a folder's file removes that folder.
+- `folders/<address>.sqlite`: one file per folder, with its records, the messages to its inbox, its
+  once pairs and the blobs it holds. With the host stopped, deleting a folder's file removes that
+  folder, and the next prune deletes the bytes no other folder holds.
 - `host.sqlite`: the log, which numbers every folder's records in the order taken, and which
-  folders name which blobs. It holds nothing that exists only there: `rebuild(dir)` makes it
+  folders hold which blobs. It holds nothing that exists only there: `rebuild(dir)` makes it
   again. A new number, a record's or a message's, is the larger of the last one plus 1 and the
   clock in microseconds, so a rebuilt `host.sqlite`, or a folder's file made again, never reuses
   one, unless the clock is set back.
@@ -612,14 +658,16 @@ access keys are pinned in `keys/test/vectors.json`, and checked there. It also h
 keys/'s `tutoring/buyer` profile to `tutoring/seller`, and a message from `tutoring/seller` signed
 by its write key, naming `https://host-a.example`, to `tutoring/buyer`, each with its wire text,
 signing input and id; a pull request by `tutoring/seller`, and the same pull signed by its read
-key; and `past`, a later permissions record in which the write key is past and the read key still
-listed. Each message's body is encrypted to its recipient's inbox key; age's encryption is random,
-so the encrypted bodies are pinned as they were made. `test/vectors.test.ts` recomputes the
-records, the messages and the pulls, checks each with a second SHA-256 (node:crypto) and a second
-EdDSA-Poseidon (zk-kit's, from the address and the 64 bytes on its own), and opens each message
-with the pinned inbox key it was encrypted to. The profile is
-`BFUnj3MPQpetapTpwcPJRsnanXLqcK4XZ3EZjotTqEfY`; every signing input begins
-`ff 66 6f 72 65 73 74 2f` (`0xff`, then `forest/`).
+key; `past`, a later permissions record in which the write key is past and the read key still
+listed; and two blob requests, each with its wire text and signing input: `blobPut`, the main key
+putting the 26 letters `a` to `z` as `text/plain`, and `blobDelete`, the write key deleting them.
+Each message's body is encrypted to its recipient's inbox key; age's encryption is random, so the
+encrypted bodies are pinned as they were made. `test/vectors.test.ts` recomputes the records, the
+messages, the pulls and the blob requests, checks each with a second SHA-256 (node:crypto) and a
+second EdDSA-Poseidon (zk-kit's, from the address and the 64 bytes on its own), and opens each
+message with the pinned inbox key it was encrypted to. The profile is
+`BFUnj3MPQpetapTpwcPJRsnanXLqcK4XZ3EZjotTqEfY`; every signing input begins `ff 66 6f 72 65 73 74 2f`
+(`0xff`, then `forest/`).
 
 The example card, [schemas/examples/profile.json](schemas/examples/profile.json), is that profile's
 card, with a human proof from an example issuer and a reputation proof from an example index's
@@ -668,8 +716,10 @@ with their verifiers.
   inbox with an issuer's rule, it asks the sender's host for the sender's records, which tells that
   host where the sender wrote. Filtering by an inbox's rule needs the sender, so there is no
   anonymous mode.
-- **A blob is only as true as its hash.** The record says what it is, and the bytes say what they
-  are. A host checks the hash, never that the bytes are the type or size the record gives.
+- **A blob is only as true as its hash.** A host checks the hash and the size, never that the
+  bytes are the type their put names; a record that points at them says what it means them to be.
+- **A delete is a request.** A host that follows the standard deletes the bytes; one that does not
+  keeps them, as it may keep any copy, and whoever fetched them has them.
 - **No forward secrecy.** An inbox key or a read key that leaks opens every message and private
   record encrypted to it, from any host or copy that still holds them, and a reader removed keeps
   what it already opened.
@@ -689,15 +739,15 @@ with their verifiers.
 ## Who decides what
 
 - **The standard:** the record and the message, and what makes each valid (the ten-minute
-  window); the seven requests and their codes; the control records and the scopes of access keys;
-  envelopes; the card's fields, and `media` in offers and reviews; the inbox, its rules and the
+  window); the eight requests and their codes; the control records and the scopes of access keys;
+  envelopes; the card's fields; a blob's name, its put and its delete; the inbox, its rules and the
   request body; the vault; the proofs field.
-- **A market chooses:** its roles, and the bodies of its offers and reviews
-  ([foundationforest/markets](https://github.com/foundationforest/markets)).
-- **A host chooses:** its keep days; the largest record, message and blob it takes;
-  batch and page sizes; which blob types it takes; which inbox rules it supports; whether it reads
-  senders' records to take a write key's message, and how long it keeps what it read; rate
-  limits; logging; storage.
+- **A market chooses:** its roles, the bodies of its offers and reviews, and where a record points
+  at a blob ([foundationforest/markets](https://github.com/foundationforest/markets)).
+- **A host chooses:** its keep days, and any retention rule for blobs; the largest record, message
+  and blob it takes; batch and page sizes; which blob types it takes; which inbox rules it supports;
+  whether it reads senders' records to take a write key's message, and how long it keeps what it
+  read; rate limits; logging; storage.
 - **An app, with the person:** the copies it keeps; which hosts, the vault's among them; which
   private records it encrypts to a read key; how an access key reaches its holder; whether to
   forward a message to email or a notification; dropping a message that arrives twice; what it finds
@@ -735,6 +785,12 @@ A key's paths already say where it acts, and its scope what it does there: a wri
 the inbox as it writes elsewhere, and a read key pulls it as it reads elsewhere. So two scopes
 cover the inbox with no third. `inbox` is not kept from records: a write key for `inbox` may write
 records under it too, which no shape names and readers may ignore.
+
+**Why is a blob the folder's, and not the record's that points at it?**
+A host that kept bytes only while a record named them had to read every record's body for the
+fields that name them, and where a record points at a blob is each market's to say. So the folder's
+own keys put and delete its blobs, and a host reads no offer's or review's body. A blob sits at no
+path, so a write key puts one whatever its paths; how much a folder may put is the host's choice.
 
 **Why is a message not a record in the sender's folder?**
 Anyone reads a folder. A message there would need a field naming its recipient so hosts could

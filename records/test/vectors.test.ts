@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
 import { derivePublicKey, packPublicKey, unpackPublicKey, unpackSignature, verifySignature } from '@zk-kit/eddsa-poseidon'
 import { b64u, base58, hex } from '../src/bytes.ts'
-import { checkPull, decodeMessage } from '../src/message.ts'
+import { checkBlobRequest, checkPull, decodeMessage } from '../src/message.ts'
 import { openMessage } from '../src/private.ts'
 import { decodeRecord } from '../src/record.ts'
 import { KEYS } from './fixtures.ts'
@@ -96,6 +96,21 @@ test("the write key's message checks with a second EdDSA-Poseidon by the write k
   assert.ok(!zkVerifies(input, message.from, message.sig), 'the main key did not sign it')
   const opened = await openMessage(v.wire, KEYS.mainKeys[1].inbox.identity)
   assert.deepEqual([opened.body, opened.key], [{ text: 'Tuesday at six, yes.' }, pinned.writeKey])
+})
+
+test('each blob request checks with a second SHA-256 and EdDSA-Poseidon: a put by the main key, a delete by its write key', () => {
+  const letters = createHash('sha256').update('abcdefghijklmnopqrstuvwxyz').digest('hex')
+  for (const [name, signer, action] of [['blobPut', pinned.profile, 'put'], ['blobDelete', pinned.writeKey, 'delete']] as const) {
+    const v = pinned[name] as { wire: string; signingInputHex: string }
+    const request = checkBlobRequest(v.wire, JSON.parse(v.wire).time)
+    const input = hex.decode(v.signingInputHex)
+    startsWith(input, 'forest/v1/blob\n')
+    assert.deepEqual([request.action, request.profile, request.sha256], [action, KEYS.mainKeys[0].address, letters])
+    assert.equal(request.key ?? request.profile, signer)
+    assert.ok(zkVerifies(input, signer, request.sig), name)
+  }
+  assert.deepEqual(JSON.parse(pinned.blobPut.wire).mimeType, 'text/plain')
+  assert.deepEqual(JSON.parse(pinned.blobPut.wire).size, 26)
 })
 
 test('each pull checks with a second EdDSA-Poseidon: by the profile it pulls, and by its read key', () => {

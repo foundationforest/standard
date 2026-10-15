@@ -1,47 +1,50 @@
-// Blobs: bytes a record names by SHA-256, kept by the hosts that keep the record. Post the record,
-// then the bytes. A host refuses bytes that do not hash to their name, bytes no current record
-// names as that type, and what its own choice will not take; once no current record names them,
-// it drops them after its keep days. A reader checks the hash, whatever host served them.
+// Blobs: bytes a folder holds. Its main key or a write key it lists puts them with a signed request,
+// and they stay until a key that may deletes them, whatever the folder's records say. A host
+// refuses bytes that do not hash to their name, or are not the type and size the request names, a
+// request no key that may signed, and what its own choice will not take. A reader checks the hash,
+// whatever host served them.
 
 import assert from 'node:assert/strict'
 import { connect } from 'node:net'
 import { describe, test } from 'node:test'
-import { sha256 } from '@noble/hashes/sha2.js'
-import { hex } from '../src/bytes.ts'
-import { getBlob, publish, putBlob, readProfile } from '../src/client.ts'
+import { canonical } from '../src/canonical.ts'
+import { deleteBlob, getBlob, publish, putBlob, readProfile } from '../src/client.ts'
 import type { Host } from '../src/host.ts'
-import type { Body } from '../src/record.ts'
-import { accessRecord, hostsRecord, ownerRecord, permissionsRecord } from '../src/write.ts'
-import { DAY, T0, accessKey, alice, allow, bob, offerBody } from './fixtures.ts'
+import type { Key } from '../src/keys.ts'
+import { type SignedBlobRequest, blobNameOf, blobRequest } from '../src/message.ts'
+import { hostsRecord, ownerRecord, permissionsRecord } from '../src/write.ts'
+import { DAY, MINUTE, T0, accessKey, alice, allow, bob, offerBody, pastKey, reader, stranger } from './fixtures.ts'
 import { Clock, startHost } from './helpers.ts'
 
+type Signer = Key | { key: Key; profile: string }
 const bytesOf = (seed: number, length = 2000) => Uint8Array.from({ length }, (_, i) => (i * 7 + seed * 13) & 255)
-const nameOf = (bytes: Uint8Array) => hex.encode(sha256(bytes))
-const ref = (bytes: Uint8Array, mimeType: string) => ({ sha256: nameOf(bytes), mimeType, size: bytes.length })
-const withMedia = (...media: Array<[Uint8Array, string]>): Body => ({ ...offerBody('30'), media: media.map(([b, t]) => ref(b, t)) })
-/** An offer with one photo, at offer/photo. */
-const withPhoto = (bytes: Uint8Array, mimeType = 'image/jpeg'): Body => withMedia([bytes, mimeType])
-const put = async (h: Host, bytes: Uint8Array, type: string) => {
-  const [outcome] = await putBlob([h.url], bytes, type)
-  return outcome!.error ?? 'ok'
-}
+const nameOf = (bytes: Uint8Array) => blobNameOf(bytes, 'image/jpeg').sha256
+const putOf = (signer: Signer, bytes: Uint8Array, type = 'image/jpeg', time = T0) => blobRequest(signer, { action: 'put', ...blobNameOf(bytes, type) }, time) as SignedBlobRequest & { action: 'put' }
+const deleteOf = (signer: Signer, bytes: Uint8Array, time = T0) => blobRequest(signer, { action: 'delete', sha256: nameOf(bytes) }, time) as SignedBlobRequest & { action: 'delete' }
+/** One host's answer, as its error code, or its message, or ok. */
+const answer = (outcomes: Array<{ ok: boolean; error?: string; message?: string }>) => outcomes[0]!.error ?? outcomes[0]!.message ?? 'ok'
+const put = async (h: Host, signer: Signer, bytes: Uint8Array, type = 'image/jpeg') => answer(await putBlob([h.url], putOf(signer, bytes, type), bytes))
+const del = async (h: Host, signer: Signer, bytes: Uint8Array) => answer(await deleteBlob([h.url], deleteOf(signer, bytes)))
+/** A write key signing for Alice's folder. */
+const as = (key: Key) => ({ key, profile: alice.address })
 
 const photo = bytesOf(1)
 const clip = bytesOf(2, 5000)
 
 describe('blobs', () => {
-  test('post the record, then its bytes; a reader gets them from the record’s hosts, with the type the record names', async () => {
+  test('a folder’s keys put bytes on its hosts; a reader follows a record’s reference to them, and gets their type', async () => {
     const h1 = await startHost({ now: () => T0 })
     const h2 = await startHost({ now: () => T0 })
     try {
       const hosts = [h1.url, h2.url]
-      await publish(hosts, [hostsRecord(alice, hosts, T0), ownerRecord(alice, 'offer/photo', withPhoto(photo), T0), ownerRecord(alice, 'offer/maths', withMedia([clip, 'video/mp4']), T0)])
-      assert.deepEqual((await putBlob(hosts, photo, 'image/jpeg')).map((o) => [o.status, o.ok]), [[200, true], [200, true]])
-      assert.deepEqual((await putBlob(hosts, clip, 'video/mp4')).map((o) => o.ok), [true, true])
-      assert.deepEqual((await putBlob([h1.url], photo, 'image/jpeg'))[0]!.message, 'already here')
+      // Where a record points at a blob is the market's: here a field of its own, `files`.
+      await publish(hosts, [hostsRecord(alice, hosts, T0), ownerRecord(alice, 'offer/photo', { ...offerBody('photo'), files: [blobNameOf(photo, 'image/jpeg')] }, T0)])
+      assert.deepEqual((await putBlob(hosts, putOf(alice, photo), photo)).map((o) => [o.status, o.ok]), [[200, true], [200, true]])
+      assert.deepEqual((await putBlob(hosts, putOf(alice, clip, 'video/mp4'), clip)).map((o) => o.ok), [true, true])
+      assert.equal(await put(h1, alice, photo), 'already here')
 
       const view = await readProfile([h1.url], alice.address, T0)
-      const named = (view.current.get('offer/photo')!.record.body!.media as Array<{ sha256: string }>)[0]!
+      const named = (view.current.get('offer/photo')!.record.body!.files as Array<{ sha256: string }>)[0]!
       const got = await getBlob(view.hosts, named.sha256)
       assert.deepEqual([got!.bytes, got!.type], [photo, 'image/jpeg'])
       const res = await fetch(`${h2.url}/v1/blobs/${nameOf(clip)}`)
@@ -52,25 +55,123 @@ describe('blobs', () => {
     }
   })
 
-  test('a host refuses bytes that do not hash to their name, bytes no current record names, and a type the record does not give them', async () => {
-    const h = await startHost({ now: () => T0 })
+  test('they stay whatever the records say: none need name them, and a record that did, replaced or deleted, changes nothing', async () => {
+    const clock = new Clock(T0)
+    const h = await startHost({ now: clock.now })
     try {
-      const wrong = await fetch(`${h.url}/v1/blobs/${nameOf(photo)}`, { method: 'PUT', headers: { 'content-type': 'image/jpeg' }, body: clip })
-      assert.deepEqual([wrong.status, ((await wrong.json()) as { error: string }).error], [400, 'hash'])
-      assert.equal(await put(h, photo, 'image/jpeg'), 'unnamed', 'before its record')
-      await publish([h.url], [ownerRecord(alice, 'offer/photo', withPhoto(photo), T0)])
-      assert.equal(await put(h, photo, 'image/png'), 'unnamed', 'named as another type')
-      assert.equal(await put(h, photo, 'image/jpeg'), 'ok', 'after its record')
-
-      // Named only by a version that is no longer current: unnamed.
-      await publish([h.url], [ownerRecord(alice, 'offer/a', withMedia([clip, 'video/mp4']), T0), ownerRecord(alice, 'offer/a', offerBody('30'), T0 + 1)])
-      assert.equal(await put(h, clip, 'video/mp4'), 'unnamed')
-      // Named by an access key's record the permissions record allows: named.
-      await publish([h.url], [permissionsRecord(alice, [allow(accessKey, ['offer'])], T0), accessRecord(accessKey, alice.address, 'offer/b', withMedia([clip, 'video/mp4']), T0)])
-      assert.equal(await put(h, clip, 'video/mp4'), 'ok')
+      assert.equal(await put(h, alice, clip, 'video/mp4'), 'ok', 'no record names it')
+      await publish([h.url], [ownerRecord(alice, 'offer/a', { ...offerBody('a'), files: [blobNameOf(photo, 'image/jpeg')] }, T0)])
+      assert.equal(await put(h, alice, photo), 'ok')
+      await publish([h.url], [ownerRecord(alice, 'offer/a', offerBody('b'), clock.advance(MINUTE)), ownerRecord(alice, 'offer/a', null, clock.advance(MINUTE))])
+      await h.prune(clock.t + 365 * DAY)
+      assert.ok(await h.getBlob(nameOf(photo)), 'past every keep day')
+      assert.ok(await h.getBlob(nameOf(clip)))
     } finally {
       await h.close()
     }
+  })
+
+  test('the main key deletes any of its folder’s bytes; a write key, whatever its paths, the ones a write key put', async () => {
+    const h = await startHost({ now: () => T0 })
+    try {
+      await publish([h.url], [permissionsRecord(alice, [allow(accessKey, ['inbox'])], T0)])
+      // The main key's bytes: only it deletes them, as the owner's records.
+      assert.equal(await put(h, alice, photo), 'ok')
+      assert.equal(await del(h, as(accessKey), photo), 'permission')
+      assert.equal(await del(h, alice, photo), 'ok')
+      assert.equal((await fetch(`${h.url}/v1/blobs/${nameOf(photo)}`)).status, 404)
+      assert.equal(await del(h, alice, photo), 'not here')
+
+      // A write key's bytes: a write key or the main key deletes them.
+      assert.equal(await put(h, as(accessKey), clip, 'video/mp4'), 'ok')
+      assert.equal(await del(h, as(accessKey), clip), 'ok')
+      assert.equal(await put(h, as(accessKey), clip, 'video/mp4'), 'ok')
+      assert.equal(await del(h, alice, clip), 'ok')
+
+      // The main key putting what a write key put takes it over; a write key putting the main key's changes nothing.
+      const both = bytesOf(3)
+      assert.equal(await put(h, as(accessKey), both), 'ok')
+      assert.equal(await put(h, alice, both), 'ok')
+      assert.equal(await put(h, as(accessKey), both), 'already here')
+      assert.equal(await del(h, as(accessKey), both), 'permission')
+    } finally {
+      await h.close()
+    }
+  })
+
+  test('bytes two folders hold are stored once, and stay until the last of them deletes them', async () => {
+    const h = await startHost({ now: () => T0 })
+    try {
+      assert.deepEqual([await put(h, alice, photo), await put(h, bob, photo)], ['ok', 'ok'])
+      assert.equal(await del(h, alice, photo), 'ok')
+      assert.equal((await fetch(`${h.url}/v1/blobs/${nameOf(photo)}`)).status, 200, 'Bob holds them still')
+      assert.equal(await del(h, alice, photo), 'not here')
+      assert.equal(await del(h, bob, photo), 'ok')
+      assert.equal(await h.getBlob(nameOf(photo)), undefined)
+    } finally {
+      await h.close()
+    }
+  })
+
+  test('a request no key that may signed is refused: a key not listed, a past write key, a read key, another key’s signature', async () => {
+    const h = await startHost({ now: () => T0 })
+    try {
+      const past = stranger
+      await publish([h.url], [permissionsRecord(alice, [allow(accessKey, ['offer']), pastKey(past, ['offer']), allow(reader, ['inbox'], 'read')], T0)])
+      assert.equal(await put(h, as(bob), photo), 'permission', 'a key the folder does not list')
+      assert.equal(await put(h, as(past), photo), 'permission', 'a past write key')
+      assert.equal(await put(h, as(reader), photo), 'permission', 'a read key')
+      assert.equal(await put(h, as(accessKey), photo), 'ok')
+      assert.equal(await del(h, as(past), photo), 'permission')
+
+      // Alice's request with Bob's profile in it: the signature is not Bob's main key's.
+      const forged = { ...putOf(alice, clip), profile: bob.address }
+      assert.equal(answer(await putBlob([h.url], forged, clip)), 'signature')
+    } finally {
+      await h.close()
+    }
+  })
+
+  test('a request is checked against the bytes and the route: their hash, type and size, its action, its time', async () => {
+    const h = await startHost({ now: () => T0 })
+    try {
+      const send = async (request: SignedBlobRequest | null, bytes: Uint8Array | null, options: { method?: string; type?: string; name?: string } = {}) => {
+        const headers: Record<string, string> = { 'content-type': options.type ?? 'image/jpeg' }
+        if (request) headers['forest-blob'] = canonical(request)
+        const res = await fetch(`${h.url}/v1/blobs/${options.name ?? nameOf(photo)}`, { method: options.method ?? 'PUT', headers, ...(bytes && { body: new Uint8Array(bytes) }) })
+        return [res.status, ((await res.json()) as { error?: string }).error ?? 'ok']
+      }
+      assert.deepEqual(await send(null, photo), [400, 'shape'], 'no signed request')
+      assert.deepEqual(await send(putOf(alice, photo), photo, { type: 'image/png' }), [400, 'shape'], 'another type than it names')
+      assert.deepEqual(await send(putOf(alice, photo), photo.subarray(1)), [400, 'shape'], 'another size')
+      assert.deepEqual(await send(putOf(alice, clip), photo, { name: nameOf(photo) }), [400, 'shape'], 'a request for other bytes')
+      // Named by the right hash, type and size, but other bytes of that size: not what they claim.
+      const lookalike = Uint8Array.from(photo, (b, i) => (i === 0 ? b ^ 1 : b))
+      assert.deepEqual(await send(putOf(alice, photo), lookalike), [400, 'hash'])
+      assert.deepEqual(await send(deleteOf(alice, photo), photo), [400, 'shape'], 'a delete sent as a put')
+      assert.deepEqual(await send(putOf(alice, photo), null, { method: 'DELETE' }), [400, 'shape'], 'a put sent as a delete')
+      assert.deepEqual(await send(putOf(alice, photo, 'image/jpeg', T0 + 11 * MINUTE), photo), [400, 'stale'])
+      assert.deepEqual(await send(deleteOf(alice, photo, T0 - 11 * MINUTE), null, { method: 'DELETE' }), [400, 'stale'])
+      assert.deepEqual(await send(putOf(alice, photo, 'image/jpeg', T0 + 9 * MINUTE), photo), [200, 'ok'], 'within ten minutes')
+    } finally {
+      await h.close()
+    }
+  })
+
+  test('a blob is named by its SHA-256 in lowercase hex, its type, type/subtype in lower case, and its size; which types and how large is each host’s', () => {
+    const shape = (request: () => unknown) => assert.throws(request, (err: Error & { code?: string }) => err.code === 'shape')
+    for (const type of ['image/png', 'image/gif', 'image/svg+xml', 'application/vnd.oasis.opendocument.text', 'a/' + 'b'.repeat(253)]) {
+      assert.equal(putOf(alice, photo, type).mimeType, type)
+    }
+    for (const type of ['Image/PNG', 'image', 'image/', '/png', 'image/png; charset=x', 'image/p ng', '', 'a/' + 'b'.repeat(254)]) shape(() => putOf(alice, photo, type))
+    const name = blobNameOf(photo, 'image/jpeg')
+    shape(() => blobRequest(alice, { action: 'put', ...name, size: -1 }, T0))
+    shape(() => blobRequest(alice, { action: 'put', ...name, size: 1.5 }, T0))
+    shape(() => blobRequest(alice, { action: 'put', ...name, sha256: name.sha256.toUpperCase() }, T0))
+    shape(() => blobRequest(alice, { action: 'delete', sha256: name.sha256.slice(1) }, T0))
+    shape(() => blobRequest(alice, { action: 'put', ...name, ref: 'bafkrei…' } as never, T0))
+    shape(() => blobRequest(alice, { action: 'delete', sha256: name.sha256, mimeType: 'image/jpeg' } as never, T0))
+    assert.equal(putOf(alice, bytesOf(9, 0)).size, 0, 'empty bytes are a blob too')
   })
 
   test('size and type are the host’s: the reference host takes png, jpeg and mp4 up to 50,000,000 bytes; an operator chooses its own', async () => {
@@ -78,83 +179,54 @@ describe('blobs', () => {
     const reference = await startHost({ now: () => T0 })
     const small = await startHost({ now: () => T0, maxBlobBytes: 1000, blobChoice: (blob) => (blob.type === 'video/mp4' ? 'no video here' : null) })
     try {
-      for (const h of [reference, small]) await publish([h.url], [ownerRecord(alice, 'offer/photo', withPhoto(gif, 'image/gif'), T0), ownerRecord(alice, 'offer/a', withMedia([photo, 'image/png'], [bytesOf(4, 900), 'video/mp4'], [bytesOf(5, 900), 'image/gif']), T0)])
-      assert.equal(await put(reference, gif, 'image/gif'), 'refused', 'a gif: not a type the shapes name')
-      assert.equal(await put(reference, photo, 'image/png'), 'ok')
-      const [over] = await putBlob([small.url], photo, 'image/png')
+      assert.equal(await put(reference, alice, gif, 'image/gif'), 'refused', 'a gif')
+      assert.equal(await put(reference, alice, photo, 'image/png'), 'ok')
+      const [over] = await putBlob([small.url], putOf(alice, photo, 'image/png'), photo)
       assert.deepEqual([over!.status, over!.error], [413, 'refused'])
-      assert.equal(await put(small, bytesOf(4, 900), 'video/mp4'), 'refused')
-      assert.equal(await put(small, bytesOf(5, 900), 'image/gif'), 'ok', 'this operator takes gifs')
+      assert.equal(await put(small, alice, bytesOf(4, 900), 'video/mp4'), 'refused')
+      assert.equal(await put(small, alice, bytesOf(5, 900), 'image/gif'), 'ok', 'this operator takes gifs')
 
       // A declared size over the cap is answered at once, unread.
       const { port } = new URL(reference.url)
       const socket = connect(Number(port), '127.0.0.1')
-      socket.write(`PUT /v1/blobs/${nameOf(photo)} HTTP/1.1\r\nhost: x\r\ncontent-type: image/png\r\ncontent-length: 50000001\r\n\r\n`)
-      const answer = await new Promise<string>((resolve) => socket.once('data', (d) => resolve(String(d))))
+      socket.write(`PUT /v1/blobs/${nameOf(photo)} HTTP/1.1\r\nhost: x\r\ncontent-type: image/png\r\nforest-blob: ${canonical(putOf(alice, photo, 'image/png'))}\r\ncontent-length: 50000001\r\n\r\n`)
+      const reply = await new Promise<string>((resolve) => socket.once('data', (d) => resolve(String(d))))
       socket.destroy()
-      assert.match(answer, /^HTTP\/1\.1 413/)
+      assert.match(reply, /^HTTP\/1\.1 413/)
     } finally {
       await reference.close()
       await small.close()
     }
   })
 
-  test('a host’s own choice sees the folders whose current records name the bytes, for rules by folder', async () => {
-    const seen: string[][] = []
+  test('a host’s own choice sees the folder and what it holds there already, for rules by folder: a quota', async () => {
+    const seen: Array<[string, number, number]> = []
     const h = await startHost({
       now: () => T0,
-      blobChoice: ({ folders }) => {
-        seen.push(folders)
-        return folders.includes(alice.address) ? null : 'only Alice’s folder here'
+      blobChoice: (blob, stored) => {
+        seen.push([blob.profile, stored.blobs, stored.bytes])
+        return stored.blobs >= 1 ? 'one blob a folder here' : null
       },
     })
     try {
-      const both = bytesOf(7)
-      const bobs = bytesOf(8)
-      await publish([h.url], [ownerRecord(alice, 'offer/photo', withPhoto(both), T0), ownerRecord(bob, 'offer/photo', withPhoto(both), T0), ownerRecord(bob, 'offer/a', withMedia([bobs, 'image/png']), T0)])
-      assert.equal(await put(h, both, 'image/jpeg'), 'ok')
-      assert.equal(await put(h, bobs, 'image/png'), 'refused')
-      assert.deepEqual(seen, [[alice.address, bob.address].sort(), [bob.address]])
+      assert.equal(await put(h, alice, photo), 'ok')
+      assert.equal(await put(h, alice, photo), 'already here', 'not asked again')
+      assert.equal(await put(h, alice, clip, 'video/mp4'), 'refused')
+      assert.equal(await put(h, bob, clip, 'video/mp4'), 'ok')
+      assert.deepEqual(seen, [[alice.address, 0, 0], [alice.address, 1, photo.length], [bob.address, 0, 0]])
     } finally {
       await h.close()
     }
   })
 
-  test('kept while a current record names it; once none does, it goes after keep days, unless named again first', async () => {
-    const clock = new Clock(T0)
-    const h = await startHost({ now: clock.now })
-    try {
-      const other = bytesOf(6)
-      await publish([h.url], [ownerRecord(alice, 'offer/photo', withPhoto(photo), T0), ownerRecord(alice, 'offer/a', withMedia([photo, 'image/jpeg'], [other, 'image/png']), T0)])
-      assert.deepEqual([await put(h, photo, 'image/jpeg'), await put(h, other, 'image/png')], ['ok', 'ok'])
-
-      // One offer goes; the other still names the photo.
-      await publish([h.url], [ownerRecord(alice, 'offer/photo', null, clock.advance(DAY))])
-      await h.prune(clock.t + 31 * DAY)
-      assert.ok(await h.getBlob(nameOf(photo)))
-
-      // The offer goes: nothing names either any more. The other is named again before its keep days end.
-      const gone = clock.advance(DAY)
-      await publish([h.url], [ownerRecord(alice, 'offer/a', null, gone)])
-      await publish([h.url], [ownerRecord(alice, 'offer/b', withMedia([other, 'image/png']), clock.advance(DAY))])
-      await h.prune(gone + 29 * DAY)
-      assert.ok(await h.getBlob(nameOf(photo)), 'within keep days')
-      await h.prune(gone + 31 * DAY)
-      assert.equal(await h.getBlob(nameOf(photo)), undefined)
-      assert.equal((await fetch(`${h.url}/v1/blobs/${nameOf(photo)}`)).status, 404)
-      assert.ok(await h.getBlob(nameOf(other)), 'named again')
-    } finally {
-      await h.close()
-    }
-  })
-
-  test('GET is 404 for bytes not held; only a lowercase SHA-256 is a blob path; PUT and GET only', async () => {
+  test('GET is 404 for bytes not held; only a lowercase SHA-256 is a blob path; PUT, GET and DELETE only', async () => {
     const h = await startHost({ now: () => T0 })
     try {
       assert.equal((await fetch(`${h.url}/v1/blobs/${nameOf(photo)}`)).status, 404)
       assert.equal((await fetch(`${h.url}/v1/blobs/${nameOf(photo).toUpperCase()}`)).status, 404)
       assert.equal((await fetch(`${h.url}/v1/blobs/abc`, { method: 'PUT', body: photo })).status, 404)
-      assert.equal((await fetch(`${h.url}/v1/blobs/${nameOf(photo)}`, { method: 'POST' })).status, 405)
+      const post = await fetch(`${h.url}/v1/blobs/${nameOf(photo)}`, { method: 'POST' })
+      assert.deepEqual([post.status, post.headers.get('allow')], [405, 'GET, PUT, DELETE'])
     } finally {
       await h.close()
     }
@@ -164,8 +236,7 @@ describe('blobs', () => {
     const good = await startHost({ now: () => T0 })
     const bad = await startHost({ now: () => T0 })
     try {
-      for (const h of [good, bad]) await publish([h.url], [ownerRecord(alice, 'offer/photo', withPhoto(photo), T0)])
-      assert.deepEqual((await putBlob([good.url, bad.url], photo, 'image/jpeg')).map((o) => o.ok), [true, true])
+      assert.deepEqual((await putBlob([good.url, bad.url], putOf(alice, photo), photo)).map((o) => o.ok), [true, true])
       bad.getBlob = async () => ({ type: 'image/jpeg', bytes: clip })
       assert.equal(await getBlob([bad.url], nameOf(photo)), null)
       assert.equal((await getBlob([bad.url, good.url], nameOf(photo)))!.host, good.url)
