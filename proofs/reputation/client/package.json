@@ -2,7 +2,7 @@
   "name": "@forest/reputation",
   "version": "0.0.0",
   "private": true,
-  "description": "The reputation proof's client: the tree an index publishes, the proof an app makes from it on the device, and the check any reader makes.",
+  "description": "The reputation proof's client: the tree an index publishes, the proof an app makes from it on the device for one of the person's own profiles, and the check any reader makes.",
   "license": "Apache-2.0",
   "type": "module",
   "engines": {

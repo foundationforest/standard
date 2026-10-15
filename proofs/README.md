@@ -19,8 +19,10 @@ Each proof has two parts:
 - `circuit/`: the statement the proof proves, its devnet setup and its tests.
 - `client/`: the library the person's device uses to make the proof, and anyone uses to check it.
 
-The device makes a proof from the person's secret for one issuer, which `keys/` mixes from the
-seed ([keys](../keys/README.md#the-issuer-secret)), so the secret never leaves the device.
+The device makes a proof from the seed scalar, the one number `keys/` mixes from the seed for the
+proofs ([keys](../keys/README.md#the-seed-scalar)), so the seed never leaves the device. Inside
+both proofs, the profile's key is worked out from the seed scalar the way `keys/` mixes it, so a
+proof holds only for a profile of the seed behind it.
 
 ## Promises
 
@@ -29,12 +31,8 @@ Each proof's promises are in its own README: [human](human/README.md#promises) a
 
 ## Limits
 
-- **Mid-move.** `human/` still holds the registry's circuit and client, and the registry's program
-  is no longer in this repo. Its circuit, `person.circom`, is given the profile's main key and
-  does not derive it from the seed, and both clients still read registry rows on Solana. Each
-  one's README still describes that code, the program included.
-- Each proof's other limits are in its own README: [human](human/README.md#limits) and
-  [reputation](reputation/README.md#limits).
+Each proof's limits are in its own README: [human](human/README.md#limits) and
+[reputation](reputation/README.md#limits).
 
 ## Who decides what
 
@@ -44,6 +42,6 @@ Each proof's README says it: [human](human/README.md#who-decides-what) and
 ## FAQ
 
 **Why are both proofs in one folder?**
-Both are made on the person's device from the issuer secret `keys/` gives, and both are checked by
-anyone. They share pieces: `reputation/`'s client takes the stamp, the scope and the proof's
-256-byte form from `human/`'s.
+Both are made on the person's device from the seed scalar `keys/` gives, and both are checked by
+anyone. They share pieces: both take the stamp, the scope and the profile's key from `keys/`, and
+`reputation/`'s client takes the proof's 256-byte form from `human/`'s.

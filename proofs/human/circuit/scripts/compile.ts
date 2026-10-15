@@ -6,7 +6,7 @@
 // witness generator's SHA-256 must equal the ones devnet/setup.json recorded. If they do not, the
 // source changed and no longer matches the published files. The witness generator also carries the
 // source's line numbers, for its error messages, so even a line added to a comment shows up here:
-// person.circom does not change after its setup. `--new` only compiles, for setup.sh.
+// human.circom does not change after its setup. `--new` only compiles, for setup.sh.
 
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
@@ -30,7 +30,7 @@ mkdirSync(join(root, 'build'), { recursive: true })
 execFileSync(
   circom,
   [
-    'person.circom',
+    'human.circom',
     '--O2',
     '--r1cs',
     '--wasm',
@@ -43,14 +43,14 @@ execFileSync(
 )
 
 const got = {
-  r1cs: sha256(join(root, 'build/person.r1cs')),
-  wasm: sha256(join(root, 'build/person_js/person.wasm')),
+  r1cs: sha256(join(root, 'build/human.r1cs')),
+  wasm: sha256(join(root, 'build/human_js/human.wasm')),
 }
-console.log(`person.r1cs: ${got.r1cs}\nperson.wasm: ${got.wasm}`)
+console.log(`human.r1cs: ${got.r1cs}\nhuman.wasm: ${got.wasm}`)
 
 if (!process.argv.includes('--new')) {
   const setup = JSON.parse(readFileSync(join(root, 'devnet/setup.json'), 'utf8'))
-  const want = { r1cs: setup.r1cs.sha256, wasm: setup.files['person.wasm'].sha256 }
+  const want = { r1cs: setup.r1cs.sha256, wasm: setup.files['human.wasm'].sha256 }
   if (got.r1cs !== want.r1cs || got.wasm !== want.wasm) {
     console.error(`not the circuit the setup was made for:\n  want r1cs ${want.r1cs}\n  want wasm ${want.wasm}`)
     process.exit(1)

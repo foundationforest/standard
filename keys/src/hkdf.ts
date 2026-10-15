@@ -3,15 +3,17 @@
 // key can be turned into any other key. Changing any of them gives other keys:
 // it is a new version, never an edit to this one.
 
-/** HKDF info strings: what the seed (or a main key) is mixed with. */
+/** HKDF info strings: what the seed (or a profile's secret) is mixed with. */
 export const INFO = {
-  /** The main key for a label, mixed from the seed. The label is used exactly as given. */
+  /** The seed scalar, the number the circuits take, mixed from the seed. */
+  seed: 'forest/v1/seed',
+  /** A profile's secret, which its inbox key is mixed from. The label is used exactly as given. */
   profile: (label: string) => `forest/v1/profile/${label}`,
-  /** The profile's inbox key, mixed from the main key's 32 private bytes. */
+  /** An inbox key, mixed from a profile's secret or the vault's. */
   read: 'forest/v1/read',
-  /** The person's secret for one issuer, mixed from the seed. The name is used exactly as given. */
-  issuer: (name: string) => `forest/v1/issuer/${name}`,
-  /** The vault key: the main key of the person's vault, a folder of its own, mixed from the seed. */
+  /** A profile's payment key on Solana, mixed from the seed. The label is used exactly as given. */
+  pay: (label: string) => `forest/v1/pay/solana/${label}`,
+  /** The vault's secret, which its inbox key is mixed from. */
   vault: 'forest/v1/vault',
 } as const
 

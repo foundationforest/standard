@@ -1,5 +1,5 @@
-// The note: what an issuer signs, its signature, and the circuit's input, checked without proving.
-// The proofs themselves are made and refused in registry/circuit's tests.
+// The note: what an issuer signs, its signature, its JSON, and the circuit's input, checked without
+// proving. The proofs themselves are made and refused in the circuit's tests (../../circuit/test/).
 
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
@@ -12,70 +12,68 @@ import { signMessage } from '@zk-kit/eddsa-poseidon'
 import { poseidon4 } from 'poseidon-lite/poseidon4'
 import { poseidon5 } from 'poseidon-lite/poseidon5'
 
-import { issuerSecret } from '../../../keys/src/index.ts'
+import { issuerSecret, mainKey, seedScalar, stampOf } from '../../../../keys/src/index.ts'
 import {
   BN254_R,
   NOTE_TAG,
   fromBytes32,
+  humanInput,
+  isMonth,
   issuerKeyOf,
-  stampOf,
-  messageOf,
+  nameHashOf,
   noteFromJson,
   noteHash,
   noteNumberOf,
   noteSigned,
   noteToJson,
-  personInput,
   scopeOf,
   signNote,
   type Note,
 } from '../src/index.ts'
-import { PERSON_KEY } from '../src/person-key.ts'
 
 const here = dirname(fileURLToPath(import.meta.url))
-const keysVectors = JSON.parse(readFileSync(join(here, '../../../keys/test/vectors.json'), 'utf8'))
-const seed = Buffer.from(keysVectors.seed, 'hex')
+const keysVectors = JSON.parse(readFileSync(join(here, '../../../../keys/test/vectors.json'), 'utf8'))
+const seed = Uint8Array.from(Buffer.from(keysVectors.seed, 'hex'))
 const [issuerA] = keysVectors.issuers
-const secret = (await issuerSecret(seed, issuerA.name)).secret
+const S = await seedScalar(seed)
 
 const issuerKey = new Uint8Array(32).fill(1)
 const note: Note = {
-  noteNumber: noteNumberOf(secret),
+  noteNumber: noteNumberOf(S, issuerA.name),
   embedding: new Uint8Array(Float32Array.from([0.25, -0.5, 0.125]).buffer),
   model: 'example-face-model/1',
-  tier: 2n,
+  month: 202610,
 }
 const signed = signNote(issuerKey, note)
-const profile = new Uint8Array(32).fill(7)
 
-test("the verification key is the circuit's committed one, value for value", () => {
-  const committed = JSON.parse(readFileSync(join(here, '../../circuit/devnet/verification-key.json'), 'utf8'))
-  assert.deepEqual(PERSON_KEY, committed)
-  assert.equal(PERSON_KEY.nPublic, 6)
-})
-
-test("the note number is keys/'s, from the same 32 bytes", async () => {
+test("the note number is keys/'s, from the seed scalar and the issuer's name", async () => {
   for (const issuer of keysVectors.issuers) {
     const s = await issuerSecret(seed, issuer.name)
-    assert.equal(noteNumberOf(s.secret), s.noteNumber)
-    assert.equal(noteNumberOf(s.secret).toString(), issuer.noteNumber)
+    assert.equal(noteNumberOf(S, issuer.name), s.noteNumber)
+    assert.equal(noteNumberOf(S, issuer.name).toString(), issuer.noteNumber)
   }
-  assert.throws(() => noteNumberOf(secret.subarray(1)), /32 bytes/)
+  assert.throws(() => noteNumberOf(BN254_R, issuerA.name), /field element/)
 })
 
 const hash = (bytes: Uint8Array) => fromBytes32(keccak_256(bytes)) >> 8n
-const fields = (n: Note) => [n.noteNumber, hash(n.embedding), hash(new TextEncoder().encode(n.model)), n.tier]
+const fields = (n: Note) => [n.noteNumber, hash(n.embedding), hash(new TextEncoder().encode(n.model)), BigInt(n.month)]
 
 test('the tag is keccak256("forest/v1/note") >> 8, the constant the circuit has', () => {
   assert.equal(NOTE_TAG, hash(new TextEncoder().encode('forest/v1/note')))
-  const circuit = readFileSync(join(here, '../../circuit/person.circom'), 'utf8')
-  assert.ok(circuit.includes(`var NOTE_TAG = ${NOTE_TAG};`), 'person.circom carries the same tag')
+  const circuit = readFileSync(join(here, '../../circuit/human.circom'), 'utf8')
+  assert.ok(circuit.includes(`var NOTE_TAG = ${NOTE_TAG};`), 'human.circom carries the same tag')
 })
 
-test('an issuer signs Poseidon(tag, note number, keccak256(embedding) >> 8, keccak256(model) >> 8, tier)', () => {
+test('an issuer signs Poseidon(tag, note number, keccak256(embedding) >> 8, keccak256(model) >> 8, month)', () => {
   assert.equal(noteHash(note), poseidon5([NOTE_TAG, ...fields(note)]))
-  assert.throws(() => noteHash({ ...note, tier: BN254_R }), /field elements/)
-  assert.throws(() => noteHash({ ...note, noteNumber: -1n }), /field elements/)
+  assert.throws(() => noteHash({ ...note, noteNumber: BN254_R }), /field element/)
+  assert.throws(() => noteHash({ ...note, noteNumber: -1n }), /field element/)
+  assert.throws(() => noteHash({ ...note, month: 202613 }), /YYYYMM/)
+})
+
+test('a month is YYYYMM, and nothing else', () => {
+  for (const m of [202610, 100001, 999912, 202601]) assert.equal(isMonth(m), true, String(m))
+  for (const m of [202600, 202613, 99912, 1000001, 202610.5, '202610', 202610n, -202610]) assert.equal(isMonth(m), false, String(m))
 })
 
 test('a signed note checks; any change to it, its issuer or its signature does not', () => {
@@ -83,15 +81,15 @@ test('a signed note checks; any change to it, its issuer or its signature does n
   assert.deepEqual(signed.issuer, issuerKeyOf(issuerKey))
   const other = issuerKeyOf(new Uint8Array(32).fill(2))
   const cases: [string, typeof signed][] = [
-    ['another note number', { ...signed, noteNumber: noteNumberOf(new Uint8Array(32).fill(9)) }],
+    ['another note number', { ...signed, noteNumber: noteNumberOf(S, 'issuer-b.example') }],
     ['another embedding', { ...signed, embedding: new Uint8Array(signed.embedding.length) }],
     ['another model', { ...signed, model: 'example-face-model/2' }],
-    ['another tier', { ...signed, tier: 3n }],
+    ['another month', { ...signed, month: 202611 }],
     ['another issuer', { ...signed, issuer: other }],
     ['another S', { ...signed, signature: { ...signed.signature, S: signed.signature.S + 1n } }],
     ['S out of range', { ...signed, signature: { ...signed.signature, S: BN254_R } }],
     ['R8 off the curve', { ...signed, signature: { ...signed.signature, R8: [1n, 1n] } }],
-    ['a tier out of the field', { ...signed, tier: BN254_R + 2n }],
+    ['a month that is no month', { ...signed, month: 202600 }],
   ]
   for (const [what, n] of cases) assert.equal(noteSigned(n), false, what)
   // The issuer's signature over the same fields without the tag is no note.
@@ -100,11 +98,12 @@ test('a signed note checks; any change to it, its issuer or its signature does n
   assert.throws(() => signNote(new Uint8Array(31), note), /32 bytes/)
 })
 
-test('a note as JSON: every number in decimal text, the embedding base64url, keys a record can carry; and back', () => {
+test('a note as JSON: big numbers in decimal text, the month a number, the embedding base64url; and back', () => {
   const json = noteToJson(signed)
-  assert.deepEqual(Object.keys(json).sort(), ['embedding', 'issuer', 'model', 'noteNumber', 'signature', 'tier'])
+  assert.deepEqual(Object.keys(json).sort(), ['embedding', 'issuer', 'model', 'month', 'noteNumber', 'signature'])
   for (const key of [...Object.keys(json), ...Object.keys(json.signature)]) assert.match(key, /^[a-z][a-zA-Z0-9]{0,63}$/, key)
   assert.equal(json.noteNumber, String(signed.noteNumber))
+  assert.equal(json.month, 202610)
   assert.equal(json.embedding, Buffer.from(signed.embedding).toString('base64url'))
   assert.equal(json.issuer, Buffer.concat(signed.issuer.map((n) => Buffer.from(n.toString(16).padStart(64, '0'), 'hex'))).toString('hex'))
   assert.deepEqual(json.signature, { r8: signed.signature.R8.map(String), s: String(signed.signature.S) })
@@ -113,8 +112,10 @@ test('a note as JSON: every number in decimal text, the embedding base64url, key
   assert.equal(noteSigned(back), true)
   const bad: [string, unknown][] = [
     ['a field nobody knows', { ...json, face: 'x' }],
-    ['a number as a number', { ...json, tier: 1 }],
-    ['a leading zero', { ...json, tier: '01' }],
+    ['the tier a note once had', { ...json, tier: '2' }],
+    ['a month as text', { ...json, month: '202610' }],
+    ['a month that is no month', { ...json, month: 202613 }],
+    ['a leading zero', { ...json, noteNumber: '0' + json.noteNumber }],
     ['past the field', { ...json, noteNumber: String(BN254_R) }],
     ['the embedding in base64 with padding', { ...json, embedding: Buffer.from(signed.embedding).toString('base64') + '=' }],
     ['an issuer in upper case', { ...json, issuer: json.issuer.toUpperCase() }],
@@ -124,10 +125,25 @@ test('a note as JSON: every number in decimal text, the embedding base64url, key
   for (const [what, value] of bad) assert.throws(() => noteFromJson(value), Error, what)
 })
 
-test("the circuit's input: the stamp is the one a row sits at, and the public signals are in order", () => {
-  const { input, publicSignals } = personInput({ secret, note: signed, label: 'tutoring/seller', profile })
-  assert.equal(publicSignals[0], stampOf(secret, 'tutoring/seller'))
-  assert.deepEqual(publicSignals.slice(1), [signed.issuer[0], signed.issuer[1], scopeOf('tutoring/seller'), messageOf(profile), 2n])
-  assert.equal(input.secret, BigInt(issuerA.scalar))
-  assert.notEqual(personInput({ secret, note: signed, label: 'tutoring/buyer', profile }).publicSignals[0], publicSignals[0])
+test("the circuit's input: keys/'s stamp and main key, and the public signals in order", async () => {
+  const label = 'tutoring/seller'
+  const { input, publicSignals } = humanInput({ seedScalar: S, issuerName: issuerA.name, note: signed, label })
+  const main = await mainKey(seed, label)
+  const a = await issuerSecret(seed, issuerA.name)
+  assert.deepEqual(publicSignals, [
+    stampOf(a.scalar, label),
+    main.publicKey[0],
+    main.publicKey[1],
+    signed.issuer[0],
+    signed.issuer[1],
+    scopeOf(label),
+    nameHashOf(issuerA.name),
+    202610n,
+  ])
+  assert.equal(publicSignals[0].toString(), issuerA.stamps[label], "keys/'s pinned stamp")
+  assert.equal(input.seedScalar, BigInt(keysVectors.seedScalar.scalar))
+  const other = humanInput({ seedScalar: S, issuerName: issuerA.name, note: signed, label: 'tutoring/buyer' }).publicSignals
+  assert.notEqual(other[0], publicSignals[0], 'another label, another stamp')
+  assert.notEqual(other[1], publicSignals[1], 'and another key')
+  assert.throws(() => humanInput({ seedScalar: BN254_R, issuerName: issuerA.name, note: signed, label }), /field element/)
 })

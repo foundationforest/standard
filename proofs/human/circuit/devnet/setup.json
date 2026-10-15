@@ -1,10 +1,10 @@
 {
-  "note": "The person circuit's devnet setup. One party made it, so that party could make false proofs: devnet only. A public setup ceremony comes before mainnet. Made by devnet/setup.sh.",
+  "note": "The human circuit's devnet setup. One party made it, so that party could make false proofs: devnet only. A public setup ceremony comes before mainnet. Made by devnet/setup.sh.",
   "parties": 1,
-  "made": "2026-10-07",
+  "made": "2026-10-15",
   "circuit": {
-    "file": "person.circom",
-    "constraints": 4979
+    "file": "human.circom",
+    "constraints": 6526
   },
   "circom": {
     "version": "2.2.3",
@@ -22,24 +22,24 @@
   },
   "phase2": {
     "contributions": 1,
-    "contributionHash": "0a22d57648a175c3dc62c38ada966f7a1e8e6f8c4e4d2a1593266821914bf7c28beae1887e92486642f359523724fd6acade5e9db2ad7354654c6f54e04f3fd6"
+    "contributionHash": "96a6a36a923eae46559fcb2b5cb4547ba4c2289d1ddec700438e925a744a266074a1768ece617c64f85599bffe361a809754b51b490dcf93ce61eea727109963"
   },
   "r1cs": {
-    "bytes": 1652688,
-    "sha256": "5b3af1117406edd8f8e52a2decc53854d62e85636b115850d0564505738e4a6d"
+    "bytes": 2156940,
+    "sha256": "3f0195ffc38d82db8974b8eae9a795a917046c9d3b222188e46eb91e0d24c406"
   },
   "files": {
-    "person.zkey": {
-      "bytes": 3396483,
-      "sha256": "90632ee12c389127007c2c5e29a1974fad42bc080e47b127a1f6426ad6c94dd3"
+    "human.zkey": {
+      "bytes": 4196111,
+      "sha256": "ff2ffe9681443f0265eb842494c5d3c7d0397c5d9ec8a2a8a7d3f14821f0b375"
     },
-    "person.wasm": {
-      "bytes": 2815205,
-      "sha256": "063882b8f5a8208d16485c609494b53b1b0fd84da234f5207b63f80bd8e56c99"
+    "human.wasm": {
+      "bytes": 3266727,
+      "sha256": "3152d4d71a3bbd6569c3f5b56664637b324b3646d32bee0d965a8a543cea3f2e"
     },
     "verification-key.json": {
-      "bytes": 3838,
-      "sha256": "5d0f0b9c62e6b0013e8c19e86bb00628dbe3bcb39d35bebaac8ac64c5faaaaa4"
+      "bytes": 4208,
+      "sha256": "cab4ac9ab933fce42a5155b1478e43409a09b8aadeb6e813b867c01994044e1e"
     }
   }
 }

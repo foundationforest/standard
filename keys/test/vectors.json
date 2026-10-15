@@ -1,13 +1,39 @@
 {
-  "about": "Fixed test vectors for Forest keys, v1. The seed is the 32 bytes 00 01 ... 1f: public by construction, so every key here is public; for tests only. Two profiles (labels tutoring/seller and tutoring/buyer), each with its inbox key; two issuers, named issuer-a.example and issuer-b.example, each with the person's secret, its scalar and the note number; and the vault key, with its inbox key. Generated once by this library and pinned; test/keys.test.ts recomputes every value without it. Bytes are hex; field elements are decimal. Changing any value here changes the standard.",
+  "about": "Fixed test vectors for Forest keys, v1. The seed is the 32 bytes 00 01 ... 1f: public by construction, so every key here is public; for tests only. The seed scalar; the three tags; two profiles (labels tutoring/seller and tutoring/buyer), each with its main key on Baby Jubjub, its secret and its inbox key, and its payment key on Solana; two issuers, named issuer-a.example and issuer-b.example, each with the name hash, the person's secret, the note number and a stamp for each label; the vault key, with its secret and inbox key; and one signature by the tutoring/seller main key. Generated once by this library and pinned; test/keys.test.ts recomputes every value without it. Bytes are hex; numbers are decimal text. Changing any value here changes the standard.",
   "seed": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
   "words": "abandon amount liar amount expire adjust cage candy arch gather drum bullet absurd math era live bid rhythm alien crouch range attend journey unaware",
+  "seedScalar": {
+    "info": "forest/v1/seed",
+    "bytes": "50938e488ec743ce85eec8a52406ca643c4af00ca51cb83df18001bffe23e105",
+    "scalar": "1276941829412356249213079909861099565953617967248419284062097434612558046091"
+  },
+  "tags": {
+    "issuer": {
+      "text": "forest/v1/issuer",
+      "value": "148503515730552064242178401621730766485656598654480476289777914049842770921"
+    },
+    "profile": {
+      "text": "forest/v1/profile",
+      "value": "1610155941089780199585344681576242252009136950843720704103853393970298181"
+    },
+    "vault": {
+      "text": "forest/v1/vault",
+      "value": "374738025316058948506198139617937791878366726254672393807020132929556209537"
+    }
+  },
   "mainKeys": [
     {
       "label": "tutoring/seller",
+      "scope": "185029681004279899358869416631659518624177715199606546063609266422086539485",
+      "raw": "7144180806793267693039241216783823117373310070514818081246709341423010940478",
+      "scalar": "1716426623794071032559351294501577436751279539312916641897135091052082988606",
+      "publicKey": [
+        "7128657145928554879544387140278850113857885623998151809693835860648520247062",
+        "6813389104597382341304194469460603519312317790401347682717003086143265917592"
+      ],
+      "address": "BFUnj3MPQpetapTpwcPJRsnanXLqcK4XZ3EZjotTqEfY",
       "info": "forest/v1/profile/tutoring/seller",
-      "privateKey": "056e386ff09889836b4b645b5f1974dc395933724f3a8e26f1661027446de168",
-      "address": "EofQN9U3MiKVmAo3Pyvuw19WjyYbpddfN52E1Q1uBwhu",
+      "secret": "056e386ff09889836b4b645b5f1974dc395933724f3a8e26f1661027446de168",
       "inbox": {
         "privateKey": "439814806025c771c93530c7c13833215237f8fc1e5af052a9c47a891575941a",
         "identity": "AGE-SECRET-KEY-PQ-1GWVPFQRQYHRHRJF4XRRUZWPNY9FR078URED0Q54FC3AGJ9T4JSDQRQYLQN",
@@ -16,9 +42,16 @@
     },
     {
       "label": "tutoring/buyer",
+      "scope": "376038725036958211746920135725396903307407999274647018076863945077843021819",
+      "raw": "12723851294926745068871293797205001091399317802267389783561740951317190111684",
+      "scalar": "59091534595286194418217311879761169947913229462953091746067700451691557316",
+      "publicKey": [
+        "10559080188873489619561664273687258777294449957005065769629936986618343635171",
+        "3193335350577136334934594900166319842906411872947201548733439604430989787402"
+      ],
+      "address": "i1kTxPLzkF9wu65zD7ose9WR1UQNWaP6af6az3ApQXQ",
       "info": "forest/v1/profile/tutoring/buyer",
-      "privateKey": "e97c86154d61b4a633633cca01971aefc878686f562ec06242faa02650e2e18b",
-      "address": "N1NFJwhwe7hY6wonMxtbBSPEvuxfVTLVFG9y9E7ByW7",
+      "secret": "e97c86154d61b4a633633cca01971aefc878686f562ec06242faa02650e2e18b",
       "inbox": {
         "privateKey": "ca773c854a590e134ce12fbe1f55bf344f151fc8a20ed57e3ac9bdd02b42af31",
         "identity": "AGE-SECRET-KEY-PQ-1EFMNEP22TY8PXN8P97LP74DLX383287G5G8D2L36EX7AQ26Z4UCSNY5TJ4",
@@ -26,30 +59,66 @@
       }
     }
   ],
+  "payKeys": [
+    {
+      "label": "tutoring/seller",
+      "info": "forest/v1/pay/solana/tutoring/seller",
+      "privateKey": "4310364e23ec4bafea875421d75fe9f49d3729bfb92bea5aa81b24c296f91fe7",
+      "address": "CW2NTeP73exnJe6vVwqfQ9iT8Q2U6fgSbPvw9cofW8jm"
+    },
+    {
+      "label": "tutoring/buyer",
+      "info": "forest/v1/pay/solana/tutoring/buyer",
+      "privateKey": "40c7a753e5649b50de66a3c97504b86e9d58caa0c75cc6a2ef61d1a39d127df7",
+      "address": "DmiR2nceyHFp5LaQex2C45iDybXX77QSmats3tj57gNN"
+    }
+  ],
   "issuers": [
     {
       "name": "issuer-a.example",
-      "info": "forest/v1/issuer/issuer-a.example",
-      "secret": "0c224f2de3ab05a837b6d69c65382db2079f73ffcbd8a7a21a206ac76afecac0",
-      "scalar": "803274075121663429902466391018893464172598640879878922455998250156991791818",
-      "noteNumber": "10260738844603664161504988713473359584613684870648444840530706110060385700206"
+      "nameHash": "219452492184015431260277562653274537888105273828285787745842555761057965337",
+      "scalar": "5629892772345895787952929134382681377232146091822916382638829217623603238471",
+      "noteNumber": "20944015934799795826415284381445320057207905995401371295488411919908256593839",
+      "stamps": {
+        "tutoring/seller": "13927936386243493946558200154061512088391869692787382093141297843284814792448",
+        "tutoring/buyer": "10792665974277200505225922435220414160181327078010337927130459695842900610999"
+      }
     },
     {
       "name": "issuer-b.example",
-      "info": "forest/v1/issuer/issuer-b.example",
-      "secret": "17f87dee395460bdc0dc8bf40cf3cd43fff9019f5a467ba2d39394e35cb1ff86",
-      "scalar": "1519689346950852131878692477637090806728379909558971026767509071663270396380",
-      "noteNumber": "12060818474188934874565393249181582662965363592091992641141699529541802290234"
+      "nameHash": "169468724244147987839213721535057357748161830469909663214439531519062145964",
+      "scalar": "14496847564830337962183383804312567867039869492014565680488305615326389253370",
+      "noteNumber": "3058570164794231213499460291893243776721310030320496618757287275192926408296",
+      "stamps": {
+        "tutoring/seller": "5095735363704365864676825712880986459359094659039071266801017974347998000039",
+        "tutoring/buyer": "20596119018281699074272093621950455235308584708137932380738058232718834148845"
+      }
     }
   ],
   "vault": {
+    "raw": "488231263420722149904863530132570378763768948710661601058164971370597275095",
+    "scalar": "488231263420722149904863530132570378763768948710661601058164971370597275095",
+    "publicKey": [
+      "19838911327588684584138750316680912308398329337194905692612001339967868848346",
+      "406322893633855044954379743319761858151438568215320317323223018497427200787"
+    ],
+    "address": "2JZvW5VD1NfPzJbamoxWJ2KdJLjtDpMWNcxsZtK2fzis",
     "info": "forest/v1/vault",
-    "privateKey": "11bf841699d735fcc03948347173768036184470b9ada37bc6f66c0cb953ff70",
-    "address": "77js3ecvAes7Zxu1bpZ4wrfDDRMGoEmc8HL2i8ZYYD7C",
+    "secret": "11bf841699d735fcc03948347173768036184470b9ada37bc6f66c0cb953ff70",
     "inbox": {
       "privateKey": "1fdeaf5bba6e4497ba7c8e63677d596c67c69a5ca0d64ac2c76a0773d3aefe93",
       "identity": "AGE-SECRET-KEY-PQ-1RL027KA6DEZF0WNU3E3KWL2ED3NUDXJU5RTY4SK8DGRH85AWL6FSNQ5EY7",
       "recipient": "age1pq1fwgtx8x5g6n5g0t38zfru6znd2mes8wh8f4v00mdmp0u5czkmyuesq5mjr532g9x0w64p6stpjztp3pj52nys3vf5zr5wtqcyndzpjwkgkjyz7xsagmfx7tjr9eq74hjex03jgyvw2hudqpvy9tz06fx9ny80wwgzfl24ga4wxdqg6yf2ftcwjstk6s573qvypteyjghjp5vz6qax2yy84yhswpeste4qn76qtgknfq63gwtq6gtulhpgq4et0jmdfp0p6m88vq50js98p25qa9us534d6er5vep73szy2accf3hxjurhd5ak6ug0lsmgh4s5afu0pahtgzlsz6rt7cjrgyae98da3wukqqg2dmxhnjr43njxvtfxau9ge4xz9jzuafm3a33sfnj5kxcsene0k3fsrgqs9cd2g47vyjtel9zjcqcldnhdxmzj9aucfphkck8dspcvpmreylhq95mx39064jnvaexwns690a7t3rv4gf28v9nzwqcegeuc3f7npuc8y5lm6aars6mxc544at9krkkyqazrwytvfvk703mt6aeyu20shzm04r4929nhac938u8eqd5rsrtypch33dqsn6ntrld4tan5g6fz242vuqh9gxzjsrhd9k46qh7qcwth2f5lh6hypcqpv0z6cusx2fjp9jvdkrtks00fgf58qnnh69wnxme054mk6ksgngktddz0nyk0y4hrz94stqe2m33ksvnk7gdy4y9mx385jlaj5t57j25ccs7k96sljprts8kkeuwgcshv24g0p6yv2k3wfn0jye5gpdlc6608m5hu4234g6kh3kcvfd4ljp4smsz6pkq9h3k0dn26jg2sdp2w5pchkkmg36crfdsqnxvzyqe9f4tedv9wt5q9zl8suu5qxy34gdxspxtdzadhw2q3drqctr2j92my97j33ysf0ncf9cuuutljva5h8fsn6mm9w2e54jnx6kyhzujd332g8vygg0e7j8wk67rhp58vfcxngwwsr23myaky4v8gfsu76nx5engjymm62rn3fm6frrtsjgfpxymcargtfz3sugm8le4smx3z6w0pt8k4z3eedsh20dqdrmcsx0xqshnjzwrq3zn4kyu44ny374jvv62xamzdjazntfftmmkk2z08sy0hgmctu3r3f2pejy6xgdczcdg92av6ey5jxr9fydf9gfpgwf6jhrjgc925xnekmungv2vrga8ejgxkf474y5yjastqa27wvej6k64qe6p9xuzgc7tfz08ssq9avv2c3s92mdx7tthv8phdv2fl3dhzjudeupq6c3y9yy9n95g2xymxkfqgzpy3rke9q0hzzvdcem5f47d7cv4ccd4s34q0v9thx07u9uhpvcj9gvf434mvwuzf33gus5xhnf852ak8znvz648j5qeaqww9ttvl86pwem8gau9x3vc99tckvnekzcf8pszhnf8tdcj4dky4t5kvlpfk6cg9t2ucgawlas6cdc6nze4pgh3xfr9xzzscynl72j2muf3vr5vsm3tuvcaldjacpy8c3lnsyqxtzgwv0qvr9a8l96sf5ezep9jeyqq5kfzlj7qdwpc93yqdksx9g67k9wfydnqjnmn32zuzxnz5zx8mvvqnkqnveexf32nnfydr8qpmpktj9evanmfcv0c5xdqnwy4vyenakz3nuqgrczuducqp3mcw0pnvdyfrmnt64wkz4em4vz0u7cx97pfqmnu5tl5vm5lydj72uvyycea6ejtwam88ufsgdv2vh8n0w3ysh9vte9etm343j0v0228apkz3smfkydv0ld50vnhx4sg9qaz79natxcg0cxjuyv0u8gk7ntjydkly25l32cusy66pvmtsezmey4323fswqcdes995gvalwexes7xk8s4vm794wwfdhmpm009vvggnwmv"
     }
+  },
+  "signature": {
+    "label": "tutoring/seller",
+    "messageText": "forest/v1/test-message",
+    "message": "174701419719698168271176340001465794773985037524952484391240296209639748366",
+    "R8": [
+      "20062983430186999963677568815517769827557962272547740824937251928972348240407",
+      "19986674823445464792074824999574460211031659609638389329267066108492411226855"
+    ],
+    "S": "723811653306666093116774619022937316015885203788755284108938814050817243312"
   }
 }

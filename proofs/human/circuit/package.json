@@ -1,8 +1,8 @@
 {
-  "name": "@forest/person-circuit",
+  "name": "@forest/human-circuit",
   "version": "0.0.0",
   "private": true,
-  "description": "The person proof: a note signed by an issuer for the person's note number, a stamp for one label, for one main key, naming neither the note nor the person. The circuit, its devnet setup, and its tests through the registry client.",
+  "description": "The human proof: a note an issuer signed for the note number the person's seed gives, a stamp for one label, and the profile key the same seed gives for that label, naming neither the note nor the person. The circuit, its devnet setup, and its tests through the human client.",
   "license": "Apache-2.0",
   "type": "module",
   "engines": {
@@ -11,9 +11,8 @@
   "scripts": {
     "fetch": "node scripts/fetch.ts",
     "compile": "node scripts/compile.ts",
-    "vk": "node scripts/parse_vk_to_rust.cjs devnet/verification-key.json ../program/src",
     "check": "tsc --noEmit",
-    "test": "node --test --test-force-exit test/person.test.ts"
+    "test": "node --test --test-force-exit test/human.test.ts"
   },
   "dependencies": {
     "snarkjs": "0.7.5"

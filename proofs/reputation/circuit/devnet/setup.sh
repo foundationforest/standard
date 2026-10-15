@@ -18,7 +18,7 @@ PTAU=devnet/ppot_0080_16.ptau
 PTAU_URL=https://pse-trusted-setup-ppot.s3.eu-central-1.amazonaws.com/pot28_0080/ppot_0080_16.ptau
 PTAU_SHA256=ed3622a7c79b0b49aadd134ebbc5b77df8c8c59bccebdfd0d9bf2c1a51561cf9
 CIRCOM_LINUX_SHA256=85342c7ff332d948df7c0c50ecf201e6129349aef550ce873f3c811b79fe53a3
-TAG=reputation-devnet-2
+TAG=reputation-devnet-3
 
 node scripts/compile.ts --new
 

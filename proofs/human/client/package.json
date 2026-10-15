@@ -1,28 +1,24 @@
 {
-  "name": "@forest/registry-client",
+  "name": "@forest/human",
   "version": "0.0.0",
   "private": true,
-  "description": "Builds a Forest registry row: the person proof from a note an issuer signed, compressed points, and the transaction the main key and any payer sign; reads rows back, and checks a tier a profile shows against its row.",
+  "description": "The human proof's client: the note an issuer signs, the human proof a device makes from it for one profile, and the check any reader makes.",
   "license": "Apache-2.0",
   "type": "module",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "engines": {
+    "node": ">=22.18"
+  },
   "scripts": {
-    "test": "node --test --test-force-exit test/client.test.ts test/note.test.ts test/no-buffer.test.ts",
-    "test:validator": "node --test --test-force-exit test/validator.test.ts",
-    "test:devnet": "FOREST_DEVNET=1 node --test --test-force-exit test/devnet.test.ts",
     "check": "tsc --noEmit",
-    "build": "tsc -p tsconfig.build.json",
-    "fixtures": "node scripts/fixtures.ts"
+    "test": "node --test --test-force-exit test/client.test.ts test/note.test.ts test/no-buffer.test.ts"
   },
   "dependencies": {
-    "@noble/hashes": "2.4.0",
-    "@solana/web3.js": "1.99.0",
     "@zk-kit/eddsa-poseidon": "1.0.4",
     "poseidon-lite": "0.3.0",
     "snarkjs": "0.7.5"
   },
   "devDependencies": {
+    "@noble/hashes": "2.4.0",
     "@types/node": "22.20.2",
     "typescript": "5.9.3"
   }
