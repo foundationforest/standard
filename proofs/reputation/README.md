@@ -107,8 +107,8 @@ enough.
   [`setup.json`](circuit/devnet/setup.json), which records the toolchain, phase 1, the
   contribution's hash, and every file's size and SHA-256.
 - **What is not:** the proving key and the witness generator, used only to make a proof. They are
-  in the GitHub release `reputation-devnet-3`, and `npm run fetch` refuses anything whose hash does
-  not match `setup.json`.
+  in the GitHub release `reputation`, and `npm run fetch` refuses anything whose hash does not
+  match `setup.json`.
 - **The circuit does not change after its setup.** circom gives the same bytes every time, and
   `npm run compile` checks the compiled circuit against `setup.json`. The witness generator carries
   the source's line numbers, so even a line added to a comment fails that check. A change means a
@@ -208,9 +208,6 @@ Measured in Node 22 on a 4-core machine, with 8 slots at depth 20:
 
 - **Devnet setup only, made by one party.** Whoever ran `circuit/devnet/setup.sh` could make false
   reputation proofs. A public setup ceremony comes before mainnet.
-- **Its files wait on a release.** `npm run fetch` reads the proving key and the witness generator
-  from the GitHub release `reputation-devnet-3`; until that release holds them, only a machine that
-  ran the setup can prove.
 - **The person picks which profiles count.** Up to eight. A proof says "these profiles of mine",
   never "all of them": a low-scored profile can be left out, and nothing public can tell which
   profiles are all of one person's.

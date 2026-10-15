@@ -32,8 +32,8 @@
     "sha256": "7a587e2b6ba6746614271910d273c5131b183fc2b1adac86e8c21abf2220114f"
   },
   "release": {
-    "tag": "reputation-devnet-3",
-    "baseUrl": "https://github.com/foundationforest/standard/releases/download/reputation-devnet-3/"
+    "tag": "reputation",
+    "baseUrl": "https://github.com/foundationforest/standard/releases/download/reputation/"
   },
   "files": {
     "reputation.zkey": {
