@@ -75,7 +75,7 @@ By default, nothing mixed from the seed is stored, only the seed. When the perso
 mixes the one key that action needs (a profile's main key from its label, its inbox key, the seed
 scalar for a proof), uses it, and drops it; JavaScript cannot promise its bytes are erased
 (Limits). The vault is not used day to day: a new device reads it to learn which profiles exist,
-and the app writes it when what it holds changes, such as a new profile or a grant received
+and the app writes it when what it holds changes, such as a new profile
 ([records](../records/README.md#the-vault)).
 
 ### The seed scalar
@@ -122,7 +122,14 @@ inside a proof, made from the scalar itself.
   and no two messages share a nonce.
 - `R8 = r · Base8`, `hm = Poseidon(R8x, R8y, Ax, Ay, message)`, and `S = r + 8 · hm · scalar mod
   l`. A signature holds when `S < l` and `S · Base8 = R8 + 8 · hm · A`, the equation zk-kit's
-  `verifySignature` and circomlib's `EdDSAPoseidonVerifier` check.
+  `verifySignature` and circomlib's `EdDSAPoseidonVerifier` check. The key must be in the
+  prime-order subgroup; R8 need not be checked for it, since the equation holds only when it is.
+- Bytes are signed as one field element: SHA-256 of the bytes, read big-endian, shifted right one
+  byte. Records, messages and pulls ([records](../records/README.md)) and an index's roots
+  ([proofs/reputation](../proofs/reputation/README.md)) are signed so, each over bytes of its own.
+- A signature travels as 64 bytes, as zk-kit packs it: R8 packed as an address is, then S, 32
+  bytes little-endian. Read back, R8 must be a point on the curve in its one spelling and S below
+  `l`; anything else is refused.
 
 ### Inbox keys
 
@@ -183,9 +190,8 @@ profiles whose stamps are the person's ([proofs](../proofs/README.md)).
 ### The vault key
 
 The vault is a folder of the person's own, on a host, that holds what a new device needs and the
-seed cannot give back: the labels of their profiles, the grants they received (each a private
-message that hands them an access key, a key that acts for one profile within limits), their
-issuers' notes, and apps' settings ([records](../records/README.md#the-vault)). Its key is mixed
+seed cannot give back: the labels of their profiles, their issuers' notes, and apps' settings
+([records](../records/README.md#the-vault)). Its key is mixed
 from the seed, so a new device finds the vault with the seed alone.
 
 - It is a main key with no label: its scalar is the lowest 250 bits of `Poseidon(vault tag, seed
@@ -198,18 +204,25 @@ from the seed, so a new device finds the vault with the seed alone.
 
 ### Access keys
 
-A person hands out access keys, never a main key. An access key is one the owner's app makes at
-random, not from the seed, and hands to an app, a server or an AI so it can act for one profile.
-Each has one scope, the one kind of thing it may do:
+A person hands out access keys, never a main key. An access key is 32 random bytes the owner's
+app makes, not from the seed, and hands to an app, a server or an AI so it can act for one
+profile.
 
-- **write key:** signs records into the profile's folder, at the paths it is allowed (a path is
-  where a record sits in the folder, such as `offer/maths`);
-- **message key:** sends the profile's messages and pulls its inbox;
-- **read key:** opens the private records and messages encrypted to it.
+- Its scalar is the 32 bytes made into a number by the seed scalar's steps 1 to 3 (zk-kit's
+  `deriveSecretScalar`). It signs as a main key does, and its address is spelled as one is.
+- Each has one scope, the one kind of thing it may do:
+  - **write key:** signs records into the profile's folder, at the paths it is allowed (a path is
+    where a record sits in the folder, such as `offer/maths`), and the profile's messages when its
+    paths cover `inbox`;
+  - **read key:** signs pulls of the profile's inbox when its paths cover `inbox`, and opens what
+    is encrypted to it. Its 32 bytes also give an age identity, mixed by `forest/v1/read` as an
+    inbox key is from a profile's secret; others encrypt to its recipient.
+- A quantum computer that breaks a read key's address gets its scalar, not its 32 bytes, so not
+  its identity: what is encrypted to it stays closed.
 
 The profile's permissions record, a record in its folder that only the main key writes, lists
-which access keys may act, and a grant hands one to whoever it is for
-([records](../records/README.md)).
+which access keys may act, a read key with its recipient
+([records](../records/README.md#permissions)).
 
 ### Rules for apps that hold keys
 
@@ -221,11 +234,10 @@ which access keys may act, and a grant hands one to whoever it is for
 4. Each app, server or AI the person lets act for them gets its own access key for each folder.
 5. Proofs are made in the app, never delegated.
 6. The app works with any host, and its host with any app.
-7. A server that acts for you holds access keys with write, message or read scope.
+7. A server that acts for you holds access keys with write or read scope.
 8. The app that holds the seed is open source.
 9. Keep a copy of every record signed; a host may drop one, and the copy puts it back.
-10. Keep each grant, an access key handed to the person, in the vault.
-11. Keep the issuer's note as safely as a key, in the vault.
+10. Keep the issuer's note as safely as a key, in the vault.
 
 ### Use it
 
@@ -244,8 +256,12 @@ mixes from the seed scalar is not.
 | `issuerSecret(seed, name)` | The issuer's `name`, its `nameHash`, the person's `scalar` for it, and the `noteNumber` |
 | `issuerScalarOf(seedScalar, name)`, `stampOf(issuerScalar, label)` | The issuer secret from the seed scalar, and a stamp |
 | `vaultKey(seed)`, `vaultScalarOf(seedScalar)` | The vault key: `scalar`, `publicKey`, `address`, `secret`; and its scalar |
+| `accessKey(secret)`, `readKey(secret)` | An access key from its 32 random bytes: `secret`, `scalar`, `publicKey`, `address`; a read key adds age's `identity` and `recipient` |
 | `signWithScalar(scalar, message)`, `verifyWithPublicKey(key or address, message, signature)` | A signature `{ R8, S }` on a field element, and its check |
+| `signBytes(scalar, bytes)`, `verifyBytes(key or address, bytes, signature)`, `bytesMessage(bytes)` | A signature over bytes, its check, and the field element it signs |
+| `packSignature(signature)`, `unpackSignature(bytes)` | A signature's 64 bytes, and the signature back, or null |
 | `publicKeyOf(scalar)`, `addressOf(publicKey)`, `pointOf(address)` | A public key, its address, and the key an address names |
+| `packPoint(point)`, `unpackPoint(bytes)` | A point's 32 packed bytes, and the point back, or null |
 | `scopeOf(label)`, `nameHashOf(name)`, `fieldHash(namespace, ...parts)`, `TAG` | Text as the proofs' numbers, and the three tags |
 | `hkdf(ikm, info)`, `INFO` | The mixer and its info strings |
 
@@ -265,10 +281,12 @@ Node 22.18 or later runs the TypeScript directly.
 tags; the main keys for `tutoring/seller` and `tutoring/buyer`, each with its secret and inbox key,
 and their payment keys; for two issuers, `issuer-a.example` and `issuer-b.example`, the name hash,
 the person's secret, the note number and a stamp for each label; the vault key, with its secret and
-inbox key; and one signature by the `tutoring/seller` main key. `npm test` checks each value and
-recomputes it without the library: HKDF and keccak from `@noble/hashes`, the seed scalar step by
-step without zk-kit, Baby Jubjub's points from `@noble/curves`' own Edwards curves, the address
-packed by hand, the signature's equation, ed25519 from `@noble/curves`, the hybrid recipient from
+inbox key; one signature by the `tutoring/seller` main key; and a write key and a read key, from
+32 bytes of `0x2a` and of `0x2b`, the read key with its identity and recipient. `npm test` checks
+each value and recomputes it without the library: HKDF and keccak from `@noble/hashes`, the seed
+scalar step by step without zk-kit, Baby Jubjub's points and signatures from zk-kit
+(`@zk-kit/baby-jubjub`, `@zk-kit/eddsa-poseidon`), the address packed by hand, the signature's
+equation, ed25519 from `@noble/curves`, the hybrid recipient from
 `@noble/post-quantum`, age's bech32 by hand, and an encryption and an opening through age. The
 human proof's tests check the circuit derives the same main key and stamp
 ([proofs/human](../proofs/human/README.md)).
@@ -290,10 +308,11 @@ human proof's tests check the circuit derives the same main key and stamp
 - **It trusts the device's secure hardware and the person's password manager** to keep the seed and
   the words, and show them to no one else.
 - **It trusts its pieces, used unchanged:** Web Crypto (HKDF-SHA256, and its random source for new
-  seeds), `@noble/hashes` 2.4.0 (keccak256, SHA-512), `@noble/curves` 2.4.0 (ed25519),
-  `@scure/base` 2.4.0 (base58, bech32), `@scure/bip39` 2.4.0, `age-encryption` 0.3.1 (whose hybrid
-  runs on `@noble/post-quantum`), `@zk-kit/baby-jubjub` 1.0.3, `@zk-kit/eddsa-poseidon` 1.0.4 and
-  `poseidon-lite` 0.3.0.
+  seeds), `@noble/hashes` 2.4.0 (keccak256, SHA-256, SHA-512), `@noble/curves` 2.4.0 (ed25519, and
+  the Edwards curve arithmetic Baby Jubjub runs on, with circomlib's numbers), `@scure/base` 2.4.0
+  (base58, bech32), `@scure/bip39` 2.4.0, `age-encryption` 0.3.1 (whose hybrid runs on
+  `@noble/post-quantum`), `@zk-kit/eddsa-poseidon` 1.0.4 (`deriveSecretScalar`) and `poseidon-lite`
+  0.3.0.
 - **An issuer's name is its own to keep unique.** Two issuers under one name get the same note
   number from each person, so they can match their people.
 - **No recovery.** Lose the device and the words, and every profile and every stamp is gone.
@@ -328,7 +347,7 @@ Then that app has everything the seed opens, and nothing takes it back:
 - every inbox key, so it can open the person's private records and messages;
 - the seed scalar, so it can make human proofs for the person's profiles with their notes, and
   reputation proofs from their scores;
-- the vault, with every grant the person received and their issuers' notes.
+- the vault, with their issuers' notes.
 
 There is no rotation, so the only way out is a new seed and new profiles, moving the money first if
 there is still time. Another app that asks for 24 words takes them as an ordinary recovery phrase
@@ -342,6 +361,13 @@ the profiles it counts: both work the key out from the seed scalar inside the pr
 is the curve a proof does that on cheaply; ed25519 inside a proof costs far more. Solana's accounts
 are ed25519, so the money sits under a payment key of its own, mixed from the seed apart from the
 main key.
+
+**Why are bytes signed as their SHA-256, and not their Poseidon?**
+A record, a message or a pull is text of any length, and EdDSA-Poseidon signs one field element.
+SHA-256 turns any bytes into 32, at native speed in every browser and in Node; Poseidon over long
+text is slow in JavaScript, with no one standard way to feed it bytes. Shifted right one byte, the
+32 bytes are a field element, as keccak256 of text already is in the recipe. No proof checks a
+record's signature, so nothing asks for Poseidon there.
 
 **Why two mixers, HKDF and Poseidon?**
 They work in different places. HKDF-SHA256 mixes on the device, from the seed: it is a standard,

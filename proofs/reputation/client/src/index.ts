@@ -7,7 +7,6 @@
 //
 // Nothing here is in production: the circuit's setup is devnet only (../README.md).
 
-import { ed25519 } from '@noble/curves/ed25519.js'
 import { Group } from '@semaphore-protocol/group'
 import { poseidon4 } from 'poseidon-lite/poseidon4'
 import { groth16 } from 'snarkjs'
@@ -23,6 +22,8 @@ import {
   publicKeyOf,
   scopeOf,
   stampOf,
+  unpackSignature,
+  verifyBytes,
 } from '../../../../keys/src/index.ts'
 import { type SnarkjsProof, proofFromBytes, toBytes32 } from '../../../human/client/src/index.ts'
 import { REPUTATION_KEY } from './reputation-key.ts'
@@ -33,7 +34,7 @@ export const SLOTS = 8
 export const DEPTH = 20
 /** Every score and count is below this. */
 export const BOUND = 2n ** 32n
-/** What an index's signature starts with. 0xff starts no Solana message; the text no other signature. */
+/** What an index's signed bytes start with, after 0xff: its own text, so the signature is never anything else's. */
 export const SIGNED_PREFIX = 'forest/v1/reputation\n'
 
 /** One profile in an index's tree. */
@@ -115,7 +116,10 @@ export function buildTree(leaves: Leaf[]): Tree {
   }
 }
 
-/** What an index signs: 0xff, its text, the root as 32 big-endian bytes, the time as 8 (ms). */
+/**
+ * What an index signs: 0xff, its text, the root as 32 big-endian bytes, the time as 8 (ms). It
+ * signs them as a record is signed: EdDSA-Poseidon on Baby Jubjub, by keys/'s signBytes.
+ */
 export function signedBytes(root: bigint, time: bigint | number): Uint8Array {
   const ms = BigInt(time)
   if (!isFieldElement(root)) throw new RangeError('a root is a field element')
@@ -168,7 +172,7 @@ export function circuitInput(input: {
 
   const blank = { leaf: { stamp: 0n, scope: 0n, score: 0n, count: 0n }, path: { length: 0, index: 0, siblings: [] as bigint[] }, nameHash: 0n }
   const all = [...slots, ...Array(SLOTS - slots.length).fill(blank)] as typeof slots
-  const scope = input.show ? scopeOf(sources[0].label) : 0n
+  const scope = input.show ? scopeOf(sources[0]!.label) : 0n
   const profile = publicKeyOf(profileScalarOf(seedScalar, input.profileLabel))
 
   return {
@@ -206,7 +210,7 @@ export async function proveReputation(input: Parameters<typeof circuitInput>[0] 
   if (publicSignals.length !== 5 || publicSignals.some((s, i) => BigInt(s) !== want[i])) {
     throw new Error('the proof carries other public signals than the ones asked for')
   }
-  const [score, root, x, y, scope] = want
+  const [score, root, x, y, scope] = want as [bigint, bigint, bigint, bigint, bigint]
   const profile: Point = [x, y]
   return { score, root, profile, address: addressOf(profile), scope, proof, publicSignals }
 }
@@ -217,11 +221,12 @@ export { proofBytes, proofFromBytes } from '../../../human/client/src/index.ts'
 
 /**
  * Does this proof hold, under a root this index signed with this time, on this profile? Checks the
- * index's signature (strict ed25519), that every public value is in range, and the proof with the
- * committed verification key for this profile's key and, if one is given, this shown label. The
- * key is derived inside the proof from the same seed as every counted profile, so a proof holds
- * only on a profile of the prover's own. How old a time to accept, and which indexes to trust, is
- * the reader's choice. Anything that is not a good proof for these inputs is false.
+ * index's signature (keys/'s verifyBytes over signedBytes), that every public value is in range,
+ * and the proof with the committed verification key for this profile's key and, if one is given,
+ * this shown label. The key is derived inside the proof from the same seed as every counted
+ * profile, so a proof holds only on a profile of the prover's own. How old a time to accept, and
+ * which indexes to trust, is the reader's choice. Anything that is not a good proof for these
+ * inputs is false.
  */
 export async function verifyReputation(input: {
   /** The proof as snarkjs writes it, `proveReputation`'s `proof`, or its 256 bytes (`proofBytes`). */
@@ -232,16 +237,16 @@ export async function verifyReputation(input: {
   profile: string | Point
   /** The label shown, if the proof shows one. */
   label?: string
-  /** The index's 32-byte ed25519 key. */
-  index: Uint8Array
+  /** The index's key: its address, or its point on Baby Jubjub. */
+  index: string | Point
   /** The time the index signed with the root, in ms. */
   time: bigint | number
-  /** The index's signature over `signedBytes(root, time)`. */
+  /** The index's signature over `signedBytes(root, time)`: its 64 bytes, R8 packed then S (keys/'s packSignature). */
   signature: Uint8Array
 }): Promise<boolean> {
   try {
-    if (!(input.index instanceof Uint8Array) || input.index.length !== 32 || input.signature.length !== 64) return false
-    if (!ed25519.verify(input.signature, signedBytes(input.root, input.time), input.index, { zip215: false })) return false
+    const signature = unpackSignature(input.signature)
+    if (signature === null || !verifyBytes(input.index, signedBytes(input.root, input.time), signature)) return false
     if (input.score < 0n || input.score >= BOUND) return false
     const profile = typeof input.profile === 'string' ? pointOf(input.profile) : pointOf(addressOf(input.profile))
     const scope = input.label === undefined ? 0n : scopeOf(input.label)

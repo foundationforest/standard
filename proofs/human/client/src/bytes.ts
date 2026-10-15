@@ -28,7 +28,7 @@ export function proofBytes(proof: SnarkjsProof): Uint8Array {
 /** The proof as snarkjs writes it, from its 256 bytes. */
 export function proofFromBytes(bytes: Uint8Array): SnarkjsProof {
   if (bytes.length !== 256) throw new RangeError('a proof is 256 bytes')
-  const n = Array.from({ length: 8 }, (_, i) => coordinate(fromBytes32(bytes.subarray(i * 32, i * 32 + 32))).toString())
+  const n = Array.from({ length: 8 }, (_, i) => coordinate(fromBytes32(bytes.subarray(i * 32, i * 32 + 32))).toString()) as [string, string, string, string, string, string, string, string]
   return { pi_a: [n[0], n[1], '1'], pi_b: [[n[3], n[2]], [n[5], n[4]], ['1', '0']], pi_c: [n[6], n[7], '1'] }
 }
 

@@ -13,10 +13,9 @@ import { dirname, join } from 'node:path'
 import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 
-import { ed25519 } from '@noble/curves/ed25519.js'
 import { groth16 } from 'snarkjs'
 
-import { BN254_R, issuerSecret, mainKey, nameHashOf, scopeOf, seedScalar, stampOf } from '../../../../keys/src/index.ts'
+import { BN254_R, accessKey, issuerSecret, mainKey, nameHashOf, packSignature, scopeOf, seedScalar, signBytes, stampOf } from '../../../../keys/src/index.ts'
 import { BN254_P, fromBytes32, toBytes32 } from '../../../human/client/src/index.ts'
 import {
   buildTree,
@@ -54,11 +53,12 @@ const others = madeUp(97)
 const leaves = [...others.slice(0, 40), mine[0], ...others.slice(40, 70), mine[1], sellerAtB, mine[2], ...others.slice(70)]
 const tree = buildTree(leaves)
 
-// The index signs the root with a time.
-const indexKey = ed25519.utils.randomSecretKey()
-const index = ed25519.getPublicKey(indexKey)
+// The index signs the root with a time, with its key on Baby Jubjub.
+const sign = (key: { scalar: bigint }, root: bigint, at: bigint) => packSignature(signBytes(key.scalar, signedBytes(root, at)))
+const indexKey = accessKey(randomBytes(32))
+const index = indexKey.address
 const time = 1_791_072_000_000n
-const signature = ed25519.sign(signedBytes(tree.root, time), indexKey)
+const signature = sign(indexKey, tree.root, time)
 
 // The person shows the proof on a new profile of theirs. Someone else has a profile under the same
 // label, from their own seed.
@@ -92,12 +92,17 @@ test('global: three profiles from two issuers, no label shown, their count-weigh
   // Each public value is bound: a changed output, root or time fails.
   assert.equal(await verifyReputation({ ...shown, score: r.score + 1n }), false, 'a changed output')
   assert.equal(await verifyReputation({ ...shown, time: time + 1n }), false, 'a time the index did not sign')
-  const otherKey = ed25519.utils.randomSecretKey()
-  const forged = { index: ed25519.getPublicKey(otherKey), signature: ed25519.sign(signedBytes(r.root, time), otherKey) }
+  const otherKey = accessKey(randomBytes(32))
+  const forged = { index: otherKey.address, signature: sign(otherKey, r.root, time) }
   assert.equal(await verifyReputation({ ...shown, ...forged }), true, 'any index may sign a root; the reader picks whom to trust')
   assert.equal(await verifyReputation({ ...shown, index: forged.index }), false, 'a root this index did not sign')
+  assert.equal(await verifyReputation({ ...shown, index: indexKey.publicKey }), true, 'the index as its key')
+  const flipped = signature.slice()
+  flipped[40]! ^= 1
+  assert.equal(await verifyReputation({ ...shown, signature: flipped }), false, 'a changed signature')
+  assert.equal(await verifyReputation({ ...shown, signature: signature.subarray(1) }), false, 'not 64 bytes')
   const otherRoot = buildTree([...leaves, ...madeUp(1)]).root
-  const otherSigned = { root: otherRoot, signature: ed25519.sign(signedBytes(otherRoot, time), indexKey) }
+  const otherSigned = { root: otherRoot, signature: sign(indexKey, otherRoot, time) }
   assert.equal(await verifyReputation({ ...shown, ...otherSigned }), false, 'another root, even one the index signed')
 })
 

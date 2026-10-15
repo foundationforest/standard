@@ -246,7 +246,7 @@ export async function proveHuman(input: Parameters<typeof humanInput>[0] & { art
   if (publicSignals.length !== 8 || publicSignals.some((s, i) => BigInt(s) !== want[i])) {
     throw new Error('the proof carries other public signals than the ones asked for')
   }
-  const [stamp, px, py, ix, iy, scope, nameHash] = want
+  const [stamp, px, py, ix, iy, scope, nameHash] = want as [bigint, bigint, bigint, bigint, bigint, bigint, bigint, bigint]
   const profile: Point = [px, py]
   return {
     stamp,

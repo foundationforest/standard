@@ -39,8 +39,9 @@ Rules for apps: `keys/README.md`, Rules for apps that hold keys. Never copy them
 ```
 # Each package: install, type-check, tests that need no chain.
 # keys first: records, proofs/human/client and proofs/reputation/client read it;
-# proofs/human/client before proofs/reputation/client, which reads it.
-for d in keys records proofs/human/client escrows/solana/client proofs/reputation/client; do
+# proofs/human/client before proofs/reputation/client, which reads it; both before records,
+# whose tests read them.
+for d in keys proofs/human/client proofs/reputation/client records escrows/solana/client; do
   (cd "$d" && npm ci && npm run check && npm test)
 done
 

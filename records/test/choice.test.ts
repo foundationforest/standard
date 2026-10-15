@@ -7,12 +7,12 @@ import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 import { publish } from '../src/client.ts'
 import type { RecordChoice } from '../src/host.ts'
-import { keyFromPrivate } from '../src/keys.ts'
+import { accessKey as makeKey } from '../../keys/src/index.ts'
 import { accessRecord, hostsRecord, ownerRecord, permissionsRecord } from '../src/write.ts'
 import { DAY, T0, accessKey, alice, allow, offerBody, profileBody } from './fixtures.ts'
 import { startHost } from './helpers.ts'
 
-const freshKey = (i: number) => keyFromPrivate(new Uint8Array(32).map((_, j) => (i * 31 + j * 7 + 1) & 255))
+const freshKey = (i: number) => makeKey(new Uint8Array(32).map((_, j) => (i * 31 + j * 7 + 1) & 255))
 
 /** One host's choice: at most three content records a profile. */
 const threeEach: RecordChoice = (_record, stored) => (stored.records < 3 ? null : 'three records a profile here')
@@ -37,7 +37,7 @@ describe('host choice', () => {
     const host = await startHost({ now: () => T0, recordChoice: threeEach })
     try {
       const results = async (records: Parameters<typeof publish>[1]) => (await publish([host.url], records))[0]!.results.map((r) => r.error ?? 'ok')
-      assert.deepEqual(await results([ownerRecord(alice, 'profile', profileBody('A'), T0), ownerRecord(alice, 'offer/a', offerBody('1'), T0), ownerRecord(alice, 'offer/b', offerBody('1'), T0)]), ['ok', 'ok', 'ok'])
+      assert.deepEqual(await results([ownerRecord(alice, 'profile', profileBody('maths'), T0), ownerRecord(alice, 'offer/a', offerBody('1'), T0), ownerRecord(alice, 'offer/b', offerBody('1'), T0)]), ['ok', 'ok', 'ok'])
       assert.deepEqual(await results([ownerRecord(alice, 'offer/c', offerBody('1'), T0)]), ['refused'])
       // An access key went bad and floods: the person can always remove it, and always move.
       assert.deepEqual(await results([permissionsRecord(alice, [allow(accessKey, ['offer'])], T0)]), ['ok'])

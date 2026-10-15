@@ -3,15 +3,15 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { hkdf as nobleHkdf } from '@noble/hashes/hkdf.js'
 import { sha256 } from '@noble/hashes/sha2.js'
+import { createHash } from 'node:crypto'
 import { keccak_256 } from '@noble/hashes/sha3.js'
 import { blake512 } from '@noble/hashes/blake1.js'
 import { base58, bech32, hex } from '@scure/base'
 import { ed25519 } from '@noble/curves/ed25519.js'
-import { edwards } from '@noble/curves/abstract/edwards.js'
 import { MLKEM768X25519 } from '@noble/post-quantum/hybrid.js'
 import { Decrypter, Encrypter } from 'age-encryption'
-import { Base8, subOrder } from '@zk-kit/baby-jubjub'
-import { verifySignature } from '@zk-kit/eddsa-poseidon'
+import { Base8, addPoint, inCurve, mulPointEscalar, packPoint as zkPack, subOrder } from '@zk-kit/baby-jubjub'
+import { derivePublicKey, packSignature as zkPackSignature, signMessage as zkSign, verifySignature } from '@zk-kit/eddsa-poseidon'
 import { poseidon1 } from 'poseidon-lite/poseidon1'
 import { poseidon2 } from 'poseidon-lite/poseidon2'
 import { poseidon3 } from 'poseidon-lite/poseidon3'
@@ -22,7 +22,9 @@ import {
   SEED_LENGTH,
   TAG,
   WORD_COUNT,
+  accessKey,
   addressOf,
+  bytesMessage,
   exportWords,
   hkdf,
   importWords,
@@ -32,14 +34,21 @@ import {
   mainKey,
   nameHashOf,
   newSeed,
+  packPoint,
+  packSignature,
   payKey,
   pointOf,
   profileScalarOf,
+  readKey,
+  signBytes,
   scopeOf,
   seedScalar,
   signWithScalar,
   stampOf,
+  unpackPoint,
+  unpackSignature,
   vaultKey,
+  verifyBytes,
   verifyWithPublicKey,
   type Point,
 } from '../src/index.ts'
@@ -55,10 +64,12 @@ const utf8 = (text: string) => new TextEncoder().encode(text)
 const mix = (ikm: Uint8Array, info: string) => nobleHkdf(sha256, ikm, undefined, utf8(info), 32)
 // keccak256 of the text, shifted right one byte, from a second implementation.
 const field = (text: string) => BigInt('0x' + hex.encode(keccak_256(utf8(text)))) >> 8n
-// Baby Jubjub from a second implementation: noble's twisted Edwards curves, with circomlib's
-// parameters and Base8 as the generator of the prime-order subgroup.
-const BJJ = edwards({ p: BN254_R, n: subOrder, h: 8n, a: 168700n, d: 168696n, Gx: Base8[0], Gy: Base8[1] })
-const times = (scalar: bigint) => BJJ.BASE.multiply(scalar).toAffine()
+// Baby Jubjub from a second implementation: zk-kit's, which circomlib's circuits match. keys/ itself
+// runs on @noble/curves' twisted Edwards curves.
+const times = (scalar: bigint) => {
+  const [x, y] = mulPointEscalar(Base8, scalar)
+  return { x, y }
+}
 // A point packed by hand: y in 32 little-endian bytes, the top bit set when x is above (p - 1) / 2.
 const pack = (x: bigint, y: bigint) => {
   const out = new Uint8Array(32)
@@ -243,13 +254,38 @@ test('the main key signs: the pinned signature, again the same, and it holds', (
 
 test('the signature, checked without the library: S·Base8 = R8 + 8·Poseidon(R8, A, message)·A', () => {
   const v = vectors.signature
-  const A = BJJ.fromAffine({ x: BigInt(seller.publicKey[0]), y: BigInt(seller.publicKey[1]) })
-  const R8 = BJJ.fromAffine({ x: BigInt(v.R8[0]), y: BigInt(v.R8[1]) })
-  const hm = poseidon5([R8.x, R8.y, A.x, A.y, BigInt(v.message)])
-  const left = BJJ.BASE.multiply(BigInt(v.S))
-  const right = R8.add(A.multiply((8n * hm) % subOrder))
-  assert.ok(left.equals(right))
+  const A = big(seller.publicKey)
+  const R8 = big(v.R8)
+  const hm = poseidon5([R8[0], R8[1], A[0], A[1], BigInt(v.message)])
+  const left = mulPointEscalar(Base8, BigInt(v.S))
+  const right = addPoint(R8, mulPointEscalar(A, 8n * hm))
+  assert.deepEqual(left, right)
   assert.ok(BigInt(v.S) < subOrder)
+})
+
+test("a signature in 64 bytes: R8 packed, then S, as zk-kit packs it; and back, strictly", () => {
+  const v = vectors.signature
+  const sig = { R8: big(v.R8), S: BigInt(v.S) }
+  const bytes = packSignature(sig)
+  assert.deepEqual(Buffer.from(bytes), Buffer.from(zkPackSignature(sig)))
+  assert.deepEqual(unpackSignature(bytes), sig)
+  const sPlusL = bytes.slice()
+  for (let i = 0, v2 = sig.S + subOrder; i < 32; i++, v2 >>= 8n) sPlusL[32 + i] = Number(v2 & 0xffn)
+  assert.equal(unpackSignature(sPlusL), null, 'S plus l')
+  const noPoint = bytes.slice()
+  noPoint.fill(0x11, 0, 32)
+  assert.equal(unpackSignature(noPoint), null, 'R8 not on the curve')
+  assert.equal(unpackSignature(bytes.subarray(1)), null, '63 bytes')
+  // A point packs as zk-kit packs it, and unpacks to itself.
+  for (const p of [...vectors.mainKeys, vectors.vault]) {
+    const point = big(p.publicKey)
+    const packed = packPoint(point)
+    let n = 0n
+    for (let i = 31; i >= 0; i--) n = (n << 8n) | BigInt(packed[i]!)
+    assert.equal(n, zkPack(point))
+    assert.deepEqual(unpackPoint(packed), point)
+    assert.ok(inCurve(point))
+  }
 })
 
 test('a signature holds for its message and key only', () => {
@@ -407,4 +443,40 @@ test('the name is used exactly, and must be text; the seed is 32 bytes', async (
   await assert.rejects(issuerSecret(seed.subarray(1), issuerA.name), /seed must be 32 bytes/)
   assert.throws(() => stampOf(BN254_R, 'tutoring/seller'), /field element/)
   assert.throws(() => issuerScalarOf(-1n, issuerA.name), /field element/)
+})
+
+// Access keys, and signing bytes
+
+test("an access key's 32 bytes are a zk-kit EdDSA-Poseidon private key: the pinned keys, and zk-kit's own", async () => {
+  const v = vectors.accessKeys
+  const w = accessKey(hex.decode(v.write.secret))
+  assert.equal(w.scalar.toString(), v.write.scalar)
+  assert.equal(w.address, v.write.address)
+  assert.deepEqual(w.publicKey, derivePublicKey(hex.decode(v.write.secret)), "zk-kit's public key for the same bytes")
+  const r = await readKey(hex.decode(v.read.secret))
+  assert.equal(r.address, v.read.address)
+  assert.equal(r.identity, v.read.identity)
+  assert.equal(r.recipient, v.read.recipient)
+  // The read key's identity is mixed as an inbox key is, from the same 32 bytes: no public number gives it.
+  assert.deepEqual(await inboxKey(hex.decode(v.read.secret)), { identity: v.read.identity, recipient: v.read.recipient })
+  assert.equal(hex.encode(mix(hex.decode(v.read.secret), INFO.read)), hex.encode(await hkdf(hex.decode(v.read.secret), INFO.read)))
+  // zk-kit signs with the same bytes; the signature holds under the access key.
+  const m = 777n
+  assert.equal(verifyWithPublicKey(w.address, m, zkSign(hex.decode(v.write.secret), m)), true)
+  assert.throws(() => accessKey(new Uint8Array(31)), /32 bytes/)
+})
+
+test('bytes are signed as SHA-256 of them, shifted right one byte', () => {
+  const bytes = new TextEncoder().encode('forest/v1/record\nsome canonical text')
+  const digest = BigInt('0x' + createHash('sha256').update(bytes).digest('hex')) >> 8n
+  assert.equal(bytesMessage(bytes), digest)
+  assert.ok(digest < BN254_R)
+  const scalar = BigInt(seller.scalar)
+  const sig = signBytes(scalar, bytes)
+  assert.deepEqual(sig, signWithScalar(scalar, digest))
+  assert.equal(verifyBytes(seller.address, bytes, sig), true)
+  assert.equal(verifySignature(digest, sig, big(seller.publicKey)), true, "zk-kit's own check")
+  const other = bytes.slice()
+  other[0]! ^= 1
+  assert.equal(verifyBytes(seller.address, other, sig), false)
 })

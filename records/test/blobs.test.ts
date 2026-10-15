@@ -12,14 +12,15 @@ import { getBlob, publish, putBlob, readProfile } from '../src/client.ts'
 import type { Host } from '../src/host.ts'
 import type { Body } from '../src/record.ts'
 import { accessRecord, hostsRecord, ownerRecord, permissionsRecord } from '../src/write.ts'
-import { DAY, T0, accessKey, alice, allow, bob, offerBody, profileBody } from './fixtures.ts'
+import { DAY, T0, accessKey, alice, allow, bob, offerBody } from './fixtures.ts'
 import { Clock, startHost } from './helpers.ts'
 
 const bytesOf = (seed: number, length = 2000) => Uint8Array.from({ length }, (_, i) => (i * 7 + seed * 13) & 255)
 const nameOf = (bytes: Uint8Array) => hex.encode(sha256(bytes))
 const ref = (bytes: Uint8Array, mimeType: string) => ({ sha256: nameOf(bytes), mimeType, size: bytes.length })
-const withPhoto = (bytes: Uint8Array, mimeType = 'image/jpeg'): Body => ({ ...profileBody('Alice'), photo: ref(bytes, mimeType) })
 const withMedia = (...media: Array<[Uint8Array, string]>): Body => ({ ...offerBody('30'), media: media.map(([b, t]) => ref(b, t)) })
+/** An offer with one photo, at offer/photo. */
+const withPhoto = (bytes: Uint8Array, mimeType = 'image/jpeg'): Body => withMedia([bytes, mimeType])
 const put = async (h: Host, bytes: Uint8Array, type: string) => {
   const [outcome] = await putBlob([h.url], bytes, type)
   return outcome!.error ?? 'ok'
@@ -34,13 +35,13 @@ describe('blobs', () => {
     const h2 = await startHost({ now: () => T0 })
     try {
       const hosts = [h1.url, h2.url]
-      await publish(hosts, [hostsRecord(alice, hosts, T0), ownerRecord(alice, 'profile', withPhoto(photo), T0), ownerRecord(alice, 'offer/maths', withMedia([clip, 'video/mp4']), T0)])
+      await publish(hosts, [hostsRecord(alice, hosts, T0), ownerRecord(alice, 'offer/photo', withPhoto(photo), T0), ownerRecord(alice, 'offer/maths', withMedia([clip, 'video/mp4']), T0)])
       assert.deepEqual((await putBlob(hosts, photo, 'image/jpeg')).map((o) => [o.status, o.ok]), [[200, true], [200, true]])
       assert.deepEqual((await putBlob(hosts, clip, 'video/mp4')).map((o) => o.ok), [true, true])
       assert.deepEqual((await putBlob([h1.url], photo, 'image/jpeg'))[0]!.message, 'already here')
 
       const view = await readProfile([h1.url], alice.address, T0)
-      const named = view.current.get('profile')!.record.body!.photo as { sha256: string }
+      const named = (view.current.get('offer/photo')!.record.body!.media as Array<{ sha256: string }>)[0]!
       const got = await getBlob(view.hosts, named.sha256)
       assert.deepEqual([got!.bytes, got!.type], [photo, 'image/jpeg'])
       const res = await fetch(`${h2.url}/v1/blobs/${nameOf(clip)}`)
@@ -57,7 +58,7 @@ describe('blobs', () => {
       const wrong = await fetch(`${h.url}/v1/blobs/${nameOf(photo)}`, { method: 'PUT', headers: { 'content-type': 'image/jpeg' }, body: clip })
       assert.deepEqual([wrong.status, ((await wrong.json()) as { error: string }).error], [400, 'hash'])
       assert.equal(await put(h, photo, 'image/jpeg'), 'unnamed', 'before its record')
-      await publish([h.url], [ownerRecord(alice, 'profile', withPhoto(photo), T0)])
+      await publish([h.url], [ownerRecord(alice, 'offer/photo', withPhoto(photo), T0)])
       assert.equal(await put(h, photo, 'image/png'), 'unnamed', 'named as another type')
       assert.equal(await put(h, photo, 'image/jpeg'), 'ok', 'after its record')
 
@@ -77,7 +78,7 @@ describe('blobs', () => {
     const reference = await startHost({ now: () => T0 })
     const small = await startHost({ now: () => T0, maxBlobBytes: 1000, blobChoice: (blob) => (blob.type === 'video/mp4' ? 'no video here' : null) })
     try {
-      for (const h of [reference, small]) await publish([h.url], [ownerRecord(alice, 'profile', withPhoto(gif, 'image/gif'), T0), ownerRecord(alice, 'offer/a', withMedia([photo, 'image/png'], [bytesOf(4, 900), 'video/mp4'], [bytesOf(5, 900), 'image/gif']), T0)])
+      for (const h of [reference, small]) await publish([h.url], [ownerRecord(alice, 'offer/photo', withPhoto(gif, 'image/gif'), T0), ownerRecord(alice, 'offer/a', withMedia([photo, 'image/png'], [bytesOf(4, 900), 'video/mp4'], [bytesOf(5, 900), 'image/gif']), T0)])
       assert.equal(await put(reference, gif, 'image/gif'), 'refused', 'a gif: not a type the shapes name')
       assert.equal(await put(reference, photo, 'image/png'), 'ok')
       const [over] = await putBlob([small.url], photo, 'image/png')
@@ -110,7 +111,7 @@ describe('blobs', () => {
     try {
       const both = bytesOf(7)
       const bobs = bytesOf(8)
-      await publish([h.url], [ownerRecord(alice, 'profile', withPhoto(both), T0), ownerRecord(bob, 'profile', withPhoto(both), T0), ownerRecord(bob, 'offer/a', withMedia([bobs, 'image/png']), T0)])
+      await publish([h.url], [ownerRecord(alice, 'offer/photo', withPhoto(both), T0), ownerRecord(bob, 'offer/photo', withPhoto(both), T0), ownerRecord(bob, 'offer/a', withMedia([bobs, 'image/png']), T0)])
       assert.equal(await put(h, both, 'image/jpeg'), 'ok')
       assert.equal(await put(h, bobs, 'image/png'), 'refused')
       assert.deepEqual(seen, [[alice.address, bob.address].sort(), [bob.address]])
@@ -124,11 +125,11 @@ describe('blobs', () => {
     const h = await startHost({ now: clock.now })
     try {
       const other = bytesOf(6)
-      await publish([h.url], [ownerRecord(alice, 'profile', withPhoto(photo), T0), ownerRecord(alice, 'offer/a', withMedia([photo, 'image/jpeg'], [other, 'image/png']), T0)])
+      await publish([h.url], [ownerRecord(alice, 'offer/photo', withPhoto(photo), T0), ownerRecord(alice, 'offer/a', withMedia([photo, 'image/jpeg'], [other, 'image/png']), T0)])
       assert.deepEqual([await put(h, photo, 'image/jpeg'), await put(h, other, 'image/png')], ['ok', 'ok'])
 
-      // The card goes; the offer still names the photo.
-      await publish([h.url], [ownerRecord(alice, 'profile', null, clock.advance(DAY))])
+      // One offer goes; the other still names the photo.
+      await publish([h.url], [ownerRecord(alice, 'offer/photo', null, clock.advance(DAY))])
       await h.prune(clock.t + 31 * DAY)
       assert.ok(await h.getBlob(nameOf(photo)))
 
@@ -163,7 +164,7 @@ describe('blobs', () => {
     const good = await startHost({ now: () => T0 })
     const bad = await startHost({ now: () => T0 })
     try {
-      for (const h of [good, bad]) await publish([h.url], [ownerRecord(alice, 'profile', withPhoto(photo), T0)])
+      for (const h of [good, bad]) await publish([h.url], [ownerRecord(alice, 'offer/photo', withPhoto(photo), T0)])
       assert.deepEqual((await putBlob([good.url, bad.url], photo, 'image/jpeg')).map((o) => o.ok), [true, true])
       bad.getBlob = async () => ({ type: 'image/jpeg', bytes: clip })
       assert.equal(await getBlob([bad.url], nameOf(photo)), null)

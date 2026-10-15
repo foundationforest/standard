@@ -1,12 +1,13 @@
 // A host: plain HTTP, a SQLite file per folder, and a blob store (storage.ts). It holds no keys,
 // has no accounts and asks for no login: a record's signature is its only credential, and a pull's
-// is the recipient's main key's or message key's. It is open: it takes signed records for any
-// profile and serves them to anyone; it takes messages for any profile whose card here declares an
-// inbox, and serves them only to that profile's main key and message keys; it takes the bytes a
-// current record names, and serves them to anyone. Given readSender, it reads a sender's records
-// from one of the sender's hosts to take a message a message key signed. It keeps the newest
-// version at each path; versions that stop being newest, messages, and bytes no current record
-// names any more go after `keepDays`.
+// is the recipient's main key's or read key's. It is open: it takes signed records for any profile
+// and serves them to anyone; it takes messages for any profile whose card here declares an inbox,
+// and serves them only to that profile's main key and read keys; it takes the bytes a current
+// record names, and serves them to anyone. Given readSender, it reads a sender's records from one
+// of the sender's hosts: its permissions, to take a message a write key signed, and its card, for
+// an inbox with an issuer's rule, whose human proofs it checks with verifyHuman. It keeps the
+// newest version at each path; versions that stop being newest, messages, and bytes no current
+// record names any more go after `keepDays`.
 //
 //   POST /v1/records                      NDJSON of canonical records; one NDJSON result each
 //   GET  /v1/records?profile=&after=      NDJSON of stored records in the order taken;
@@ -30,9 +31,10 @@ import { hex, utf8 } from './bytes.ts'
 import { READ_TIMEOUT_MS } from './client.ts'
 import { publicKeyFromAddress } from './keys.ts'
 import { type CheckedMessage, type Inbox, type SignedMessage, checkPull, inboxOf, readMessage, verifyMessage } from './message.ts'
+import { type HumanCheck, humanCheck, proofsOf } from './proofs.ts'
 import { type Checked, MAX_FUTURE_MS, RecordError, type SignedRecord, decodeRecord, encodeRecord, isControlPath } from './record.ts'
 import { type BlobDriver, type Row, Storage, blobNames } from './storage.ts'
-import { type View, allowsArrival, viewProfile } from './view.ts'
+import { type View, allowsArrival, allowsInbox, viewProfile } from './view.ts'
 
 export { type BlobDriver, type S3Options, rebuild } from './storage.ts'
 
@@ -94,18 +96,19 @@ export type HostOptions = {
   /** Bytes a page holds at most, though always one line; DEFAULT_MAX_PAGE_BYTES when omitted. */
   maxPageBytes?: number
   /**
-   * Whether `from` holds a registry row from `issuer`, under any label: a registry lookup, over an
-   * RPC the host chooses. `issuer` is the issuer's key as the row holds it, in lowercase hex. Without
-   * one, the host takes messages only for inboxes open to anyone.
-   */
-  rowLookup?: (from: string, issuer: string) => Promise<boolean>
-  /**
    * A profile's records, each checked, as one of its hosts serves them: what readAll gives. Used to
-   * take a message a message key signed: the sender's hosts and permissions records come from the
-   * host the message names, never from the message. Without it, the host takes no such message. It
-   * is read again for each request; keeping it longer is the operator's choice, made here.
+   * take a message a write key signed, and one to an inbox with an issuer's rule: the sender's
+   * hosts, permissions and profile records come from the host the message names, never from the
+   * message. Without it, the host takes no such message. It is read again for each request; keeping
+   * it longer is the operator's choice, made here.
    */
   readSender?: (host: string, profile: string) => Promise<Iterable<Checked>>
+  /**
+   * Whether a human proof holds: proofs/human/client's verifyHuman, given a sender's card's proof as
+   * humanCheck makes it. Used for an inbox with an issuer's rule. Without it, the host takes
+   * messages only for inboxes open to anyone.
+   */
+  verifyHuman?: (input: HumanCheck) => Promise<boolean>
   messageChoice?: MessageChoice
   /** The largest blob it reads; DEFAULT_MAX_BLOB_BYTES when omitted. */
   maxBlobBytes?: number
@@ -131,8 +134,8 @@ export class Host {
   private readonly recordChoice?: RecordChoice
   private readonly messageChoice?: MessageChoice
   private readonly blobChoice: BlobChoice
-  private readonly rowLookup?: HostOptions['rowLookup']
   private readonly readSender?: HostOptions['readSender']
+  private readonly verifyHuman?: HostOptions['verifyHuman']
   private readonly timeout: number
   private server?: Server
   private pruning?: NodeJS.Timeout
@@ -148,8 +151,8 @@ export class Host {
     this.recordChoice = options.recordChoice
     this.messageChoice = options.messageChoice
     this.blobChoice = options.blobChoice ?? defaultBlobChoice
-    this.rowLookup = options.rowLookup
     this.readSender = options.readSender
+    this.verifyHuman = options.verifyHuman
     this.timeout = options.timeout ?? READ_TIMEOUT_MS
     this.storage = new Storage(options.dir, options.blobs)
   }
@@ -297,9 +300,9 @@ export class Host {
     if (inbox === undefined) inboxes.set(m.to, (inbox = inboxOf(this.view(m.to, now).current.get('profile')?.record.body)))
     if (inbox === null) return refuse('no_inbox', 'the profile record here declares no inbox')
     if (!verifyMessage(c)) return refuse('signature', 'the signature does not verify')
-    if (m.key !== undefined) {
-      // A message key: from's own hosts and permissions records, read from the host it names.
-      if (!this.readSender) return refuse('rule_unsupported', 'this host does not read senders’ records, so it takes no message a message key signed')
+    // from's own records, read from the host the message names, once a check needs them.
+    const readSenderView = async (): Promise<View | Answer> => {
+      if (!this.readSender) return refuse('rule_unsupported', 'this host does not read senders’ records')
       const at = `${m.from} ${m.host}`
       let sender = senders.get(at)
       if (!sender) {
@@ -310,20 +313,36 @@ export class Host {
         }
       }
       if (!sender.hosts.includes(m.host!)) return refuse('permission', 'host is not one of the hosts from’s hosts record names')
-      if (!sender.access.some((k) => k.key === m.key && k.scope === 'message')) return refuse('permission', 'from’s permissions record does not list key with scope message')
+      return sender
+    }
+    if (m.key !== undefined) {
+      // A write key: from's own hosts and permissions records list it for the inbox.
+      const sender = await readSenderView()
+      if (!('access' in sender)) return sender
+      if (!allowsInbox(sender.access, m.key, 'write')) return refuse('permission', 'from’s permissions record does not list key as a write key for the inbox')
     }
     // An inbox's rules are for others: a message whose sender is the recipient skips them.
     const rules = m.from === m.to ? undefined : inbox
     if (rules === 'unsupported') return refuse('rule_unsupported', 'this host does not know the inbox’s rule')
     if (rules && rules.senders !== 'anyone') {
-      if (!this.rowLookup) return refuse('rule_unsupported', 'this host has no registry lookup')
-      let held: boolean
+      // An issuer's rule: from's card, read from the host the message names, carries a human proof
+      // from that issuer that holds.
+      if (!this.verifyHuman) return refuse('rule_unsupported', 'this host checks no human proof')
+      if (m.host === undefined) return refuse('sender', 'a message to this inbox names host, one of from’s hosts, where its card is read')
+      const sender = await readSenderView()
+      if (!('access' in sender)) return sender
+      const issuer = rules.senders.issuer
+      const checks = proofsOf(sender.current.get('profile')?.record.body)
+        .filter((p) => p.issuer === issuer)
+        .map((p) => humanCheck(p, m.from))
+        .filter((p): p is HumanCheck => p !== null)
+      let held = false
       try {
-        held = await this.rowLookup(m.from, rules.senders.issuer)
+        for (const check of checks) if ((held = await this.verifyHuman(check))) break
       } catch (err) {
-        return refuse('lookup', `the registry lookup failed, try again: ${(err as Error).message}`)
+        return refuse('lookup', `the human proof could not be checked, try again: ${(err as Error).message}`)
       }
-      if (!held) return refuse('sender', 'from holds no registry row from the inbox’s issuer')
+      if (!held) return refuse('sender', 'from’s card carries no human proof from the inbox’s issuer that holds')
     }
     if (rules?.once && this.storage.hasOnce(m.to, m.from)) return refuse('once', 'this inbox takes one message from each sender')
     if (rules?.maxBytes !== undefined && utf8(line).length > rules.maxBytes) return refuse('too_big', `this inbox takes messages of at most ${rules.maxBytes} bytes`)
@@ -339,15 +358,15 @@ export class Host {
   }
 
   /**
-   * A pull (wire text): checked at this host's clock; one a message key signed also needs this
-   * host's current permissions record for the profile to list it with scope message [permission].
-   * Then a page of that profile's messages after the cursor, in arrival order, paged as records
-   * are. Throws RecordError.
+   * A pull (wire text): checked at this host's clock; one a read key signed also needs this host's
+   * current permissions record for the profile to list it as a read key for the inbox
+   * [permission]. Then a page of that profile's messages after the cursor, in arrival order, paged
+   * as records are. Throws RecordError.
    */
   pull(text: string, now = this.now()): { lines: string[]; cursor: number } {
     const request = checkPull(text, now)
-    if (request.key !== undefined && !this.view(request.profile, now).access.some((k) => k.key === request.key && k.scope === 'message')) {
-      throw new RecordError('permission', 'the profile’s permissions record here does not list key with scope message')
+    if (request.key !== undefined && !allowsInbox(this.view(request.profile, now).access, request.key, 'read')) {
+      throw new RecordError('permission', 'the profile’s permissions record here does not list key as a read key for the inbox')
     }
     return this.page(this.storage.messagesAfter(request.profile, request.after), request.after)
   }

@@ -3,33 +3,27 @@
 
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
-import { inboxKey, mainKey, vaultKey } from '../../keys/src/index.ts'
-import { b64u } from '../src/bytes.ts'
-import { deliver, publish, pull, readProfile } from '../src/client.ts'
-import type { Grant } from '../src/grant.ts'
-import { keyFromPrivate } from '../src/keys.ts'
-import { pullRequest } from '../src/message.ts'
-import { type Vault, VAULT_PATH, checkVault, message, openMessage, openVault, readVault, readerCount, vaultRecord } from '../src/private.ts'
+import { inboxKey, mainKey, seedScalar, vaultKey } from '../../keys/src/index.ts'
+import { noteNumberOf, noteToJson, signNote } from '../../proofs/human/client/src/index.ts'
+import { publish, readProfile } from '../src/client.ts'
+import { type Vault, VAULT_PATH, checkVault, openVault, readVault, readerCount, vaultRecord } from '../src/private.ts'
 import { RecordError } from '../src/record.ts'
-import { accessRecord, hostsRecord, ownerRecord, permissionsRecord } from '../src/write.ts'
-import { KEYS, MINUTE, OTHER_SEED, SEED, T0, allow, offerBody, profileBody } from './fixtures.ts'
+import { hostsRecord, ownerRecord } from '../src/write.ts'
+import { KEYS, MINUTE, SEED, T0, offerBody, profileBody } from './fixtures.ts'
 import { startHost } from './helpers.ts'
 
 const vault = await vaultKey(SEED)
-const vaultInbox = await inboxKey(vault.privateKey)
+const vaultInbox = await inboxKey(vault.secret)
 const code = (c: string) => (err: unknown) => err instanceof RecordError && err.code === c
-// A note an issuer signed for keys/'s test person, as registry/client's noteToJson writes it.
-const note = {
-  noteNumber: '10260738844603664161504988713473359584613684870648444840530706110060385700206',
-  embedding: 'AQIDBAUGBwgJCgsMDQ4PEA',
-  model: 'example-face-model/1',
-  tier: '2',
-  issuer: '234056d968baf183fe8d237d496d1c04188220cd33e8f8d14df9b84479736b202624393fad9b71c04b3b14d8ac45202dbb4eaff4c2d1350c9453fc08d18651fe',
-  signature: {
-    r8: ['1887297951236748735644679285430488782884537737395364719081815995454691304498', '2188413712111497275011097715999260490321570164156875446143380653326994485119'],
-    s: '1675168220040714342887697386536425370133279355717535327616772797024250766384',
-  },
-}
+// A note an example issuer signed for keys/'s test person, as proofs/human/client's noteToJson writes it.
+const note = noteToJson(
+  signNote(new Uint8Array(32).fill(0x31), {
+    noteNumber: noteNumberOf(await seedScalar(SEED), 'issuer-a.example'),
+    embedding: Uint8Array.from({ length: 16 }, (_, i) => i + 1),
+    model: 'example-face-model/1',
+    month: 202609,
+  }),
+)
 
 describe('the vault', () => {
   test('its folder is the vault key’s, no profile’s; only the vault’s inbox key opens it', async () => {
@@ -40,7 +34,7 @@ describe('the vault', () => {
     assert.equal(record.profile, vault.address)
     assert.equal(readerCount(record.body as { private: string }), 1, 'sealed to the vault alone')
     assert.deepEqual(await openVault(record.body!, vaultInbox.identity), { settings: { theme: 'dark' } })
-    const seller = await inboxKey((await mainKey(SEED, 'tutoring/seller')).privateKey)
+    const seller = await inboxKey((await mainKey(SEED, 'tutoring/seller')).secret)
     await assert.rejects(openVault(record.body!, seller.identity), 'a profile’s inbox key opens nothing in it')
   })
 
@@ -52,8 +46,7 @@ describe('the vault', () => {
   })
 
   test('a bad entry is refused, before it is sealed and after it is opened', async () => {
-    const grant: Grant = { key: b64u.encode(new Uint8Array(32).fill(5)), folder: KEYS.mainKeys[0].address, scope: 'write', paths: ['offer'], from: KEYS.mainKeys[0].address, since: T0 }
-    checkVault({ profiles: [{ label: 'tutoring/seller', hosts: ['https://a.example'] }], grants: [grant], issuerNotes: [{ issuer: 'issuer-a.example', note }] })
+    checkVault({ profiles: [{ label: 'tutoring/seller', hosts: ['https://a.example'] }], issuerNotes: [{ issuer: 'issuer-a.example', note }], settings: {} })
     const bad: [string, unknown][] = [
       ['an array', []],
       ['profiles is a list', { profiles: {} }],
@@ -62,64 +55,49 @@ describe('the vault', () => {
       ['a host that is no origin', { profiles: [{ label: 'a', hosts: ['https://a.example/path'] }] }],
       ['a host twice', { profiles: [{ label: 'a', hosts: ['https://a.example', 'https://a.example'] }] }],
       ['a profile field nobody knows', { profiles: [{ label: 'a', hosts: ['https://a.example'], since: 1 }] }],
-      ['a grant that is no grant', { grants: [{ ...grant, scope: 'admin' }] }],
       ['an issuer note with no issuer', { issuerNotes: [{ issuer: '', note }] }],
       ['a note that is no object', { issuerNotes: [{ issuer: 'issuer-a.example', note: 'x' }] }],
       ['settings is an object', { settings: [] }],
     ]
-    for (const [why, v] of bad) assert.throws(() => checkVault(v), (e: unknown) => code('vault')(e) || code('grant')(e), why)
+    for (const [why, v] of bad) assert.throws(() => checkVault(v), code('vault'), why)
     await assert.rejects(vaultRecord(vault, vaultInbox.recipient, { settings: [] } as never, T0), code('vault'))
   })
 
-  test('a full restore: a new device with only the seed and one host gets every profile, grant, note and setting back', async () => {
+  test('a full restore: a new device with only the seed and one host gets every profile, note and setting back', async () => {
     const now = () => T0 + MINUTE
     const [a, b, c] = await Promise.all([startHost({ now }), startHost({ now }), startHost({ now })])
     try {
       // The person: two profiles, each on a host of its own.
       const seller = await mainKey(SEED, 'tutoring/seller')
       const buyer = await mainKey(SEED, 'tutoring/buyer')
-      const sellerInbox = await inboxKey(seller.privateKey)
-      const sellerCard = { ...profileBody('Ana'), inboxKey: sellerInbox.recipient, inbox: { senders: 'anyone' } }
+      const sellerInbox = await inboxKey(seller.secret)
+      const sellerCard = { ...profileBody('maths'), inboxKey: sellerInbox.recipient, inbox: { senders: 'anyone' } }
       await publish([a.url], [hostsRecord(seller, [a.url], T0), ownerRecord(seller, 'profile', sellerCard, T0), ownerRecord(seller, 'offer/maths', offerBody('30'), T0)])
-      await publish([b.url], [hostsRecord(buyer, [b.url], T0), ownerRecord(buyer, 'profile', { ...profileBody('Ana'), role: 'buyer' }, T0)])
+      await publish([b.url], [hostsRecord(buyer, [b.url], T0), ownerRecord(buyer, 'profile', { ...profileBody('maths'), role: 'buyer' }, T0)])
 
-      // Someone else hands the seller an access key to their folder: a grant, in the seller's inbox.
-      const carla = await mainKey(OTHER_SEED, 'tutoring/seller')
-      const helper = keyFromPrivate(new Uint8Array(32).fill(61))
-      await publish([a.url], [hostsRecord(carla, [a.url], T0), permissionsRecord(carla, [allow(helper, ['offer'])], T0)])
-      const handed: Grant = { key: b64u.encode(helper.privateKey), folder: carla.address, scope: 'write', paths: ['offer'], from: carla.address, since: T0, note: 'Carla’s offers' }
-      await deliver([a.url], [await message(carla, seller.address, { grant: handed }, T0, sellerCard)])
-
-      // The first device pulls it, and keeps it in the vault with everything else, on a third host.
-      const page = await pull(a.url, pullRequest(seller, 0, now()))
-      const received = (await openMessage(page.messages[0]!.message, sellerInbox.identity)).body.grant as Grant
+      // The first device keeps the rest in the vault, on a third host.
       const kept: Vault = {
         profiles: [{ label: 'tutoring/seller', hosts: [a.url] }, { label: 'tutoring/buyer', hosts: [b.url] }],
-        grants: [received],
         issuerNotes: [{ issuer: 'issuer-a.example', note }],
         bookmarks: [{ url: 'https://shop.example', since: T0 }],
         settings: { indexes: ['https://index.example'], theme: 'dark' },
       }
       await publish([c.url], [hostsRecord(vault, [c.url], T0), await vaultRecord(vault, vaultInbox.recipient, kept, T0)])
       const disk = c.dump().join('\n')
-      for (const secret of [received.key, 'tutoring/seller', 'issuer-a.example', 'index.example']) assert.ok(!disk.includes(secret), `the host holds no ${secret}`)
+      for (const secret of ['tutoring/seller', 'issuer-a.example', 'index.example', note.noteNumber]) assert.ok(!disk.includes(secret), `the host holds no ${secret}`)
 
       // The new device: the seed, and one host's address. Nothing else.
       const v2 = await vaultKey(SEED)
-      const found = await readVault([c.url], { address: v2.address, identity: (await inboxKey(v2.privateKey)).identity }, now())
+      const found = await readVault([c.url], { address: v2.address, identity: (await inboxKey(v2.secret)).identity }, now())
       assert.ok(found)
       assert.deepEqual(found.vault, kept)
       assert.deepEqual(found.hosts, [c.url])
       assert.equal(found.time, T0)
       for (const p of found.vault.profiles!) {
         const view = await readProfile(p.hosts, (await mainKey(SEED, p.label)).address, now(), { post: true })
-        assert.equal(view.current.get('profile')?.record.body?.name, 'Ana', p.label)
+        assert.deepEqual(view.current.get('profile')?.record.body?.subjects, ['maths'], p.label)
       }
       assert.ok((await readProfile([a.url], seller.address, now())).current.has('offer/maths'), 'the offers come back from their hosts')
-      // The grant still signs: the helper key writes an offer into Carla's folder, as before.
-      const key = keyFromPrivate(b64u.decode(found.vault.grants![0]!.key))
-      const results = await publish([a.url], [accessRecord(key, carla.address, 'offer/from-a-new-device', offerBody('9'), T0 + 1)])
-      assert.equal(results[0]!.results[0]!.ok, true)
       assert.deepEqual(found.vault.issuerNotes, [{ issuer: 'issuer-a.example', note }])
       assert.deepEqual(found.vault.bookmarks, [{ url: 'https://shop.example', since: T0 }], 'a field an app added comes back as it was')
 

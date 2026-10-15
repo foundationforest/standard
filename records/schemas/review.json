@@ -12,8 +12,22 @@
       "maxLength": 44,
       "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$"
     },
-    "ratings": {
-      "$ref": "#/$defs/ratings"
+    "score": {
+      "type": "string",
+      "description": "From \"1\" to \"10\", with at most one decimal (\"8.5\"): decimal text, since a record holds no fractional numbers.",
+      "pattern": "^(10(\\.0)?|[1-9](\\.[0-9])?)$"
+    },
+    "offer": {
+      "type": "string",
+      "description": "Optional. The offer this review is about: its <id> in offer/<id>, in the subject's folder.",
+      "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+    },
+    "evidence": {
+      "type": "string",
+      "description": "Optional. What shows the deal took place on chain, in base58: the address of its escrow receipt, or the signature of a direct payment between the two profiles' pay addresses. An index weighs a review without evidence it can check near zero.",
+      "minLength": 32,
+      "maxLength": 88,
+      "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,88}$"
     },
     "text": {
       "type": "string",
@@ -27,37 +41,12 @@
       },
       "maxItems": 10
     },
-    "dealId": {
-      "type": "string",
-      "description": "The deal this review is about: its escrow receipt's address (base58 of 32 bytes) when it went through the escrow, else 32 random bytes as lowercase hex, chosen when the deal began. Two reviews across one deal id show both sides took part. Optional; an index weighs a review without one, or without evidence under it, near zero.",
-      "minLength": 32,
-      "maxLength": 64,
-      "pattern": "^([0-9a-f]{64}|[1-9A-HJ-NP-Za-km-z]{32,44})$"
-    },
     "createdAt": {
       "type": "string",
       "format": "date-time"
     }
   },
   "$defs": {
-    "rating": {
-      "type": "string",
-      "description": "From \"1\" to \"10\", with at most one decimal (\"8.5\"): decimal text, since a record holds no fractional numbers.",
-      "pattern": "^(10(\\.0)?|[1-9](\\.[0-9])?)$"
-    },
-    "ratings": {
-      "type": "object",
-      "description": "Optional. Ratings by name. Any name may be used; overall by convention, and a market file suggests others.",
-      "properties": {
-        "overall": {
-          "$ref": "#/$defs/rating",
-          "description": "The whole deal."
-        }
-      },
-      "additionalProperties": {
-        "$ref": "#/$defs/rating"
-      }
-    },
     "media": {
       "type": "object",
       "description": "A photo or a short video, named by the SHA-256 of its bytes.",

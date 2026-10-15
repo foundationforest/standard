@@ -49,11 +49,12 @@ one number the whole tree hashes down to.
   in the index's order: it hashes the leaves in pairs, level by level, up to one number, the root,
   so a short path shows that a leaf is in it. The circuit fixes its depth at 20, so a tree holds at
   most 1,048,576 leaves.
-- **The index signs the root with a time:** ed25519 by the index's key over
-  `0xff ‖ "forest/v1/reputation\n" ‖ root ‖ time`, the root as 32 big-endian bytes and the time as
-  8 big-endian bytes of milliseconds since 1970. Like a record's signed bytes, they start with
-  `0xff`, which starts no Solana message, then their own text, so the signature is never anything
-  else.
+- **The index signs the root with a time,** as a record is signed: EdDSA-Poseidon on Baby Jubjub
+  by the index's key, over SHA-256 of `0xff ‖ "forest/v1/reputation\n" ‖ root ‖ time`, shifted
+  right one byte ([keys](../../keys/README.md#signatures)). The root is 32 big-endian bytes and
+  the time 8 big-endian bytes of milliseconds since 1970. The bytes start with their own text, so
+  the signature is never a record's, a message's or a pull's. The index's key is an address, and
+  the signature 64 bytes, R8 packed then S.
 - **How it publishes them is its own:** every leaf's four fields, in order, with the root, the time
   and the signature, in whatever format the index chooses.
 
@@ -123,7 +124,7 @@ The stamp, the scope and the profile's key come from `keys/`, unchanged.
 | `buildTree(leaves)` | For an index: the root to sign. Refuses an empty tree, more than 2^20 leaves, a field out of range, or two leaves for one stamp |
 | `signedBytes(root, time)` | The bytes an index signs |
 | `proveReputation({ seedScalar, sources, leaves, profileLabel, show?, artifacts })` | The proof, on the device: one to eight of the person's profiles, each a `{ label, issuerName }` found in the leaves by its stamp at that issuer, shown on the profile with `profileLabel`; `show` shows the label, only with one |
-| `verifyReputation({ proof, root, score, profile, label?, index, time, signature })` | Whether the index signed the root with that time, and the proof holds for that score, shown label and `profile`, the address or key of the profile that shows it |
+| `verifyReputation({ proof, root, score, profile, label?, index, time, signature })` | Whether the index (its address or key) signed the root with that time (its 64-byte signature), and the proof holds for that score, shown label and `profile`, the address or key of the profile that shows it |
 | `proofBytes(proof)`, `proofFromBytes(bytes)` | The proof as the 256 bytes a profile record carries ([records](../../records/README.md)), and back; `verifyReputation` takes either |
 | `circuitInput({...})` | The circuit's input, for a caller that drives snarkjs itself |
 

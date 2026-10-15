@@ -10,15 +10,17 @@
 //      no access key's record counts. Otherwise the newest access key's record the current
 //      permissions record allows: its key is listed with scope write, or was write, and its paths
 //      cover the record's path (with no paths, every content path but those `profile` covers).
-//      A past write key is still listed, so what it wrote still counts; a past message key never
-//      counts; a key whose entry is gone counts for nothing. No date is checked: when a record
-//      arrived is the host's check, and a host takes nothing from a past key.
+//      A past write key is still listed, so what it wrote still counts; a read key never writes;
+//      a key whose entry is gone counts for nothing. No date is checked: when a record arrived is
+//      the host's check, and a host takes nothing from a past key.
 //   4. Newest: the later time, then the larger id. A null body is a delete.
 
 import { type AccessKey, type Checked, type HostsBody, MAX_FUTURE_MS, type PermissionsBody, type SignedRecord, isControlPath, pathCovers } from './record.ts'
 
 /** Content prefixes an access key with no `paths` does not cover: the card. */
 export const NOT_WITHOUT_PATHS = ['profile']
+/** The path an access key's paths name to act on the inbox: a write key sends, a read key pulls. */
+export const INBOX = 'inbox'
 
 export type View = {
   profile: string
@@ -45,6 +47,16 @@ export function isNewer(a: Checked, b: Checked): boolean {
 export function covers(entry: AccessKey, path: string): boolean {
   if (isControlPath(path)) return false
   return entry.paths ? entry.paths.some((p) => pathCovers(p, path)) : !NOT_WITHOUT_PATHS.some((p) => pathCovers(p, path))
+}
+
+/** Whether an access key's entry acts on the inbox: one of its paths covers `inbox`, or it has none. */
+export function actsOnInbox(entry: AccessKey): boolean {
+  return entry.paths ? entry.paths.some((p) => pathCovers(p, INBOX)) : true
+}
+
+/** Whether the access keys listed let `key` act on the inbox now, with this scope: a write key to send, a read key to pull. */
+export function allowsInbox(access: readonly AccessKey[], key: string, scope: 'write' | 'read'): boolean {
+  return access.some((k) => k.key === key && k.scope === scope && actsOnInbox(k))
 }
 
 /**

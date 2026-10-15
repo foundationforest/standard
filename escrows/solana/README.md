@@ -40,7 +40,7 @@ A buyer pays a seller for an hour of maths.
    gives it back; or both sign a split; or the arbiter or the timer, if the terms named one,
    decides ([How money leaves](#how-money-leaves)).
 5. **The receipt stays.** The escrow's account stays at its address, saying how the deal ended,
-   and each side's review names that address as its deal ([The receipt](#the-receipt)).
+   and each side's review names that address as its evidence ([The receipt](#the-receipt)).
 
 A buyer with nothing to wait for does steps 2 and 4 in one transaction: `payInOneTap`.
 
@@ -149,7 +149,7 @@ the receipt: the buyer, the seller, who opened it, the mint, the amount, the arb
 timer, who fronted the rent, when the money was there (the mark's time, or the ending's if nobody
 marked it), whether a side objected and when, how it ended, when, and what each side got. A
 receipt never closes and never changes, and its address never holds a second deal, so the address
-is the deal's id that reviews name ([records/](../../records/README.md#folders)).
+is what a review names as its deal's evidence ([records/](../../records/README.md#folders)).
 
 Every change is also an event, so an index can read outcomes from the log: `Created`, `Funded`,
 `Objected`, `Ended`, `Closed`, `RecoveredLate`, `RentSwept`.
@@ -160,8 +160,7 @@ Solana holds a deposit, its rent, in every account, and gives it back when the a
 Whoever fronts an escrow's rent signs `create` as payer, is recorded, and gets every rent back:
 the deposit account's at every ending, both rents at `close_unfunded`, and, by `sweep_rent`,
 whatever a cut in Solana's rent later frees above the receipt's minimum. Refunds arrive in SOL, to
-that key. A fee payer may front it; what it charges for that is its own choice. Registry rows
-(the registry's public statements that a profile holds an issuer's note) follow the same rule.
+that key. A fee payer may front it; what it charges for that is its own choice.
 
 One rent goes elsewhere. A payment that arrives after an escrow ended makes its closed deposit
 account again, and that payment is almost always the buyer's own, so the buyer paid that account's

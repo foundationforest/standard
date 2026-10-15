@@ -3,8 +3,8 @@
 // record, sealed once to each key, naming none of them. Each key is age's post-quantum hybrid
 // (mlkem768x25519: ML-KEM-768 with X25519); its public half is `age1pq1…`. The keys are read keys
 // the owner's app makes, one for each reader, and usually the owner's own inbox key, which keys/
-// mixes from the main key and the profile record's `inboxKey` field publishes. The record around
-// the envelope is signed as usual, so no reader can forge content for the others.
+// mixes from the profile's secret and the profile record's `inboxKey` field publishes. The record
+// around the envelope is signed as usual, so no reader can forge content for the others.
 //
 // What this does not hide: that a private record exists, its path, time and size, and how many
 // keys it was made for (one stanza each). Removing a reader means a new version made for the rest;
@@ -12,17 +12,14 @@
 // envelope ever made for it.
 //
 // A message's body is one of these envelopes, made for the recipient's inbox key and its inbox's
-// readers, or for the inbox key alone when it holds a grant. message() seals and signs one;
-// openMessage() checks one and opens it. The notes on the keys a person handed out ride in their
-// permissions record, made for their own inbox key alone. The vault, what a new device needs and
-// the seed cannot give back, the grants a person received among it, is one private record at
-// `vault` in a folder of its own, made for the vault's own inbox key alone (vault.ts).
+// readers. message() seals and signs one; openMessage() checks one and opens it. The vault, what a
+// new device needs and the seed cannot give back, is one private record at `vault` in a folder of
+// its own, made for the vault's own inbox key alone (vault.ts).
 
 import { Decrypter, Encrypter } from 'age-encryption'
 import { b64u } from './bytes.ts'
-import { type Json, canonical, parseCanonical } from './canonical.ts'
+import { canonical, parseCanonical } from './canonical.ts'
 import { readProfile, type ReadHow } from './client.ts'
-import { type Note, checkGrant, checkNote } from './grant.ts'
 import type { Key } from './keys.ts'
 import { type Sender, type SignedMessage, decodeMessage, encodeMessage, sealedTo, signMessage } from './message.ts'
 import { type Body, RecordError, type SignedRecord, isPrivate } from './record.ts'
@@ -64,18 +61,15 @@ export function readerCount(body: { private: string }): number {
 /**
  * A message to `to`'s inbox: `body` sealed, in one envelope, to the inbox key and every reader
  * `card` (to's profile record body) gives, and nothing else; then signed by the sender's own key,
- * or by a message key for its main key. A body that holds a grant is sealed to the inbox key alone:
- * a reader acts on the inbox, and a grant is a key.
+ * or by a write key for its main key.
  */
 export async function message(sender: Sender, to: string, body: Body, time: number, card: Body): Promise<SignedMessage> {
-  const keys = sealedTo(card)
-  if ('grant' in body) checkGrant(body.grant)
-  return signMessage(sender, to, await makePrivate(body, 'grant' in body ? keys.slice(0, 1) : keys), time)
+  return signMessage(sender, to, await makePrivate(body, sealedTo(card)), time)
 }
 
 /**
  * A message, as wire text or signed, checked, then its body opened with the identity of the
- * recipient's inbox key or of one of its readers. `key` is there when a message key sent it.
+ * recipient's inbox key or of one of its readers. `key` is there when a write key sent it.
  */
 export async function openMessage(message: SignedMessage | string, identity: string): Promise<{ id: string; from: string; to: string; time: number; body: Body; key?: string }> {
   const { message: m, id } = decodeMessage(typeof message === 'string' ? message : encodeMessage(message))
@@ -84,8 +78,8 @@ export async function openMessage(message: SignedMessage | string, identity: str
 
 /**
  * The vault record: the vault's contents, checked, sealed to the vault's own inbox key alone, at
- * `vault` in the vault's folder, signed by the vault key (keys/'s vaultKey; inboxKey of it for the
- * recipient). Write it after reading the current one, at a time past its time (readVault gives
+ * `vault` in the vault's folder, signed by the vault key (keys/'s vaultKey; inboxKey of its secret
+ * for the recipient). Write it after reading the current one, at a time past its time (readVault gives
  * it), to every host the vault's hosts record names.
  */
 export async function vaultRecord(vault: Key, inboxKey: string, contents: Vault, time: number): Promise<SignedRecord> {
@@ -116,20 +110,4 @@ export async function readVault(hosts: string[], vault: { address: string; ident
     throw new RecordError('host', `no vault read, and a host that may hold it failed: ${view.failed.map((f) => `${f.host} (${f.error})`).join(', ')}`)
   }
   return { vault: await openVault(current.record.body, vault.identity), hosts: view.hosts, time: current.record.time, failed: view.failed }
-}
-
-/** The notes for a permissions record (permissionsRecord's `notes`): each checked, sealed to the owner's own inbox key alone. */
-export async function makeNotes(notes: Note[], inboxKey: string): Promise<string> {
-  for (const note of notes) checkNote(note)
-  return (await makePrivate({ notes: notes as unknown as Json[] }, [inboxKey])).private
-}
-
-/** The notes a permissions record's body carries, opened with the owner's inbox key identity, each checked; none when it carries none. */
-export async function openNotes(body: Body, identity: string): Promise<Note[]> {
-  if (body.notes === undefined) return []
-  if (typeof body.notes !== 'string') throw new RecordError('permissions', 'notes is an envelope in base64url')
-  const inside = await openPrivate({ private: body.notes }, identity)
-  if (Object.keys(inside).length !== 1 || !Array.isArray(inside.notes)) throw new RecordError('grant', 'notes hold { notes: [ … ] } and nothing else')
-  for (const note of inside.notes) checkNote(note)
-  return inside.notes as unknown as Note[]
 }

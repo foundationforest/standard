@@ -1,9 +1,9 @@
 # Every pull request and every push to main: each Node package's type-check and tests that need no
 # chain (keys is installed first: records, the human proof's client and the reputation client read
-# it), the Solana escrow built as SBPF v3 with its LiteSVM tests, and each circuit (reputation, and
-# the human proof's) compiled, checked against its devnet setup, and tested. After a merge, every
-# package type-checks together. Nightly, and by hand: the escrow's fuzzer. A test that skips fails
-# its step: the summary must say "# skipped 0".
+# it; records' tests also read both proofs' clients), the Solana escrow built as SBPF v3 with its
+# LiteSVM tests, and each circuit (reputation, and the human proof's) compiled, checked against its
+# devnet setup, and tested. After a merge, every package type-checks together. Nightly, and by
+# hand: the escrow's fuzzer. A test that skips fails its step: the summary must say "# skipped 0".
 
 name: checks
 
@@ -40,7 +40,7 @@ jobs:
           - package: keys
             install: keys
           - package: records
-            install: keys records
+            install: keys proofs/human/client proofs/reputation/client records
           - package: proofs/human/client
             install: keys proofs/human/client
           - package: escrows/solana/client

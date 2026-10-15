@@ -1,29 +1,36 @@
 // The inbox: a profile's card declares one, anyone may deliver a sealed message to it on the
 // profile's hosts, sealed to its inbox key and its readers, and only the profile's main key and its
-// message keys pull it. A message key also sends for its main key. Each check a host runs on a
-// delivery is tried here, in the standard's order, and so is each way to pull what is not yours.
+// read keys pull it. A write key also sends for its main key. Each check a host runs on a delivery
+// is tried here, in the standard's order, and so is each way to pull what is not yours. The issuer
+// rule runs proofs/human/client's own verifier on the example card's human proof.
 
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { describe, test } from 'node:test'
-import { inboxKey } from '../../keys/src/index.ts'
+import { inboxKey, accessKey as makeAccessKey, readKey } from '../../keys/src/index.ts'
+import { verifyHuman } from '../../proofs/human/client/src/index.ts'
 import { canonical } from '../src/canonical.ts'
 import { deliver, publish, pull, readAll, readProfile } from '../src/client.ts'
 import { DEFAULT_MAX_LINE_BYTES, type Host, type HostOptions } from '../src/host.ts'
 import type { Key } from '../src/keys.ts'
-import { type SignedMessage, encodeMessage, inboxOf, pullRequest, readMessage, sealedTo, signMessage, verifyMessage } from '../src/message.ts'
+import { type Sender, type SignedMessage, encodeMessage, inboxOf, pullRequest, readMessage, sealedTo, signMessage, verifyMessage } from '../src/message.ts'
 import { makePrivate, message, openMessage, readerCount } from '../src/private.ts'
+import type { HumanCheck } from '../src/proofs.ts'
 import { type AccessKey, type Body, RecordError } from '../src/record.ts'
 import { hostsRecord, ownerRecord, permissionsRecord } from '../src/write.ts'
-import { DAY, MINUTE, T0, accessKey, alice, aliceBuyer, allow, bob, messageKey, pastKey, profileBody, stranger } from './fixtures.ts'
+import { DAY, MINUTE, T0, accessKey, alice, aliceBuyer, allow, bob, pastKey, profileBody, reader, stranger } from './fixtures.ts'
 import { Clock, startHost } from './helpers.ts'
 
-const [aliceInbox, aliceBuyerInbox, bobInbox] = await Promise.all([inboxKey(alice.privateKey), inboxKey(aliceBuyer.privateKey), inboxKey(bob.privateKey)])
-/** Two read keys Alice's app made, for a helper and for her other device. */
-const [helperRead, deviceRead] = await Promise.all([inboxKey(new Uint8Array(32).fill(11)), inboxKey(new Uint8Array(32).fill(12))])
-/** An issuer, named by its key as a registry row holds it, x then y in hex: the registry fixtures' issuer A. */
-const ISSUER = '1f94c72d4e5d0f9f6d4ea3b1135b4af2eaec6d14ebe63a96a2f136236887c09611bfedb43d85cb0ead1845d088ba92eb5c96715cde3ccf90607eb007285c2ea6'
+const [aliceInbox, aliceBuyerInbox, bobInbox] = await Promise.all([inboxKey(alice.secret), inboxKey(aliceBuyer.secret), inboxKey(bob.secret)])
+/** A second read key Alice's app made, for her other device. */
+const device = await readKey(new Uint8Array(32).fill(12))
+/** The example card (schemas/examples/profile.json) is Alice's: its human proof is from an example issuer, for her key. */
+const EXAMPLE = JSON.parse(readFileSync(new URL('../schemas/examples/profile.json', import.meta.url), 'utf8'))
+const HUMAN = EXAMPLE.proofs.find((p: { circuit: string }) => p.circuit === 'human')
+/** That issuer, named by its key, x then y in hex. */
+const ISSUER: string = HUMAN.issuer
 
-const card = (inbox?: Body | string, name = 'Alice') => ({ ...profileBody(name), inboxKey: aliceInbox.recipient, ...(inbox !== undefined && { inbox }) })
+const card = (inbox?: Body | string, subject = 'maths') => ({ ...profileBody(subject), inboxKey: aliceInbox.recipient, ...(inbox !== undefined && { inbox }) })
 const ANYONE = { senders: 'anyone' }
 
 /** A host, at T0 unless given a clock, holding Alice's card with this inbox. */
@@ -32,7 +39,7 @@ async function hostWith(inbox: Body | string | undefined, options: HostOptions =
   await publish([h.url], [ownerRecord(alice, 'profile', card(inbox), T0)])
   return h
 }
-const note = (from: Key = bob, text = 'Is Tuesday at six free?', time = T0) => message(from, alice.address, { text, createdAt: '2026-10-02T12:00:00Z' }, time, card(ANYONE))
+const note = (from: Sender = bob, text = 'Is Tuesday at six free?', time = T0) => message(from, alice.address, { text, createdAt: '2026-10-02T12:00:00Z' }, time, card(ANYONE))
 const errors = async (h: Host, messages: SignedMessage[]) => (await deliver([h.url], messages))[0]!.results.map((r) => r.error ?? 'ok')
 const pulled = async (h: Host, after = 0, time = T0, owner: Key = alice) => pull(h.url, pullRequest(owner, after, time))
 const refusal = async (promise: Promise<unknown>) => promise.then(() => 'ok', (err: unknown) => (err instanceof RecordError ? err.code : String(err)))
@@ -40,16 +47,16 @@ const code = (c: string) => (err: unknown) => err instanceof RecordError && err.
 
 /** How a host reads a sender's records: from the host the message names, each checked. */
 const readSender = async (url: string, profile: string) => (await readAll(url, { profile })).records
-const bobCard = { ...profileBody('Bob'), role: 'buyer', inboxKey: bobInbox.recipient, inbox: ANYONE }
-/** A message key's sender: signing for `from`, whose records live on `host`. */
-const viaKey = (host: string, key: Key = messageKey, from = alice.address) => ({ key, from, host })
-const toBob = (sender: Key | ReturnType<typeof viaKey>, text = 'Tuesday works.') => message(sender, bob.address, { text }, T0, bobCard)
+const bobCard = { ...profileBody('maths'), role: 'buyer', inboxKey: bobInbox.recipient, inbox: ANYONE }
+/** A write key's sender: signing for `from`, whose records live on `host`. */
+const viaKey = (host: string, key: Key = accessKey, from = alice.address) => ({ key, from, host })
+const toBob = (sender: Sender, text = 'Tuesday works.') => message(sender, bob.address, { text }, T0, bobCard)
 
 /**
  * Alice's folder on her own host, listing these access keys, with her card; Bob's inbox on another
  * host, which reads senders' records.
  */
-async function twoHosts(access: AccessKey[] = [allow(messageKey, undefined, 'message')], options: HostOptions = {}, aliceCard: Body = card(ANYONE)) {
+async function twoHosts(access: AccessKey[] = [allow(accessKey, ['inbox'])], options: HostOptions = {}, aliceCard: Body = card(ANYONE)) {
   const home = await startHost({ now: () => T0, readSender })
   const inbox = await startHost({ now: () => T0, readSender, ...options })
   await publish([home.url], [hostsRecord(alice, [home.url], T0), permissionsRecord(alice, access, T0), ownerRecord(alice, 'profile', aliceCard, T0)])
@@ -81,7 +88,7 @@ describe('messages', () => {
     assert.throws(() => signMessage(bob, alice.address, { text: 'hi' } as never, T0), /body/)
     assert.throws(() => signMessage(bob, alice.address, { ...sealed, extra: 'x' } as never, T0), /body/)
     assert.throws(() => signMessage(bob, 'not an address', sealed, T0), /to is not/)
-    assert.throws(() => signMessage({ ...bob, address: alice.address }, alice.address, sealed, T0), /private key/)
+    assert.throws(() => signMessage({ ...bob, address: alice.address }, alice.address, sealed, T0), /not the one named to sign/)
     const m = signMessage(bob, alice.address, sealed, T0)
     for (const [text, code] of [
       [JSON.stringify(m, null, 1), 'canonical'],
@@ -97,21 +104,21 @@ describe('messages', () => {
     assert.equal(inboxOf({ private: 'abc' }), null, 'a private card declares nothing a host can read')
     assert.deepEqual(inboxOf(card(ANYONE)), { senders: 'anyone' })
     assert.deepEqual(inboxOf(card({ senders: { issuer: ISSUER }, once: true, maxBytes: 4000 })), { senders: { issuer: ISSUER }, once: true, maxBytes: 4000 })
-    assert.deepEqual(inboxOf(card({ ...ANYONE, readers: [helperRead.recipient] })), { senders: 'anyone', readers: [helperRead.recipient] })
-    for (const inbox of ['anyone', {}, { senders: 'everyone' }, { senders: { deposit: '5' } }, { senders: { issuer: 'x' } }, { senders: { issuer: stranger.address } }, { senders: { issuer: ISSUER.toUpperCase() } }, { senders: { issuer: ISSUER.slice(2) } }, { senders: { issuer: ISSUER + '00' } }, { senders: { issuer: ISSUER, label: 'x' } }, { ...ANYONE, once: false }, { ...ANYONE, maxBytes: -1 }, { ...ANYONE, deposit: '5' }, { ...ANYONE, readers: helperRead.recipient }, { ...ANYONE, readers: [alice.address] }]) {
+    assert.deepEqual(inboxOf(card({ ...ANYONE, readers: [reader.recipient] })), { senders: 'anyone', readers: [reader.recipient] })
+    for (const inbox of ['anyone', {}, { senders: 'everyone' }, { senders: { deposit: '5' } }, { senders: { issuer: 'x' } }, { senders: { issuer: stranger.address } }, { senders: { issuer: ISSUER.toUpperCase() } }, { senders: { issuer: ISSUER.slice(2) } }, { senders: { issuer: ISSUER + '00' } }, { senders: { issuer: ISSUER, label: 'x' } }, { ...ANYONE, once: false }, { ...ANYONE, maxBytes: -1 }, { ...ANYONE, deposit: '5' }, { ...ANYONE, readers: reader.recipient }, { ...ANYONE, readers: [alice.address] }]) {
       assert.equal(inboxOf(card(inbox as Body)), 'unsupported', JSON.stringify(inbox))
     }
   })
 })
 
 describe('readers', () => {
-  const withReaders = card({ ...ANYONE, readers: [helperRead.recipient, deviceRead.recipient] })
+  const withReaders = card({ ...ANYONE, readers: [reader.recipient, device.recipient] })
 
   test('a message is sealed, in one envelope, to the inbox key and every reader the inbox lists; each opens it, and nobody else', async () => {
-    assert.deepEqual(sealedTo(withReaders), [aliceInbox.recipient, helperRead.recipient, deviceRead.recipient])
+    assert.deepEqual(sealedTo(withReaders), [aliceInbox.recipient, reader.recipient, device.recipient])
     const m = await message(bob, alice.address, { text: 'hi' }, T0, withReaders)
     assert.equal(readerCount(m.body), 3)
-    for (const k of [aliceInbox, helperRead, deviceRead]) assert.equal((await openMessage(m, k.identity)).body.text, 'hi')
+    for (const k of [aliceInbox, reader, device]) assert.equal((await openMessage(m, k.identity)).body.text, 'hi')
     await assert.rejects(openMessage(m, aliceBuyerInbox.identity))
   })
 
@@ -121,19 +128,19 @@ describe('readers', () => {
     await assert.rejects(message(bob, alice.address, { text: 'hi' }, T0, card()), code('no_inbox'))
   })
 
-  test('a reader listed in the profile acts while the person is away: with a message key too, it pulls, opens and answers', async () => {
-    const access = [allow(messageKey, undefined, 'message'), { key: helperRead.recipient, scope: 'read' as const }]
-    const { home, inbox, close } = await twoHosts(access, {}, card({ ...ANYONE, readers: [helperRead.recipient] }))
+  test('a read key the profile lists acts while the person is away: it pulls and opens, and with a write key it answers', async () => {
+    const access = [allow(accessKey, ['inbox']), allow(reader, ['inbox'], 'read')]
+    const { home, inbox, close } = await twoHosts(access, {}, card({ ...ANYONE, readers: [reader.recipient] }))
     try {
       // Bob writes to Alice; her phone is off.
       const card = (await readProfile([home.url], alice.address, T0)).current.get('profile')!.record.body!
       assert.deepEqual(await errors(home, [await message(bob, alice.address, { text: 'Is Tuesday at six free?' }, T0, card)]), ['ok'])
-      // The helper holds a read key and a message key: it pulls, opens, and answers Bob for Alice.
-      const page = await pull(home.url, pullRequest({ key: messageKey, profile: alice.address }, 0, T0))
-      assert.equal((await openMessage(page.messages[0]!.message, helperRead.identity)).body.text, 'Is Tuesday at six free?')
+      // A helper holds the read key and the write key: it pulls, opens, and answers Bob for Alice.
+      const page = await pull(home.url, pullRequest({ key: reader, profile: alice.address }, 0, T0))
+      assert.equal((await openMessage(page.messages[0]!.message, reader.identity)).body.text, 'Is Tuesday at six free?')
       assert.deepEqual(await errors(inbox, [await toBob(viaKey(home.url), 'Tuesday at six, yes.')]), ['ok'])
       const answer = await openMessage((await pull(inbox.url, pullRequest(bob, 0, T0))).messages[0]!.message, bobInbox.identity)
-      assert.deepEqual([answer.from, answer.key, answer.body.text], [alice.address, messageKey.address, 'Tuesday at six, yes.'])
+      assert.deepEqual([answer.from, answer.key, answer.body.text], [alice.address, accessKey.address, 'Tuesday at six, yes.'])
     } finally {
       await close()
     }
@@ -243,37 +250,47 @@ describe('deliver and pull', () => {
     }
   })
 
-  test('the issuer rule: from needs a row from that issuer, under any label; a host without a lookup answers rule_unsupported; a lookup that fails is lookup, never sender', async () => {
-    const asked: string[][] = []
-    const rows = async (from: string, issuer: string) => {
-      asked.push([from, issuer])
-      return from === bob.address && issuer === ISSUER
-    }
-    const rule = { senders: { issuer: ISSUER } }
-    const h = await hostWith(rule, { rowLookup: rows })
-    const none = await hostWith(rule)
+  test('the issuer rule: from’s card, read from the host the message names, carries a human proof from that issuer that holds for from, under any label; a host that checks none answers rule_unsupported; a check that fails is lookup, never sender', async () => {
+    assert.equal(HUMAN.label, 'tutoring/seller', 'the example card is Alice’s')
+    const checked: string[] = []
+    const counted = async (input: HumanCheck) => (checked.push(input.profile), verifyHuman(input))
+    const { home, inbox, close } = await twoHosts(undefined, { verifyHuman: counted }, { ...card(ANYONE), proofs: [HUMAN] })
+    const none = await startHost({ now: () => T0, readSender })
     let down = true
-    const flaky = await hostWith(rule, {
-      rowLookup: async (from, issuer) => {
-        if (down) throw new Error('RPC unreachable')
-        return rows(from, issuer)
+    const flaky = await startHost({
+      now: () => T0,
+      readSender,
+      verifyHuman: async (input) => {
+        if (down) throw new Error('verifier unreachable')
+        return verifyHuman(input)
       },
     })
     try {
-      assert.deepEqual(await errors(h, [await note(bob), await note(aliceBuyer)]), ['ok', 'sender'])
-      assert.deepEqual(asked, [[bob.address, ISSUER], [aliceBuyer.address, ISSUER]])
-      assert.deepEqual(await errors(none, [await note(bob)]), ['rule_unsupported'])
-      const m = await note(bob)
+      const ruled = (issuer: string, time = T0 + 1) => ownerRecord(bob, 'profile', { ...bobCard, inbox: { senders: { issuer } } }, time)
+      for (const h of [inbox, none, flaky]) await publish([h.url], [ruled(ISSUER)])
+      // Alice's other profile carries her proof too, copied: it holds only for the key it was made for.
+      await publish([home.url], [hostsRecord(aliceBuyer, [home.url], T0), ownerRecord(aliceBuyer, 'profile', { ...profileBody('x'), role: 'buyer', proofs: [HUMAN] }, T0)])
+      const fromHome = (from: Key) => ({ from, host: home.url })
+      assert.deepEqual(
+        await errors(inbox, [await toBob(fromHome(alice)), await toBob(alice, 'naming no host'), await toBob(fromHome(aliceBuyer), 'a proof made for another key'), await toBob(fromHome(stranger), 'no records there')]),
+        ['ok', 'sender', 'sender', 'permission'],
+      )
+      assert.deepEqual(checked, [alice.address, aliceBuyer.address], 'each proof checked for the profile whose card carries it')
+      await publish([inbox.url], [ruled('ab'.repeat(64), T0 + 2)])
+      assert.deepEqual(await errors(inbox, [await toBob(fromHome(alice), 'another issuer')]), ['sender'])
+
+      assert.deepEqual(await errors(none, [await toBob(fromHome(alice))]), ['rule_unsupported'])
+      const m = await toBob(fromHome(alice))
       const [outcome] = await deliver([flaky.url], [m])
       assert.equal(outcome!.results[0]!.error, 'lookup')
-      assert.match(outcome!.results[0]!.message!, /RPC unreachable/)
+      assert.match(outcome!.results[0]!.message!, /verifier unreachable/)
       down = false
       assert.deepEqual(await errors(flaky, [m]), ['ok'], 'the same message, again: nothing was kept the first time')
-      // A host without a lookup still takes an inbox open to anyone.
-      await publish([none.url], [ownerRecord(alice, 'profile', card(ANYONE), T0 + 1)])
-      assert.deepEqual(await errors(none, [await note(aliceBuyer)]), ['ok'])
+      // A host that checks no human proof still takes an inbox open to anyone.
+      await publish([none.url], [ownerRecord(bob, 'profile', bobCard, T0 + 2)])
+      assert.deepEqual(await errors(none, [await toBob(aliceBuyer)]), ['ok'])
     } finally {
-      await h.close()
+      await close()
       await none.close()
       await flaky.close()
     }
@@ -281,7 +298,7 @@ describe('deliver and pull', () => {
 
   test('an inbox the host cannot read is refused as rule_unsupported, never taken as open to anyone', async () => {
     for (const inbox of [{ senders: { deposit: '5' } }, { ...ANYONE, deposit: '5' }, { ...ANYONE, once: 'yes' }, 'anyone']) {
-      const h = await hostWith(inbox as Body, { rowLookup: async () => true })
+      const h = await hostWith(inbox as Body, { readSender, verifyHuman: async () => true })
       try {
         assert.deepEqual(await errors(h, [await note()]), ['rule_unsupported'], JSON.stringify(inbox))
       } finally {
@@ -358,59 +375,68 @@ describe('deliver and pull', () => {
   })
 })
 
-describe('message keys', () => {
-  test('a message key signs for its main key: from is the main key, key and host name the signer and where its permissions live', async () => {
+describe('write keys', () => {
+  test('a write key signs for its main key: from is the main key, key and host name the signer and where its permissions live', async () => {
     const sealed = await makePrivate({ text: 'hi' }, [bobInbox.recipient])
     const m = signMessage(viaKey('https://host-a.example'), bob.address, sealed, T0)
-    assert.deepEqual([m.from, m.key, m.host], [alice.address, messageKey.address, 'https://host-a.example'])
+    assert.deepEqual([m.from, m.key, m.host], [alice.address, accessKey.address, 'https://host-a.example'])
     assert.ok(verifyMessage(readMessage(encodeMessage(m))), 'signed by key')
     assert.equal(verifyMessage(readMessage(encodeMessage({ ...m, key: stranger.address }))), false)
     const { key: _k, ...noKey } = m
     const { host: _h, ...noHost } = m
+    assert.equal(verifyMessage(readMessage(canonical(noKey))), false, 'host alone is a shape that holds, and from did not sign this')
     for (const [why, value, c] of [
       ['key without host', noHost, 'shape'],
-      ['host without key', noKey, 'shape'],
       ['key is from', { ...m, key: alice.address }, 'shape'],
       ['key not usable', { ...m, key: 'x' }, 'key'],
       ['host with a path', { ...m, host: 'https://a.example/inbox' }, 'shape'],
       ['host over http', { ...m, host: 'http://a.example' }, 'shape'],
     ] as const) assert.throws(() => readMessage(canonical(value)), code(c), why)
-    assert.throws(() => signMessage({ ...viaKey('https://host-a.example'), key: { ...messageKey, address: stranger.address } }, bob.address, sealed, T0), /private key/)
+    assert.throws(() => signMessage({ ...viaKey('https://host-a.example'), key: { ...accessKey, address: stranger.address } }, bob.address, sealed, T0), /not the one named to sign/)
+    // The main key may name one of its hosts too, for an inbox with an issuer's rule.
+    const own = signMessage({ from: alice, host: 'https://host-a.example' }, bob.address, sealed, T0)
+    assert.deepEqual([own.from, 'key' in own, own.host], [alice.address, false, 'https://host-a.example'])
+    assert.ok(verifyMessage(readMessage(encodeMessage(own))))
   })
 
-  test('a host takes it once it reads, from the host the message names, that from’s hosts record names that host and its permissions record lists key with scope message; the recipient sees key', async () => {
+  test('a host takes it once it reads, from the host the message names, that from’s hosts record names that host and its permissions record lists key as a write key for the inbox; the recipient sees key', async () => {
     const { home, inbox, close } = await twoHosts()
     try {
       assert.deepEqual(await errors(inbox, [await toBob(viaKey(home.url))]), ['ok'])
       const opened = await openMessage((await pull(inbox.url, pullRequest(bob, 0, T0))).messages[0]!.message, bobInbox.identity)
-      assert.deepEqual([opened.from, opened.key, opened.body.text], [alice.address, messageKey.address, 'Tuesday works.'])
+      assert.deepEqual([opened.from, opened.key, opened.body.text], [alice.address, accessKey.address, 'Tuesday works.'])
       const plain = await openMessage(await toBob(alice), bobInbox.identity)
       assert.equal('key' in plain, false, 'a message the main key signed names no key')
+      // A write key with no paths acts on every path, the inbox among them.
+      await publish([home.url], [permissionsRecord(alice, [allow(accessKey)], T0 + 1)])
+      assert.deepEqual(await errors(inbox, [await toBob(viaKey(home.url), 'with no paths')]), ['ok'])
     } finally {
       await close()
     }
   })
 
-  test('refused: a key not listed, listed as write, or past, a host from does not name, a profile that lists no such key [permission]; a forged signature [signature]; a host that does not answer [lookup]; a host that reads no senders [rule_unsupported]', async () => {
-    const { home, inbox, close } = await twoHosts([allow(messageKey, undefined, 'message'), allow(accessKey)])
+  test('refused: a key not listed, a write key for other paths, a read key, a past key, a host from does not name, a profile that lists no such key [permission]; a forged signature [signature]; a host that does not answer [lookup]; a host that reads no senders [rule_unsupported]', async () => {
+    const offers = makeAccessKey(new Uint8Array(32).fill(44)) // a write key for offers only
+    const { home, inbox, close } = await twoHosts([allow(accessKey, ['inbox']), allow(offers, ['offer']), allow(reader, undefined, 'read')])
     const other = await startHost({ now: () => T0 })
     try {
       // Another host serves Alice's records, but her hosts record does not name it.
-      await publish([other.url], [hostsRecord(alice, [home.url], T0), permissionsRecord(alice, [allow(messageKey, undefined, 'message')], T0), ownerRecord(bob, 'profile', bobCard, T0)])
-      const forged = { ...(await toBob(viaKey(home.url, stranger))), key: messageKey.address }
+      await publish([other.url], [hostsRecord(alice, [home.url], T0), permissionsRecord(alice, [allow(accessKey, ['inbox'])], T0), ownerRecord(bob, 'profile', bobCard, T0)])
+      const forged = { ...(await toBob(viaKey(home.url, stranger))), key: accessKey.address }
       const results = await errors(inbox, [
         await toBob(viaKey(home.url, stranger), 'not listed'),
-        await toBob(viaKey(home.url, accessKey), 'a write key'),
+        await toBob(viaKey(home.url, offers), 'a write key for offers only'),
+        await toBob(viaKey(home.url, reader), 'a read key: it never writes'),
         await toBob(viaKey(other.url), 'a host she does not name'),
-        await toBob(viaKey(home.url, messageKey, aliceBuyer.address), 'for a profile that lists no such key'),
+        await toBob(viaKey(home.url, accessKey, aliceBuyer.address), 'for a profile that lists no such key'),
         forged,
         await toBob(viaKey('http://127.0.0.1:9'), 'a host that does not answer'),
       ])
-      assert.deepEqual(results, ['permission', 'permission', 'permission', 'permission', 'signature', 'lookup'])
+      assert.deepEqual(results, ['permission', 'permission', 'permission', 'permission', 'permission', 'signature', 'lookup'])
       assert.deepEqual(await errors(other, [await toBob(viaKey(home.url))]), ['rule_unsupported'], 'a host without readSender')
 
       // Past: the next request reads her permissions record again.
-      await publish([home.url], [permissionsRecord(alice, [pastKey(messageKey, 'message')], T0 + 1)])
+      await publish([home.url], [permissionsRecord(alice, [pastKey(accessKey, ['inbox'])], T0 + 1)])
       assert.deepEqual(await errors(inbox, [await toBob(viaKey(home.url), 'after revoking')]), ['permission'])
     } finally {
       await close()
@@ -418,13 +444,13 @@ describe('message keys', () => {
     }
   })
 
-  test('the inbox’s rule and once apply to from, never to the message key', async () => {
-    const asked: string[] = []
-    const { home, inbox, close } = await twoHosts(undefined, { rowLookup: async (from) => (asked.push(from), true) })
+  test('the inbox’s rule and once apply to from, never to the write key', async () => {
+    const checked: string[] = []
+    const { home, inbox, close } = await twoHosts(undefined, { verifyHuman: async (input) => (checked.push(input.profile), verifyHuman(input)) }, { ...card(ANYONE), proofs: [HUMAN] })
     try {
       await publish([inbox.url], [ownerRecord(bob, 'profile', { ...bobCard, inbox: { senders: { issuer: ISSUER }, once: true } }, T0 + 1)])
-      assert.deepEqual(await errors(inbox, [await toBob(viaKey(home.url)), await toBob(alice, 'And from the main key?')]), ['ok', 'once'])
-      assert.deepEqual(asked, [alice.address, alice.address])
+      assert.deepEqual(await errors(inbox, [await toBob(viaKey(home.url)), await toBob({ from: alice, host: home.url }, 'And from the main key?')]), ['ok', 'once'])
+      assert.deepEqual(checked, [alice.address, alice.address])
     } finally {
       await close()
     }
@@ -446,21 +472,24 @@ describe('message keys', () => {
 })
 
 describe('pulling', () => {
-  test('a message key the permissions record here lists pulls; a past one, a write key or a key not listed is refused as permission', async () => {
+  test('a read key the permissions record here lists for the inbox pulls; a read key for other paths, a write key, or a key not listed is refused as permission', async () => {
     const h = await hostWith(ANYONE)
     try {
       await deliver([h.url], [await note()])
       const byKey = (key: Key) => pullRequest({ key, profile: alice.address }, 0, T0)
-      assert.equal(await refusal(pull(h.url, byKey(messageKey))), 'permission', 'no permissions record here yet')
-      await publish([h.url], [permissionsRecord(alice, [allow(messageKey, undefined, 'message'), allow(accessKey)], T0)])
-      assert.equal((await pull(h.url, byKey(messageKey))).messages.length, 1)
-      assert.equal(await refusal(pull(h.url, byKey(accessKey))), 'permission', 'a write key')
+      assert.equal(await refusal(pull(h.url, byKey(reader))), 'permission', 'no permissions record here yet')
+      await publish([h.url], [permissionsRecord(alice, [allow(reader, ['inbox'], 'read'), allow(device, ['offer'], 'read'), allow(accessKey)], T0)])
+      assert.equal((await pull(h.url, byKey(reader))).messages.length, 1)
+      assert.equal(await refusal(pull(h.url, byKey(device))), 'permission', 'a read key for offers only')
+      assert.equal(await refusal(pull(h.url, byKey(accessKey))), 'permission', 'a write key, even one for every path')
       assert.equal(await refusal(pull(h.url, byKey(stranger))), 'permission', 'not listed')
-      assert.equal(await refusal(pull(h.url, { ...byKey(messageKey), key: stranger.address })), 'signature')
-      assert.equal(await refusal(pull(h.url, { ...byKey(messageKey), profile: bob.address })), 'signature')
+      assert.equal(await refusal(pull(h.url, { ...byKey(reader), key: stranger.address })), 'signature')
+      assert.equal(await refusal(pull(h.url, { ...byKey(reader), profile: bob.address })), 'signature')
       assert.throws(() => pullRequest({ key: alice, profile: alice.address }, 0, T0), code('shape'), 'the main key signs without key')
-      await publish([h.url], [permissionsRecord(alice, [pastKey(messageKey, 'message')], T0 + 1)])
-      assert.equal(await refusal(pull(h.url, byKey(messageKey))), 'permission', 'past')
+      // A read key with no paths pulls too; one no longer listed does not.
+      await publish([h.url], [permissionsRecord(alice, [allow(device, undefined, 'read')], T0 + 1)])
+      assert.equal((await pull(h.url, byKey(device))).messages.length, 1)
+      assert.equal(await refusal(pull(h.url, byKey(reader))), 'permission', 'no longer listed')
     } finally {
       await h.close()
     }
@@ -498,7 +527,7 @@ describe('pulling', () => {
   test('a pull answers that profile’s messages after the cursor, in arrival order, paged as the host chooses', async () => {
     const h = await hostWith(ANYONE, { maxPageRecords: 2 })
     try {
-      const buyerCard = { ...card(ANYONE, 'A.'), inboxKey: aliceBuyerInbox.recipient }
+      const buyerCard = { ...card(ANYONE, 'algebra'), inboxKey: aliceBuyerInbox.recipient }
       await publish([h.url], [ownerRecord(aliceBuyer, 'profile', buyerCard, T0)])
       const toBuyer = await message(bob, aliceBuyer.address, { text: 'for the buyer' }, T0, buyerCard)
       const texts = ['one', 'two', 'three', 'four', 'five']

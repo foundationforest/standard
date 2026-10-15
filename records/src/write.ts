@@ -15,12 +15,12 @@ export function nextTime(now: number, view: View | undefined, path: string): num
 
 /** A record signed by the main key itself. */
 export function ownerRecord(owner: Key, path: string, body: Body | null, time: number): SignedRecord {
-  return signRecord({ v: 1, profile: owner.address, path, time, body }, owner.privateKey)
+  return signRecord({ v: 1, profile: owner.address, path, time, body }, owner)
 }
 
-/** A record signed by an access key, into a profile whose permissions record lists it. */
+/** A record signed by a write key, into a profile whose permissions record lists it. */
 export function accessRecord(key: Key, profile: string, path: string, body: Body | null, time: number): SignedRecord {
-  return signRecord({ v: 1, profile, path, time, body, by: key.address }, key.privateKey)
+  return signRecord({ v: 1, profile, path, time, body, by: key.address }, key)
 }
 
 /** Where the profile's records live. */
@@ -29,12 +29,11 @@ export function hostsRecord(owner: Key, urls: string[] | null, time: number): Si
 }
 
 /**
- * The access keys this folder lists, each with its scope, and the owner's notes on them if given
- * (makeNotes in private.ts). To remove a write or message key, replace its `scope` with `was`, the
- * scope it had, keeping its paths: it can no longer act, and what a write key wrote still counts.
- * Deleting its entry instead disowns what it wrote. A read key is removed by deleting its
+ * The access keys this folder lists, each with its scope. To remove a write key, replace its
+ * `scope` with `was: "write"`, keeping its paths: it can no longer act, and what it wrote still
+ * counts. Deleting its entry instead disowns what it wrote. A read key is removed by deleting its
  * entry.
  */
-export function permissionsRecord(owner: Key, access: AccessKey[] | null, time: number, notes?: string): SignedRecord {
-  return ownerRecord(owner, 'permissions', access && { access, ...(notes !== undefined && { notes }) }, time)
+export function permissionsRecord(owner: Key, access: AccessKey[] | null, time: number): SignedRecord {
+  return ownerRecord(owner, 'permissions', access && { access }, time)
 }

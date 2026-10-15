@@ -10,11 +10,10 @@ import { dirname, join } from 'node:path'
 import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 
-import { ed25519 } from '@noble/curves/ed25519.js'
 import { Group } from '@semaphore-protocol/group'
 import { poseidon4 } from 'poseidon-lite/poseidon4'
 
-import { BN254_R, TAG, issuerSecret, mainKey, nameHashOf, publicKeyOf, scopeOf, seedScalar, stampOf } from '../../../../keys/src/index.ts'
+import { BN254_R, TAG, accessKey, issuerSecret, mainKey, nameHashOf, packSignature, publicKeyOf, scopeOf, seedScalar, signBytes, stampOf, verifyBytes } from '../../../../keys/src/index.ts'
 import { BOUND, DEPTH, SIGNED_PREFIX, buildTree, circuitInput, leafHash, signedBytes, type Leaf } from '../src/index.ts'
 import { REPUTATION_KEY } from '../src/reputation-key.ts'
 
@@ -44,8 +43,8 @@ const others = madeUp(97)
 const leaves = [...others.slice(0, 40), mine[0], ...others.slice(40, 70), mine[1], mine[2], ...others.slice(70)]
 const tree = buildTree(leaves)
 
-// The index signs the root with a time.
-const indexKey = ed25519.utils.randomSecretKey()
+// The index signs the root with a time, with its key on Baby Jubjub.
+const indexKey = accessKey(randomBytes(32))
 const time = 1_791_072_000_000n
 
 // The person shows the proof on a new profile of theirs.
@@ -78,7 +77,9 @@ test('an index signs 0xff, its text, the root as 32 bytes and the time as 8, bot
   assert.deepEqual(Buffer.from(bytes.subarray(1, 1 + text.length)), text)
   assert.equal(BigInt('0x' + Buffer.from(bytes.subarray(1 + text.length, -8)).toString('hex')), tree.root)
   assert.equal(Buffer.from(bytes.subarray(-8)).readBigUInt64BE(), time)
-  assert.ok(ed25519.verify(ed25519.sign(bytes, indexKey), bytes, ed25519.getPublicKey(indexKey)))
+  const signature = signBytes(indexKey.scalar, bytes)
+  assert.ok(verifyBytes(indexKey.address, bytes, signature), 'signed as a record is: keys/\'s signBytes')
+  assert.equal(packSignature(signature).length, 64)
 })
 
 test('the client refuses what the circuit would', () => {

@@ -2,14 +2,13 @@
 // of the person's own (README.md, The vault). The folder's main key is keys/'s vault key, mixed from
 // the seed, so a new device finds the vault with the seed alone. The folder holds its hosts record
 // and one private record at `vault`, made for the vault's own inbox key alone (vaultRecord and
-// openVault in private.ts). Inside: the labels of the person's profiles and where each lives, the
-// grants they received, their issuers' notes, and apps' settings.
+// openVault in private.ts). Inside: the labels of the person's profiles and where each lives, their
+// issuers' notes, and apps' settings.
 //
 // An app keeps every field it does not know, at the top and inside `settings`, so two apps, or an
 // older and a newer one, share one vault without erasing each other's.
 
 import type { Json } from './canonical.ts'
-import { type Grant, checkGrant } from './grant.ts'
 import { MAX_HOSTS, RecordError, normalizeOrigin } from './record.ts'
 
 /** The fixed path of the vault's one private record, in the vault's own folder. */
@@ -18,19 +17,17 @@ export const VAULT_PATH = 'vault'
 /** One of the person's profiles: its label, and the hosts its folder lived on when written. */
 export type VaultProfile = { label: string; hosts: string[] }
 
-/** An issuer's note: the issuer's name, as keys/'s recipe takes it, and the signed note, as JSON (registry/client's noteToJson). */
+/** An issuer's note: the issuer's name, as keys/'s recipe takes it, and the signed note, as JSON (proofs/human/client's noteToJson). */
 export type IssuerNote = { issuer: string; note: { [key: string]: Json } }
 
 export type Vault = {
   /** The person's profiles, each label once. */
   profiles?: VaultProfile[]
-  /** The grants the person received, through their profiles' inboxes. */
-  grants?: Grant[]
   issuerNotes?: IssuerNote[]
   /** Apps' settings: any fields, each an app's own. */
   settings?: { [key: string]: Json }
   /** Fields an app does not know: kept as they are. */
-  [field: string]: Json | Grant[] | VaultProfile[] | IssuerNote[] | undefined
+  [field: string]: Json | VaultProfile[] | IssuerNote[] | undefined
 }
 
 function fail(message: string): never {
@@ -56,10 +53,6 @@ export function checkVault(value: unknown): asserts value is Vault {
       for (const h of hosts as unknown[]) if (typeof h !== 'string' || normalizeOrigin(h) !== h) fail('each host is an origin, as a hosts record writes it')
       if (new Set(hosts).size !== hosts.length) fail('hosts repeat')
     }
-  }
-  if ('grants' in value) {
-    if (!Array.isArray(value.grants)) fail('grants is a list')
-    for (const g of value.grants as unknown[]) checkGrant(g)
   }
   if ('issuerNotes' in value) {
     if (!Array.isArray(value.issuerNotes)) fail('issuerNotes is a list')
