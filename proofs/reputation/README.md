@@ -1,6 +1,6 @@
 # reputation
 
-Part of Forest's standard: [the top README](../README.md).
+Part of Forest's standard: [the top README](../../README.md).
 
 On devnet only: the reputation circuit's setup was made by one party; a public setup ceremony
 comes before mainnet. Nothing is on mainnet.
@@ -19,7 +19,7 @@ It has two uses:
 - **Single:** the score of one of their profiles, with its label shown and which profile hidden.
 
 It is a zero-knowledge proof: it shows that this is true and nothing else. The person's app makes
-it on the device from their secret for one issuer ([keys](../keys/README.md#the-issuer-secret)),
+it on the device from their secret for one issuer ([keys](../../keys/README.md#the-issuer-secret)),
 so the secret never leaves the device, and any reader checks it, off chain. It is built with
 circom 2.2.3, Groth16 on BN254, and the Poseidon and Merkle pieces Semaphore uses.
 
@@ -31,16 +31,16 @@ circom 2.2.3, Groth16 on BN254, and the Poseidon and Merkle pieces Semaphore use
 ### The tree an index publishes
 
 An index, a service that reads records (what profiles publish) from hosts (the servers that keep
-them) and scores profiles as it chooses ([records](../records/README.md)), publishes its scores as
+them) and scores profiles as it chooses ([records](../../records/README.md)), publishes its scores as
 a tree. The tree is a standard: any index may publish one, and a proof names the root it used, the
 one number the whole tree hashes down to.
 
 - **A leaf** is `Poseidon(stamp, scope, score, count)`, circomlib's Poseidon with four inputs:
-  - `stamp`: the profile's stamp ([keys](../keys/README.md#stamps)), the number its registry row's
+  - `stamp`: the profile's stamp ([keys](../../keys/README.md#stamps)), the number its registry row's
     address comes from. A row is how the registry says a profile holds a note, an issuer's signed
     word that it checked the person.
   - `scope`: the profile's label as a number, exactly as the registry makes it
-    ([registry](../registry/README.md#the-note-and-the-person-proof)).
+    ([registry](../human/README.md#the-note-and-the-person-proof)).
   - `score`: the index's score for the profile times ten, as a whole number from 0 to 2^32 - 1
     (4.7 is 47).
   - `count`: how many reviews the score comes from, from 0 to 2^32 - 1.
@@ -69,7 +69,7 @@ the rest blank.
 | Public, in this order | `score`, the output; `root`; `stamp`, the stamp of the profile the proof is shown on; `scope`, the label shown, or 0 |
 
 `stamp` is the stamp of the profile the proof is shown on: the number its registry row sits at
-([registry](../registry/README.md#the-row)). The registry wrote that row only for a main key whose
+([registry](../human/README.md#the-row)). The registry wrote that row only for a main key whose
 person proof showed the stamp came from the person's secret, and the reputation proof shows it
 comes from the same secret as the profiles it counts. So a reader that finds the row at `stamp`
 naming the profile that shows the proof knows the proof is that person's, on their own profile: it
@@ -124,7 +124,7 @@ client, unchanged.
 | `signedBytes(root, time)` | The bytes an index signs |
 | `proveReputation({ secret, labels, leaves, profileLabel, show?, artifacts })` | The proof, on the device: one to eight labels of the person's profiles from one issuer, found in the leaves by their stamps, shown on the profile with `profileLabel`, registered with the same issuer; `show` shows the label, only with one |
 | `verifyReputation(connection, { proof, root, score, stamp, profile, label?, index, time, signature })` | Checks a proof, and gives the registry row it lands on, or null. It gives the row only when the index signed the root with that time, the proof holds for that score, stamp and shown label, and the row at the stamp names `profile`, the main key of the profile that shows the proof. The row names the issuer that every counted profile shares |
-| `proofBytes(proof)`, `proofFromBytes(bytes)` | The proof as the 256 bytes a profile record carries ([records](../records/README.md)), and back; `verifyReputation` takes either |
+| `proofBytes(proof)`, `proofFromBytes(bytes)` | The proof as the 256 bytes a profile record carries ([records](../../records/README.md)), and back; `verifyReputation` takes either |
 | `circuitInput({...})` | The circuit's input, for a caller that drives snarkjs itself |
 
 ```ts
@@ -138,8 +138,8 @@ const r = await proveReputation({
   leaves,                      // the index's published leaves, in its order
   profileLabel: 'tutoring/new', // the profile the proof is shown on
   artifacts: {
-    wasm: 'reputation/circuit/devnet/reputation.wasm',
-    zkey: 'reputation/circuit/devnet/reputation.zkey',
+    wasm: 'proofs/reputation/circuit/devnet/reputation.wasm',
+    zkey: 'proofs/reputation/circuit/devnet/reputation.zkey',
   },
 })
 
@@ -156,11 +156,11 @@ SHA-256 `setup.json` records; and, from `package-lock.json`, snarkjs 0.7.5, circ
 `@zk-kit/binary-merkle-root.circom` 2.0.0.
 
 ```
-cd keys && npm ci                       # registry/client and the tests read it
-cd registry/client && npm ci            # the stamp, the scope and the row
-cd reputation/client && npm ci
+cd keys && npm ci                       # proofs/human/client and the tests read it
+cd proofs/human/client && npm ci            # the stamp, the scope and the row
+cd proofs/reputation/client && npm ci
 npm run check && npm test               # the tree, what an index signs, what the client refuses
-cd reputation/circuit && npm ci         # after reputation/client
+cd proofs/reputation/circuit && npm ci         # after proofs/reputation/client
 npm run fetch                           # the release's files, hash-checked
 npm run compile                         # circom 2.2.3 on PATH or in CIRCOM; checks setup.json
 npm run check && npm test               # two proofs, and every way one must fail

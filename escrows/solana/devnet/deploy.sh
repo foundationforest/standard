@@ -3,7 +3,7 @@
 # escrow programs on devnet, named in this record's `earlier`, are never touched: their ids are only
 # read.
 #
-#   FOREST_DEVNET_SEED=<the phrase> escrow/devnet/deploy.sh
+#   FOREST_DEVNET_SEED=<the phrase> escrows/solana/devnet/deploy.sh
 #
 # 1. Keys. Every devnet key comes from one phrase, so any machine holding it gets the same keys and
 #    the same program id. The recipe, reproducible with any language's standard library:
@@ -13,35 +13,35 @@
 #      key    = the ed25519 keypair whose secret seed is `seed` (Solana's Keypair.fromSeed)
 #
 #    One label per key: `deploy` (pays for the deploy and keeps the upgrade authority), `payer`
-#    (pays every fee and deposit in escrow/client/scripts/devnet.ts, as a fee payer would), `buyer`,
+#    (pays every fee and deposit in escrows/solana/client/scripts/devnet.ts, as a fee payer would), `buyer`,
 #    `seller`, and `escrow-v2-program-2`, the program id (the closed first deploy used
 #    `escrow-v2-program`). The keypair files go to FOREST_DEVNET_KEYS (default
 #    ~/.forest-devnet/keys), never under the repo: the directory mode 700, the files 600, and a file
 #    holding another key is refused, not overwritten. Only public keys are printed, and the phrase
-#    is in no file. The public keys must be the ones escrow/devnet/devnet.json names in `keys` (a
+#    is in no file. The public keys must be the ones escrows/solana/devnet/devnet.json names in `keys` (a
 #    missing record is started with them), and the id must be no program this record or
 #    registry/devnet/devnet.json names.
-# 2. Build. escrow/program's Cargo.toml, Cargo.lock and src are copied into
-#    escrow/devnet/target/ (ignored), `declare_id!` alone is replaced with the devnet id, checked to
+# 2. Build. escrows/solana/program's Cargo.toml, Cargo.lock and src are copied into
+#    escrows/solana/devnet/target/ (ignored), `declare_id!` alone is replaced with the devnet id, checked to
 #    appear exactly once, and the copy is built for SBPF v3.
 # 3. Deploy a fresh id, or upgrade it in place when it holds other bytes (the same bytes are left
 #    as they are): the exact cost computed first, the way Solana CLI 4.2.2 spends it, refused
 #    (exit 3) if the deploy key holds less. Writes go over RPC.
 # 4. Check the deployed bytes are the built ones, and record everything public in
-#    escrow/devnet/devnet.json. The check needs the same toolchain: Solana CLI 4.2.2,
+#    escrows/solana/devnet/devnet.json. The check needs the same toolchain: Solana CLI 4.2.2,
 #    cargo-build-sbf 4.1.0, platform-tools v1.54.
 #
 # FOREST_DEVNET_RPC points the Solana CLI at another devnet RPC; the record always names the
 # public one, so a keyed URL never lands in the repo. Devnet is not sealed: the upgrade authority
 # stays on the deploy key, and whoever holds the phrase holds it. Sealing is the mainnet step
-# (`--final`, in escrow/README.md). A new phrase starts from nothing: its deploy key needs SOL sent
+# (`--final`, in escrows/solana/README.md). A new phrase starts from nothing: its deploy key needs SOL sent
 # by hand, and the deals need a classic test dollar, the parties' token accounts and the buyer's
 # dollars, which no script here makes.
 
 set -euo pipefail
 
 here=$(cd "$(dirname "$0")" && pwd)
-root=$(cd "$here/../.." && pwd)
+root=$(cd "$here/../../.." && pwd)
 out="$here/target"
 record="$here/devnet.json"
 registry="$root/registry/devnet/devnet.json"
@@ -91,7 +91,7 @@ if (record) {
   }
 } else {
   fs.writeFileSync(own, JSON.stringify({
-    note: 'The devnet deploy of the escrow. Public keys, addresses and signatures only. Every key comes from the devnet phrase by the recipe in escrow/devnet/deploy.sh, which writes the keypairs outside the repo and checks them against `keys`; the program id\'s label is escrow-v2-program-2. Written by escrow/devnet/deploy.sh and escrow/client/scripts/devnet.ts.',
+    note: 'The devnet deploy of the escrow. Public keys, addresses and signatures only. Every key comes from the devnet phrase by the recipe in escrows/solana/devnet/deploy.sh, which writes the keypairs outside the repo and checks them against `keys`; the program id\'s label is escrow-v2-program-2. Written by escrows/solana/devnet/deploy.sh and escrows/solana/client/scripts/devnet.ts.',
     cluster: 'devnet',
     rpc: 'https://api.devnet.solana.com',
     keys,
@@ -110,8 +110,8 @@ deployer=$(solana-keygen pubkey "$keys/deploy.json")
 # 2. Build.
 rm -rf "$out/program"
 mkdir -p "$out/program"
-cp "$root/escrow/program/Cargo.toml" "$root/escrow/program/Cargo.lock" "$out/program/"
-cp -r "$root/escrow/program/src" "$out/program/src"
+cp "$root/escrows/solana/program/Cargo.toml" "$root/escrows/solana/program/Cargo.lock" "$out/program/"
+cp -r "$root/escrows/solana/program/src" "$out/program/src"
 node - "$out/program/src/lib.rs" "$id" <<'JS'
 const fs = require('fs')
 const [file, id] = process.argv.slice(2)
@@ -122,8 +122,8 @@ if (text.split(from).length !== 2) throw new Error(`${file}: expected exactly on
 fs.writeFileSync(file, text.replace(from, to))
 JS
 echo "the substitution, against the committed source:"
-diff -u "$root/escrow/program/src/lib.rs" "$out/program/src/lib.rs" | grep -E '^[-+][^-+]' || true
-others=$(diff -rq "$root/escrow/program/src" "$out/program/src" | grep -v '/lib.rs and ' || true)
+diff -u "$root/escrows/solana/program/src/lib.rs" "$out/program/src/lib.rs" | grep -E '^[-+][^-+]' || true
+others=$(diff -rq "$root/escrows/solana/program/src" "$out/program/src" | grep -v '/lib.rs and ' || true)
 [ -z "$others" ] || { echo "more than lib.rs differs: $others" >&2; exit 1; }
 (cd "$out/program" && cargo build-sbf --arch v3 >"$out/build.log" 2>&1) || { tail -40 "$out/build.log"; exit 1; }
 so="$out/forest_escrow.so"

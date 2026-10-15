@@ -1,5 +1,5 @@
-This repo is `standard`: the standards every Forest app shares (keys, records, the registry, the
-escrow). Read `README.md` and the README of the directory you work in before any task.
+This repo is `standard`: the standards every Forest app shares (keys, proofs, records, escrows).
+Read `README.md` and the README of the directory you work in before any task.
 
 ## Words
 
@@ -15,8 +15,8 @@ Rules for apps: `keys/README.md`, Rules for apps that hold keys. Never copy them
 - Work in plan mode. One task per session. Open a pull request; never push to main.
 - The promises in each README change only when Carlos says so in a chat; never change one as a side
   effect of a task.
-- The repo is `keys/`, `records/`, `registry/`, `reputation/`, `escrow/`, `README.md`,
-  `CLAUDE.md` and `LICENSE`, with `.github/`. The README is the standard.
+- The repo is `keys/`, `proofs/` (`human/`, `reputation/`), `records/`, `escrows/` (`solana/`),
+  `README.md` and `LICENSE`, with `.github/` and `.claude/CLAUDE.md`. The README is the standard.
 - Keep the docs true in the same pull request: a change that makes a README wrong fixes it. A README
   says only what the code does today. Say "on devnet" for what runs; never state anything as
   shipped.
@@ -38,23 +38,23 @@ Rules for apps: `keys/README.md`, Rules for apps that hold keys. Never copy them
 
 ```
 # Each package: install, type-check, tests that need no chain.
-# keys first: records, registry/client and reputation/client read it; registry/client before
-# reputation/client, which reads it.
-for d in keys records registry/client escrow/client reputation/client; do
+# keys first: records, proofs/human/client and proofs/reputation/client read it;
+# proofs/human/client before proofs/reputation/client, which reads it.
+for d in keys records proofs/human/client escrows/solana/client proofs/reputation/client; do
   (cd "$d" && npm ci && npm run check && npm test)
 done
 
 # Each circuit, after keys and its client, which it reads: its setup's files, then the compile
 # checked against them, then type-check and tests.
-for c in reputation/circuit registry/circuit; do
+for c in proofs/reputation/circuit proofs/human/circuit; do
   (cd "$c" && npm ci && npm run fetch && npm run compile && npm run check && npm test)
 done
 
 # Each program: build as SBPF v3, then its LiteSVM tests against that build.
-for p in registry/program escrow/program; do
+for p in escrows/solana/program; do
   (cd "$p" && cargo build-sbf --arch v3 && cd tests-litesvm && cargo test)
 done
 ```
 
-The slower checks (the registry client on a local validator, the registry's property test, the
-escrow's fuzzer) run nightly in CI; each directory's README says how to run them.
+The slower check, the escrow's fuzzer, runs nightly in CI; `escrows/solana/README.md` says how to
+run it.

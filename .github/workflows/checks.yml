@@ -1,10 +1,9 @@
 # Every pull request and every push to main: each Node package's type-check and tests that need no
-# chain (keys is installed first: records, the registry client and the reputation client read it),
-# both programs built as SBPF v3 with their LiteSVM tests, and each circuit (reputation, and the
-# registry's person proof) compiled, checked against its devnet setup, and tested. After a merge,
-# every package type-checks together. Nightly, and by hand: the registry client on a local
-# validator, the registry's property test, and the escrow's fuzzer. A test that skips fails its
-# step: the summary must say "# skipped 0".
+# chain (keys is installed first: records, the human proof's client and the reputation client read
+# it), the Solana escrow built as SBPF v3 with its LiteSVM tests, and each circuit (reputation, and
+# the human proof's) compiled, checked against its devnet setup, and tested. After a merge, every
+# package type-checks together. Nightly, and by hand: the escrow's fuzzer. A test that skips fails
+# its step: the summary must say "# skipped 0".
 
 name: checks
 
@@ -42,12 +41,12 @@ jobs:
             install: keys
           - package: records
             install: keys records
-          - package: registry/client
-            install: keys registry/client
-          - package: escrow/client
-            install: escrow/client
-          - package: reputation/client
-            install: keys registry/client reputation/client
+          - package: proofs/human/client
+            install: keys proofs/human/client
+          - package: escrows/solana/client
+            install: escrows/solana/client
+          - package: proofs/reputation/client
+            install: keys proofs/human/client proofs/reputation/client
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -71,7 +70,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        circuit: [reputation/circuit, registry/circuit]
+        circuit: [proofs/reputation/circuit, proofs/human/circuit]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -84,7 +83,7 @@ jobs:
           chmod +x "$RUNNER_TEMP/circom"
           echo "CIRCOM=$RUNNER_TEMP/circom" >> "$GITHUB_ENV"
       - name: Install
-        run: for dir in keys registry/client reputation/client ${{ matrix.circuit }}; do (cd "$dir" && npm ci --no-audit --no-fund); done
+        run: for dir in keys proofs/human/client proofs/reputation/client ${{ matrix.circuit }}; do (cd "$dir" && npm ci --no-audit --no-fund); done
       - name: The devnet setup's files, hash-checked
         working-directory: ${{ matrix.circuit }}
         run: npm run fetch
@@ -110,9 +109,9 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
       - name: Install
-        run: for dir in keys records registry/client registry/circuit escrow/client reputation/client reputation/circuit; do (cd "$dir" && npm ci --no-audit --no-fund); done
+        run: for dir in keys records proofs/human/client proofs/human/circuit escrows/solana/client proofs/reputation/client proofs/reputation/circuit; do (cd "$dir" && npm ci --no-audit --no-fund); done
       - name: Type-check every package
-        run: for dir in keys records registry/client registry/circuit escrow/client reputation/client reputation/circuit; do echo "== $dir"; (cd "$dir" && npm run check); done
+        run: for dir in keys records proofs/human/client proofs/human/circuit escrows/solana/client proofs/reputation/client proofs/reputation/circuit; do echo "== $dir"; (cd "$dir" && npm run check); done
 
   programs:
     runs-on: ubuntu-latest
@@ -134,66 +133,26 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: |
-            registry/program
-            registry/program/tests-litesvm
-            escrow/program
-            escrow/program/tests-litesvm
+            escrows/solana/program
+            escrows/solana/program/tests-litesvm
       - name: Build the programs, SBPF v3
         run: |
-          (cd registry/program && cargo build-sbf --arch v3)
-          (cd escrow/program && cargo build-sbf --arch v3)
-          sha256sum registry/program/target/deploy/*.so escrow/program/target/deploy/*.so
+          (cd escrows/solana/program && cargo build-sbf --arch v3)
+          sha256sum escrows/solana/program/target/deploy/*.so
           # The ELF header's e_flags is the SBPF version: refuse anything but v3.
-          for so in registry/program/target/deploy/*.so escrow/program/target/deploy/*.so; do
+          for so in escrows/solana/program/target/deploy/*.so; do
             v=$(od -An -t u4 -j 48 -N 4 "$so" | tr -d ' ')
             echo "$so: SBPF v$v"
             [ "$v" = 3 ]
           done
-      - name: Registry, LiteSVM
-        working-directory: registry/program/tests-litesvm
-        run: cargo test
       - name: Escrow, LiteSVM
-        working-directory: escrow/program/tests-litesvm
+        working-directory: escrows/solana/program/tests-litesvm
         run: cargo test
       - uses: actions/upload-artifact@v7
         with:
           name: programs
           path: |
-            registry/program/target/deploy/*.so
-            escrow/program/target/deploy/*.so
-
-  validator:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    needs: programs
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-      - name: Solana CLI, cached
-        id: solana
-        uses: actions/cache@v6
-        with:
-          path: |
-            ~/.local/share/solana
-            ~/.cache/solana
-          key: solana-${{ env.SOLANA_VERSION }}
-      - name: Solana CLI, installed
-        if: steps.solana.outputs.cache-hit != 'true'
-        run: sh -c "$(curl -sSfL "https://release.anza.xyz/v$SOLANA_VERSION/install")"
-      - run: echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
-      - uses: actions/download-artifact@v8
-        with:
-          name: programs
-      - name: Install
-        run: for dir in keys registry/client; do (cd "$dir" && npm ci --no-audit --no-fund); done
-      - name: Registry client
-        working-directory: registry/client
-        run: |
-          npm run test:validator | tee "$RUNNER_TEMP/tap"
-          grep -qx '# skipped 0' "$RUNNER_TEMP/tap"
+            escrows/solana/program/target/deploy/*.so
 
   fuzz:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
@@ -202,9 +161,6 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v8
-        with:
-          name: programs
       - name: Solana CLI, cached
         id: solana
         uses: actions/cache@v6
@@ -220,17 +176,13 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: |
-            escrow/program
-            registry/program/tests-litesvm
-            escrow/program/trident-tests
-      - name: Registry, property test, 1,000 iterations (on the v3 build)
-        working-directory: registry/program/tests-litesvm
-        run: FOREST_FUZZ_ITERATIONS=1000 cargo test --release --test invariants -- --nocapture
+            escrows/solana/program
+            escrows/solana/program/trident-tests
       - name: Escrow, rebuilt as SBPF v0 for Trident, whose runtime runs no v3 program
-        working-directory: escrow/program
+        working-directory: escrows/solana/program
         run: |
           cargo build-sbf --arch v0
           [ "$(od -An -t u4 -j 48 -N 4 target/deploy/forest_escrow.so | tr -d ' ')" = 0 ]
       - name: Escrow, fuzzer, 50,000 iterations (exit 99 if an invariant broke)
-        working-directory: escrow/program/trident-tests
+        working-directory: escrows/solana/program/trident-tests
         run: TRIDENT_WITH_EXIT_CODE=1 FOREST_FUZZ_ITERATIONS=50000 cargo run --release --bin fuzz_escrow

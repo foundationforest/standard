@@ -1,6 +1,6 @@
 # escrow
 
-Part of Forest's standard: [the top README](../README.md). Down: the
+Part of Forest's standard: [the top README](../../README.md). Down: the
 [security checklist](security-checklist.md).
 
 ## What it is
@@ -149,7 +149,7 @@ the receipt: the buyer, the seller, who opened it, the mint, the amount, the arb
 timer, who fronted the rent, when the money was there (the mark's time, or the ending's if nobody
 marked it), whether a side objected and when, how it ended, when, and what each side got. A
 receipt never closes and never changes, and its address never holds a second deal, so the address
-is the deal's id that reviews name ([records/](../records/README.md#folders)).
+is the deal's id that reviews name ([records/](../../records/README.md#folders)).
 
 Every change is also an event, so an index can read outcomes from the log: `Created`, `Funded`,
 `Objected`, `Ended`, `Closed`, `RecoveredLate`, `RentSwept`.
@@ -196,7 +196,7 @@ objected escrow is open or funded, and ends by any way out but the timer.
 ### Use it
 
 - `termsFor(postTerms, deal)`, `optionsFromPost(postTerms)`: an escrow's terms from an offer's
-  optional `terms` block ([offer schema](../records/schemas/offer.json)) and the deal.
+  optional `terms` block ([offer schema](../../records/schemas/offer.json)) and the deal.
 - `tokenOf(mint, account)`: the mint's token program and decimals, read from its account; it
   refuses what `create` refuses.
 - `createIx`, `invoiceIx`, `createAndFund`, `payInOneTap`, `payInvoiceInOneTap`: opening; opening
@@ -235,13 +235,13 @@ objected escrow is open or funded, and ends by any way out but the timer.
 ### Run it, and what one escrow costs
 
 ```
-cd escrow/program && cargo build-sbf --arch v3             # Solana CLI 4.2.2 or later
-cd escrow/program/tests-litesvm && cargo test              # classic and Token-2022 mints
-cd escrow/program && cargo build-sbf --arch v0 && cd trident-tests \
+cd escrows/solana/program && cargo build-sbf --arch v3             # Solana CLI 4.2.2 or later
+cd escrows/solana/program/tests-litesvm && cargo test              # classic and Token-2022 mints
+cd escrows/solana/program && cargo build-sbf --arch v0 && cd trident-tests \
   && TRIDENT_WITH_EXIT_CODE=1 cargo run --release --bin fuzz_escrow   # 99: an invariant broke
-cd escrow/client && npm ci && npm run check && npm test    # no chain needed
-FOREST_DEVNET_SEED=<phrase> escrow/devnet/deploy.sh        # devnet: deploy, or upgrade in place
-cd escrow/client && FOREST_DEVNET_KEYS=<dir> node scripts/devnet.ts
+cd escrows/solana/client && npm ci && npm run check && npm test    # no chain needed
+FOREST_DEVNET_SEED=<phrase> escrows/solana/devnet/deploy.sh        # devnet: deploy, or upgrade in place
+cd escrows/solana/client && FOREST_DEVNET_KEYS=<dir> node scripts/devnet.ts
 ```
 
 The LiteSVM tests run every case on a classic mint, and on a Token-2022 mint made with Open USD's

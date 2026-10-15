@@ -48,7 +48,7 @@ Its folder is everything signed for it, one current record per path:
   folder of the profile that wrote it: the one it is about cannot erase it; the one who wrote it
   can. It names its subject by address, and its deal, if it wants, by `dealId`: the escrow receipt's
   address (the account the escrow leaves on chain when a deal ends) when the deal went through the
-  [escrow](../escrow/README.md), else 32 random bytes chosen when the deal began.
+  [escrow](../escrows/solana/README.md), else 32 random bytes chosen when the deal began.
 
 **The hosts record** is `{ "urls": [origin, …] }`: 1 to 8 distinct origins, `https://host[:port]`,
 lower case, no path (`http` only on loopback, for tests). Each host it names holds the whole
@@ -199,7 +199,7 @@ folder.
   `inboxKey`, since senders encrypt to it.
 - `senders` is `"anyone"`, or `{ "issuer" }`: the sender's key must hold a registry row (the public
   statement that a key holds a note an issuer, anyone who checks people, signed) from that issuer,
-  under any label ([registry/](../registry/README.md)). The issuer is named by its key as a row
+  under any label ([proofs/human/](../proofs/human/README.md)). The issuer is named by its key as a row
   holds it: x then y of its point on Baby Jubjub, each 32 bytes big-endian, as 128 characters of
   lowercase hex.
 - `once`: one message from each sender, ever.
@@ -282,7 +282,7 @@ For `pay` they are `offer`, the offer as `<profile address>/offer/<id>`, and if 
 whole number of hours or days for an offer priced per hour or per day, and `note`, text for the
 person: `{ "request": "pay", "offer": <profile address>/offer/<id>, "units": 2, "note": … }`. The
 app reads the offer and opens the escrow from it
-([escrow](../escrow/README.md#two-ways-to-open-it)).
+([escrow](../escrows/solana/README.md#two-ways-to-open-it)).
 
 An app acts on a request only when it was sent to the profile's own inbox by the profile's main
 key or by a message key its permissions record lists, and shows any other `request` body as a
@@ -337,7 +337,7 @@ of its own, whose main key is the vault key, mixed from the seed
 - `grants`: grants as above. A grant still reaches the person in a profile's inbox: the app pulls
   it, opens it, adds it here and writes the vault again.
 - `issuerNotes`: the issuer's name, exactly as keys/'s recipe takes it, and the note it signed, as
-  registry/'s JSON ([registry](../registry/README.md#the-note-and-the-person-proof)).
+  proofs/human/'s JSON ([registry](../proofs/human/README.md#the-note-and-the-person-proof)).
 - `settings`: apps' settings, such as the hosts, issuers and indexes the person chose. Each field
   is an app's own.
 - To change it, an app reads the current vault, changes it, and writes it, at a time past the
@@ -358,22 +358,22 @@ A proof counts for one main key: a reader checks it against the main key of the 
 carries it, so a proof copied to another profile fails. A reader ignores a proof whose circuit it
 does not know, so a newer kind never makes a profile invalid for an older app. An app puts a
 proof in the profile record only when the person chooses to show it there:
-[reputation/](../reputation/README.md#limits) says what one can reveal.
+[proofs/reputation/](../proofs/reputation/README.md#limits) says what one can reveal.
 
 - **`reputation`** shows the score of the profiles the person holds in an index's tree, without
   saying which. It carries the index's key, the root and time the index signed and its signature,
   the score, the stamp of this profile's registry row (the number the row is kept at), the label
   when the proof shows one market, and the proof's 256 bytes. A reader checks it with
-  reputation/client's `verifyReputation`: it holds only when the row at that stamp names this main
+  proofs/reputation/client's `verifyReputation`: it holds only when the row at that stamp names this main
   key, and the proof shows that stamp comes from the same secret as the profiles it counts, so
   nobody can lend their score to someone else. Each reader decides which indexes and issuers it
-  trusts and how old a time it accepts. How it is made is [reputation/](../reputation/README.md)'s.
+  trusts and how old a time it accepts. How it is made is [proofs/reputation/](../proofs/reputation/README.md)'s.
 - **`person`** shows the profile's tier, a number in the note whose meaning is the issuer's: that
   an issuer signed the person a note at that tier
-  ([registry/](../registry/README.md)). It carries the issuer's key, the label and the stamp as
+  ([proofs/human/](../proofs/human/README.md)). It carries the issuer's key, the label and the stamp as
   the profile's registry row holds them, the tier in decimal (a tier can be a number far past
   2^53 − 1, where a record's numbers stop), and the proof's 256 bytes, in the reputation proof's
-  order. A reader checks it with registry/client's `verifyTier`: it holds only when the row at
+  order. A reader checks it with proofs/human/client's `verifyTier`: it holds only when the row at
   that stamp names this main key, this issuer and this label, and the proof holds for them and the
   tier. Each reader decides which issuers it trusts.
 

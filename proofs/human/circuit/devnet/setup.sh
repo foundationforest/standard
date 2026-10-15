@@ -4,7 +4,7 @@
 # ceremony (many people contributing to the second phase, on the same first phase) comes before
 # mainnet.
 #
-#   cd registry/circuit && npm ci && devnet/setup.sh     # circom 2.2.3 on PATH, or in CIRCOM
+#   cd proofs/human/circuit && npm ci && devnet/setup.sh     # circom 2.2.3 on PATH, or in CIRCOM
 #
 # Phase 1 is public: PSE's Perpetual Powers of Tau, the same file and SHA-256 as the reputation
 # circuit's. Phase 2 is one contribution: 64 random bytes drawn inside Node, never on a command

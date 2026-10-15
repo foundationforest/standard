@@ -1,6 +1,6 @@
 # registry
 
-Part of Forest's standard: [the top README](../README.md). Down: the
+Part of Forest's standard: [the top README](../../README.md). Down: the
 [security checklist](security-checklist.md).
 
 On devnet: the program runs at `J4ES52YohsZhknYbsgmZwHpyNw14EjrrGZxHpcmcBmq4`, still upgradable
@@ -13,7 +13,7 @@ says: *this profile holds a note this issuer signed, under this label*. A profil
 person's identities, named by its main key; a note is an issuer's signed word that it checked the
 person; a label is free text saying what the profile is for. A zero-knowledge proof shows
 it without showing the note, so a row does not say who the person is. A stamp, the number a person
-has for one label at one issuer ([keys](../keys/README.md#stamps)), gets at most one row, and a row
+has for one label at one issuer ([keys](../../keys/README.md#stamps)), gets at most one row, and a row
 is written once and never changes. The program holds nothing else: no fee, no coin, no treasury and
 no admin. The only costs are Solana's own, the network fee and the row's deposit, paid by whoever
 sends the transaction.
@@ -39,7 +39,7 @@ program ── checks both, writes one row at the stamp's address ──▶ anyo
 person's face once and signs them one note: *note number, face embedding, model name, tier*.
 
 - The note number comes from the person's secret for that issuer
-  ([keys](../keys/README.md#the-note-number)). The device sends it to the issuer once; the issuer
+  ([keys](../../keys/README.md#the-note-number)). The device sends it to the issuer once; the issuer
   never learns the secret.
 - The embedding is the bytes the issuer's model gives for the face, and the model name says which
   model. The tier is a number whose meaning is the issuer's.
@@ -50,7 +50,7 @@ person's face once and signs them one note: *note number, face embedding, model 
   `keccak256("forest/v1/note") >> 8`, always the same, so nothing an issuer signs for another
   purpose can pass as a note. The embedding and the model enter only as their hashes.
 - The person keeps the note, in their vault (the folder a new device restores from,
-  [records](../records/README.md#the-vault)), as JSON:
+  [records](../../records/README.md#the-vault)), as JSON:
   `{ noteNumber, embedding, model, tier, issuer, signature: { r8: [x, y], s } }`, numbers in
   decimal text, the embedding in base64url, the issuer's key as 128 characters of lowercase hex
   (`noteToJson`, `noteFromJson`).
@@ -65,11 +65,11 @@ label is this one; this proof is for this main key.*
   `keccak256("forest.foundation/profile/v1/" ‖ main key) >> 8`. The program derives both itself,
   so a proof counts for one label and one profile, and a proof seen in flight cannot be landed
   under any other.
-- The stamp is `Poseidon(scope, secret)` ([keys](../keys/README.md#stamps)). It depends on the
+- The stamp is `Poseidon(scope, secret)` ([keys](../../keys/README.md#stamps)). It depends on the
   secret and the label, not on the note, so a new note, with a new tier or under a new key, gives
   the same stamp.
 - The same proof, attached to the profile later, shows its tier
-  ([records](../records/README.md)).
+  ([records](../../records/README.md)).
 - **The issuer's key is the issuer's to keep.** Whoever holds it can sign notes for people who do
   not exist. An issuer signs only numbers it computed itself: a number someone hands it to sign
   could be a note.
@@ -97,7 +97,7 @@ Registered, the main key is that profile.
   and a reader checks that proof against the row (`verifyTier`).
 - Whoever signs as payer pays the deposit and is recorded, so a refund can find them: the person,
   an app, or a fee payer, a service that pays Solana's costs for others.
-- A label is any text ([keys](../keys/README.md#main-keys)); the program does not care what it
+- A label is any text ([keys](../../keys/README.md#main-keys)); the program does not care what it
   says.
 
 ### One row per stamp
@@ -171,7 +171,7 @@ blockhash and a connection to Solana.
 | `buildRegistration({...})` | Makes the person proof from the note, and returns the unsigned `register` transaction |
 | `registerIx`, `refundIx` | The two instructions, by hand |
 | `fetchRow(connection, stamp)`, `fetchRows(connection, { profile, issuer, label })`, `decodeRow(data)` | Rows read back and checked |
-| `verifyTier(connection, { profile, issuer?, label?, stamp, tier, proof })` | Checks the tier a profile shows. A profile shows it as a `person` proof in its profile record, the record that holds its card ([records](../records/README.md#proofs)). This checks that person proof, as snarkjs writes it or as its 256 bytes, against the profile's row, and the issuer and label it shows against the row too, when given. Gives the row, so the reader can weigh its issuer and when it was made |
+| `verifyTier(connection, { profile, issuer?, label?, stamp, tier, proof })` | Checks the tier a profile shows. A profile shows it as a `person` proof in its profile record, the record that holds its card ([records](../../records/README.md#proofs)). This checks that person proof, as snarkjs writes it or as its 256 bytes, against the profile's row, and the issuer and label it shows against the row too, when given. Gives the row, so the reader can weigh its issuer and when it was made |
 | `signNote(privateKey, note)`, `issuerKeyOf(privateKey)` | For an issuer: the signed note, and its key |
 | `noteNumberOf(secret)`, `noteHash(note)`, `noteSigned(note)` | The note number, what an issuer signs, and whether its issuer signed it |
 | `noteToJson(note)`, `noteFromJson(json)` | The note as JSON, as a vault keeps it, and back; `noteFromJson` refuses any other shape, and leaves the signature to `noteSigned` |
@@ -189,7 +189,7 @@ const r = await buildRegistration({
   note,                         // the note the issuer signed for this person
   label: 'tutoring/seller',
   profile,                      // the main key; it signs
-  artifacts: { wasm: 'registry/circuit/devnet/person.wasm', zkey: 'registry/circuit/devnet/person.zkey' },
+  artifacts: { wasm: 'proofs/human/circuit/devnet/person.wasm', zkey: 'proofs/human/circuit/devnet/person.zkey' },
   payer, recentBlockhash,
 })
 // r.transaction: unsigned; the main key and the payer sign it, anyone sends it. r.row: its address.
@@ -201,13 +201,13 @@ const r = await buildRegistration({
 ```
 cd keys && npm ci                 # the client and the circuit's tests read keys/
 
-cd registry/client && npm ci
+cd proofs/human/client && npm ci
 npm run check && npm test         # no chain
 npm run test:validator            # starts solana-test-validator itself
 npm run test:devnet               # read-only, against registry/devnet/devnet.json
 npm run fixtures                  # remake the real proofs the Rust tests use
 
-cd registry/circuit && npm ci     # after registry/client
+cd proofs/human/circuit && npm ci     # after proofs/human/client
 npm run fetch                     # the committed setup files, hash-checked
 npm run compile                   # circom 2.2.3 on PATH or in CIRCOM; checks setup.json
 npm run check && npm test         # a proof, and every way one must fail
@@ -343,7 +343,7 @@ more issuers behind a profile give it more weight at an index that counts them. 
 never gives a second row under one label: a new note from it gives the same stamp.
 
 **What if someone steals my seed, or I sell it?** Whoever holds the seed acts as every profile and
-can move their money ([keys](../keys/README.md#faq)). The note an issuer signed carries numbers
+can move their money ([keys](../../keys/README.md#faq)). The note an issuer signed carries numbers
 made from the person's face, its embedding, so a service that wants to can ask whoever shows the
 note for a live face match against it. Today no service does, outside the foundation's issuer,
 which matches a live face against a note only before it signs the same note at a higher tier. A

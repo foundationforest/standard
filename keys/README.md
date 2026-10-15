@@ -98,7 +98,7 @@ records ([records](../records/README.md)).
 ### The issuer secret
 
 An issuer is anyone who signs notes for people, such as one that checks a person's face once and
-signs them a note ([registry](../registry/README.md#the-note-and-the-person-proof)). For each
+signs them a note ([registry](../proofs/human/README.md#the-note-and-the-person-proof)). For each
 issuer, a person has one secret, mixed from their seed and the issuer's name.
 
 - The name is the text the issuer publishes as its own, such as a domain, used exactly as given,
@@ -125,7 +125,7 @@ learns the secret.
 
 A stamp is the number a person's registry row sits at: `Poseidon(scope, scalar)`, one for each
 label, where the scope is the label as a number, made the way the registry makes it
-([registry](../registry/README.md#the-note-and-the-person-proof)).
+([registry](../proofs/human/README.md#the-note-and-the-person-proof)).
 
 - The same person, issuer and label always give the same stamp, and nobody without the secret can
   work it out.
