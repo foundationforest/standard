@@ -10,10 +10,9 @@ pragma circom 2.1.5;
 // scalar, the lowest 250 bits of Poseidon(profile tag, seed scalar, scope), whose public key is
 // the profile's. So one seed gives one profile key per label, and a note counts for no other seed.
 //
-// The note is { note number, face embedding, model name, month }. The issuer signs
-// Poseidon(note tag, note number, embedding's hash, model's hash, month) with its EdDSA key on
-// Baby Jubjub, over Poseidon: circomlib's verifier, unchanged. The embedding and the model enter
-// only as their hashes; the circuit never reads them.
+// The note is { note number, attributes }: attributes is one number, whatever the issuer attests,
+// and stays private. The issuer signs Poseidon(note tag, note number, attributes) with its EdDSA
+// key on Baby Jubjub, over Poseidon: circomlib's verifier, unchanged.
 
 include "poseidon.circom";
 include "eddsaposeidon.circom";
@@ -25,16 +24,14 @@ template Human() {
     // The seed scalar keys/'s seedScalar gives. It needs no bound: everything public is a Poseidon
     // hash of it, and only one seed scalar gives those hashes.
     signal input seedScalar;
-    signal input embedding;     // the hash of the note's face embedding
-    signal input model;         // the hash of the note's model name
+    signal input attributes;    // the note's attributes, a field element the issuer chose
     signal input R8x, R8y, S;   // the issuer's signature on the note
 
-    // Public, in the order stamp, profileX, profileY, issuerX, issuerY, scope, issuerNameHash, month.
+    // Public, in the order stamp, profileX, profileY, issuerX, issuerY, scope, issuerNameHash.
     signal input profileX, profileY;  // the profile's key, a point on Baby Jubjub
     signal input issuerX, issuerY;    // the issuer's key, a point on Baby Jubjub
     signal input scope;               // the label, as keys/'s scopeOf gives it
     signal input issuerNameHash;      // the issuer's name, as keys/'s nameHashOf gives it
-    signal input month;               // the month the issuer signed in the note, YYYYMM
     signal output stamp;
 
     // keccak256(text) >> 8, as keys/'s fieldHash gives it, for "forest/v1/note",
@@ -53,7 +50,7 @@ template Human() {
     signal noteNumber <== Poseidon(1)([issuerScalar]);
 
     // The note the issuer signed, for that note number.
-    signal note <== Poseidon(5)([NOTE_TAG, noteNumber, embedding, model, month]);
+    signal note <== Poseidon(3)([NOTE_TAG, noteNumber, attributes]);
     component signed = EdDSAPoseidonVerifier();
     signed.enabled <== 1;
     signed.Ax <== issuerX;
@@ -81,4 +78,4 @@ template Human() {
     profileY === key.out[1];
 }
 
-component main {public [profileX, profileY, issuerX, issuerY, scope, issuerNameHash, month]} = Human();
+component main {public [profileX, profileY, issuerX, issuerY, scope, issuerNameHash]} = Human();

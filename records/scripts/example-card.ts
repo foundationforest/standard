@@ -24,13 +24,11 @@ const devnet = (proof: string, file: string) => new URL(`../../proofs/${proof}/c
 const S = await seedScalar(seed)
 const me = await mainKey(seed, LABEL)
 
-// The human proof: an example issuer checked the person in September 2026.
+// The human proof: an example issuer signed the person a note, with example attributes.
 const issuerPrivate = sha256(new TextEncoder().encode(`forest example issuer: ${ISSUER}`))
 const note = signNote(issuerPrivate, {
   noteNumber: noteNumberOf(S, ISSUER),
-  embedding: new Uint8Array(Float32Array.from([0.25, -0.5, 0.125]).buffer),
-  model: 'example-face-model/1',
-  month: 202609,
+  attributes: fieldHash('forest example attributes', ISSUER),
 })
 const human = await proveHuman({ seedScalar: S, issuerName: ISSUER, note, label: LABEL, artifacts: { wasm: devnet('human', 'human.wasm'), zkey: devnet('human', 'human.zkey') } })
 const issuerHex = hex.encode(toBytes32(human.issuer[0])) + hex.encode(toBytes32(human.issuer[1]))
@@ -76,11 +74,9 @@ const card = {
       issuerName: ISSUER,
       label: LABEL,
       stamp: hex.encode(toBytes32(human.stamp)),
-      month: human.month,
       proof: b64u.encode(proofBytes(human.proof)),
     },
   ],
-  createdAt: '2026-09-14T10:00:00Z',
 }
 writeFileSync(new URL('../schemas/examples/profile.json', import.meta.url), JSON.stringify(card, null, 2) + '\n')
 console.log(`the example card for ${me.address}: a reputation score of ${reputation.score}, and a human proof from ${ISSUER}`)

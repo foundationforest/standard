@@ -4,7 +4,7 @@
   "made": "2026-10-15",
   "circuit": {
     "file": "human.circom",
-    "constraints": 6526
+    "constraints": 6466
   },
   "circom": {
     "version": "2.2.3",
@@ -22,24 +22,24 @@
   },
   "phase2": {
     "contributions": 1,
-    "contributionHash": "96a6a36a923eae46559fcb2b5cb4547ba4c2289d1ddec700438e925a744a266074a1768ece617c64f85599bffe361a809754b51b490dcf93ce61eea727109963"
+    "contributionHash": "38beddf9fec9dbebed39f39ad7f36c1b5dd897073288901727a4f1d7ceed09c7b77b92204acc69be976e1457f0c1e7b2812151b06708322b5d3f23eb07cd309d"
   },
   "r1cs": {
-    "bytes": 2156940,
-    "sha256": "3f0195ffc38d82db8974b8eae9a795a917046c9d3b222188e46eb91e0d24c406"
+    "bytes": 1987100,
+    "sha256": "15ba3c3bfc7d61a172c9d6bba26b5b94dcf468fa2569c09b1fd44585e4b514dc"
   },
   "files": {
     "human.zkey": {
-      "bytes": 4196111,
-      "sha256": "ff2ffe9681443f0265eb842494c5d3c7d0397c5d9ec8a2a8a7d3f14821f0b375"
+      "bytes": 3912491,
+      "sha256": "a17ff3bbe0b1be65bd12cb0095b5b0a17b0e7394c4b815acef8ec1b6401a600f"
     },
     "human.wasm": {
-      "bytes": 3266727,
-      "sha256": "3152d4d71a3bbd6569c3f5b56664637b324b3646d32bee0d965a8a543cea3f2e"
+      "bytes": 3266314,
+      "sha256": "483ed94efee633f552c365053dc0657eb3cc24ea8af7c0e496ffae53311a2ed6"
     },
     "verification-key.json": {
-      "bytes": 4208,
-      "sha256": "cab4ac9ab933fce42a5155b1478e43409a09b8aadeb6e813b867c01994044e1e"
+      "bytes": 4023,
+      "sha256": "49e42be62ae04cc2d55a2c9fb2030e8b76adc4c4ecf24879b901584f4af7d724"
     }
   }
 }

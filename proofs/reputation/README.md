@@ -15,7 +15,7 @@ a profile of the person's own, so nobody can lend their score to someone else.
 It has two uses:
 
 - **Global:** the count-weighted score of up to eight profiles the person picks, naming none of
-  them: their average score, each weighted by its number of reviews.
+  them: their average score, each weighted by its count.
 - **Single:** the score of one of their profiles, with its label shown and which profile hidden.
 
 It is a zero-knowledge proof: it shows that this is true and nothing else. The person's app makes
@@ -33,7 +33,9 @@ circom 2.2.3, Groth16 on BN254, and the Poseidon and Merkle pieces Semaphore use
 An index, a service that reads records (what profiles publish) from hosts (the servers that keep
 them) and scores profiles as it chooses ([records](../../records/README.md)), publishes its scores as
 a tree. The tree is a standard: any index may publish one, and a proof names the root it used, the
-one number the whole tree hashes down to.
+one number the whole tree hashes down to. The circuit proves a count-weighted score over any tree
+of `(stamp, scope, score, count)` leaves an index signs; a proof means only what that index says
+that root holds.
 
 - **A leaf** is `Poseidon(stamp, scope, score, count)`, circomlib's Poseidon with four inputs:
   - `stamp`: the profile's stamp at an issuer ([keys](../../keys/README.md#stamps)), as its human
@@ -41,9 +43,10 @@ one number the whole tree hashes down to.
     an issuer checked the person, with a note, an issuer's signed word that it checked them.
   - `scope`: the profile's label as a number, exactly as `keys/` makes it
     ([keys](../../keys/README.md#the-recipe)).
-  - `score`: the index's score for the profile times ten, as a whole number from 0 to 2^32 - 1
-    (4.7 is 47).
-  - `count`: how many reviews the score comes from, from 0 to 2^32 - 1.
+  - `score`: the index's score for the profile, a whole number from 0 to 2^32 - 1, on whatever
+    scale the index says.
+  - `count`: the weight the index gives that score, such as how many reviews it comes from, from 0
+    to 2^32 - 1.
 - **One leaf per stamp.**
 - **The tree** is Semaphore's lean incremental Merkle tree over Poseidon of pairs, with the leaves
   in the index's order: it hashes the leaves in pairs, level by level, up to one number, the root,
@@ -84,7 +87,7 @@ Inside the proof:
 3. A blank slot is all zeros, and every score and count is below 2^32.
 4. No two used slots share a scope, so a profile counts once.
 5. A shown scope is the scope of every used slot, so a shown label means exactly one profile.
-6. The output is `floor(sum(score * count) / sum(count))`, over at least one review. With one
+6. The output is `floor(sum(score * count) / sum(count))`, over a count of at least one. With one
    profile, it is that profile's score.
 7. `Poseidon(profile tag, seedScalar, profileScope)` is split into its bits by `Num2Bits_strict`,
    and its lowest 250 bits times `Base8` must be `(profileX, profileY)`: the profile it is shown on
@@ -232,8 +235,8 @@ Measured in Node 22 on a 4-core machine, with 8 slots at depth 20:
 
 - **The standard:** the leaf, the tree, what an index signs, and the circuit and its public
   signals.
-- **An index:** chooses its scores, which reviews count and how much, and when and where it
-  publishes its tree.
+- **An index:** chooses its scores and their scale, what a count weighs, which reviews count and
+  how much, and when and where it publishes its tree.
 - **A reader (an app, an index or a service):** chooses which indexes it trusts, how old a time it
   accepts, and what a score means to it.
 - **An app, with the person:** whether to show a proof, which profiles count, and whether to show
@@ -242,15 +245,15 @@ Measured in Node 22 on a 4-core machine, with 8 slots at depth 20:
 ## FAQ
 
 **Why at most eight profiles?** Each slot costs about 5,700 constraints, most of them its path's
-Poseidon hashes. Eight covers a profile on each side of four markets and keeps a proof to a few
+Poseidon hashes. Eight covers two roles in each of four markets and keeps a proof to a few
 seconds. More is a new circuit and a new setup.
 
 **Why a depth of 20?** A million leaves per index tree is enough for now. A deeper tree is a new
 circuit and a new setup.
 
-**Why does the proof not say how many reviews?** The index's score is where the number of reviews
-behind a profile should weigh. The counts only weigh one profile against another inside the proof,
-and a second output would say more about the person than the score does.
+**Why does the proof not say its count?** The index's score is where the number of reviews behind
+a profile should weigh. The counts only weigh one profile against another inside the proof, and a
+second output would say more about the person than the score does.
 
 **Why does each slot name its own issuer, and the proof none?** A person's profiles may be
 checked by different issuers, and one seed is behind them all, so the proof counts them together.

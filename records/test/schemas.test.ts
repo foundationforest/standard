@@ -1,7 +1,8 @@
 // The three record schemas (schemas/*.json), checked with a standard JSON Schema validator: the
 // examples and the bodies the other tests publish fit them; each rule still refuses what it
-// refused; every example is a body a record can carry. The example card's proofs are checked with
-// their own verifiers (proofs/human/client, proofs/reputation/client), for the card's own address.
+// refused; an offer's and a review's other fields are the market's, so none is refused; every
+// example is a body a record can carry. The example card's proofs are checked with their own
+// verifiers (proofs/human/client, proofs/reputation/client), for the card's own address.
 
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
@@ -11,7 +12,6 @@ import formats from 'ajv-formats'
 import { accessKey as makeAccessKey, inboxKey, payKey, readKey } from '../../keys/src/index.ts'
 import { verifyHuman } from '../../proofs/human/client/src/index.ts'
 import { verifyReputation } from '../../proofs/reputation/client/src/index.ts'
-import { base58 } from '../src/bytes.ts'
 import { checkValue } from '../src/canonical.ts'
 import { inboxOf } from '../src/message.ts'
 import { humanCheck, proofsOf, reputationCheck } from '../src/proofs.ts'
@@ -62,26 +62,30 @@ describe('schemas', () => {
   })
 
   test('records stay open: a market adds fields, flat beside the standard’s, and a field nobody defined is not refused', () => {
-    assert.ok(fits('offer', example('offer'))) // subjects and languages come from the online-tutors market
-    assert.ok(fits('review', example('review'))) // sessions, too
     for (const kind of KINDS) assert.ok(fits(kind, { ...example(kind), anythingElse: 1 }), kind)
   })
 
-  test('the required fields', () => {
-    for (const field of ['market', 'role', 'createdAt']) assert.ok(!fits('profile', edit('profile', [field], undefined)), field)
-    assert.ok(fits('profile', { market: 'tutoring', role: 'seller', createdAt: '2026-10-02T12:00:00Z' }), 'a card can be its market and role alone')
-    for (const field of ['description', 'createdAt']) assert.ok(!fits('offer', edit('offer', [field], undefined)), field)
-    for (const field of ['subject', 'createdAt']) assert.ok(!fits('review', edit('review', [field], undefined)), field)
-    assert.ok(fits('review', { subject: alice.address, createdAt: '2026-10-02T12:00:00Z' }), 'a review can be as thin as pointing at a person')
-    assert.ok(!fits('offer', edit('offer', ['createdAt'], 'yesterday')))
+  test('the required fields: a card’s market and role; nothing in an offer or a review', () => {
+    for (const field of ['market', 'role']) assert.ok(!fits('profile', edit('profile', [field], undefined)), field)
+    assert.ok(fits('profile', { market: 'tutoring', role: 'seller' }), 'a card can be its market and role alone')
+    assert.ok(fits('offer', {}), 'an offer can be empty')
+    assert.ok(fits('review', {}), 'a review too')
   })
 
-  test('decimals are text: an amount, a score or a degree as a number is refused', () => {
-    assert.ok(!fits('offer', edit('offer', ['price', 'amount'], 25)))
-    assert.ok(!fits('review', edit('review', ['score'], 9)))
-    const located = edit('offer', ['location'], { lat: '38.72', lon: '-9.14', precisionKm: 1, area: 'Lisbon' })
-    assert.ok(fits('offer', located))
-    assert.ok(!fits('offer', { ...located, location: { ...located.location, lat: 38.72 } }))
+  test('a role is any text: which roles exist is the market’s', () => {
+    for (const role of ['seller', 'buyer', 'peer', 'driver', 'x']) assert.ok(fits('profile', edit('profile', ['role'], role)), role)
+    for (const role of [7, null, 'x'.repeat(65)]) assert.ok(!fits('profile', edit('profile', ['role'], role)), String(role))
+  })
+
+  test('an offer’s and a review’s fields beside media are the market’s: the standard refuses none of them', () => {
+    // Fields the standard once shaped, in shapes it once refused: each is now the market's to judge.
+    const once = { description: 7, price: { amount: 25, per: 'week' }, terms: { timer: { days: 0, to: 'arbiter' } }, location: { lat: 38.72 }, createdAt: 'yesterday', expires: 1 }
+    assert.ok(fits('offer', { ...example('offer'), ...once }))
+    assert.ok(fits('review', { ...example('review'), subject: 'did:web:example.com', score: 9, offer: 'Maths', evidence: 'x', text: 1, createdAt: 'yesterday' }))
+    for (const kind of ['offer', 'review'] as const) {
+      assert.deepEqual(Object.keys(read(`../schemas/${kind}.json`).properties), ['media'], `${kind}: the standard names media alone`)
+      assert.equal(read(`../schemas/${kind}.json`).required, undefined, `${kind}: and requires nothing`)
+    }
   })
 
   test('blobs are SHA-256 references with their types and sizes; which types and how large is each host’s own choice, not the shape’s', () => {
@@ -103,59 +107,6 @@ describe('schemas', () => {
     assert.ok(fits('offer', edit('offer', ['media'], [{ ...clip, size: 50_000_001 }])))
     assert.ok(fits('offer', edit('offer', ['media'], Array(10).fill(clip))), 'an offer carries the same media as a review')
     assert.ok(!fits('offer', edit('offer', ['media'], Array(11).fill(clip))))
-  })
-
-  test('an offer’s price, terms and timer keep their choices and bounds; it names no direction, its profile’s role does', () => {
-    for (const per of ['item', 'hour', 'day', 'month', 'job']) assert.ok(fits('offer', edit('offer', ['price', 'per'], per)), per)
-    for (const per of ['week', 'session', 'Hour', '']) assert.ok(!fits('offer', edit('offer', ['price', 'per'], per)), per)
-    assert.ok(!fits('offer', edit('offer', ['price', 'per'], undefined)))
-    assert.ok(!('direction' in example('offer')))
-    assert.ok(fits('offer', edit('offer', ['terms'], {})), 'no terms: no arbiter and no timer')
-    for (const [days, ok] of [[1, true], [65535, true], [0, false], [65536, false]] as const) {
-      assert.equal(fits('offer', edit('offer', ['terms', 'timer'], { days, to: 'seller' })), ok, `days ${days}`)
-    }
-    assert.ok(!fits('offer', edit('offer', ['terms', 'timer'], { days: 3, to: 'arbiter' })))
-    assert.ok(!fits('offer', edit('offer', ['location'], { lat: '0', lon: '0', precisionKm: 20001, area: 'x' })))
-  })
-
-  test('degrees accept exactly what the old rule accepted: at most 4 decimals, within ±90 and ±180', () => {
-    // The old rule: /^-?[0-9]{1,3}(\.[0-9]{1,4})?$/, the value within bounds, and the lexicon's
-    // maxLength (8 for lat, 9 for lon). Every spelling below is judged both ways.
-    const OLD = /^-?[0-9]{1,3}(\.[0-9]{1,4})?$/
-    const whole = ['0', '00', '000', '5', '05', '005', '9', '09', '10', '45', '89', '089', '90', '090', '91', '099', '100', '179', '0179', '180', '181', '199', '200', '999', '1000']
-    const fraction = ['', '.', '.0', '.00', '.0000', '.00000', '.5', '.0001', '.9999', '.12345', 'e1']
-    let judged = 0
-    for (const sign of ['', '-', '+']) {
-      for (const w of whole) {
-        for (const f of fraction) {
-          const v = sign + w + f
-          for (const [key, bound, maxLength] of [['lat', 90, 8], ['lon', 180, 9]] as const) {
-            const old = OLD.test(v) && Math.abs(Number(v)) <= bound && v.length <= maxLength
-            const place = { lat: '0', lon: '0', precisionKm: 0, area: 'here', [key]: v }
-            assert.equal(fits('offer', edit('offer', ['location'], place)), old, `${key} ${JSON.stringify(v)}`)
-            judged++
-          }
-        }
-      }
-    }
-    assert.equal(judged, 3 * whole.length * fraction.length * 2)
-  })
-
-  test('a review names a profile by its address; its score runs from 1 to 10 with one decimal; it may name the offer and the evidence', () => {
-    assert.equal(example('review').subject, alice.address, 'the example reviews the example card')
-    for (const subject of ['did:key:z6MkpSx7aRn6kR1oSMgun7YdDD3ZXPepph8UcWYp1Jp4vhJL', 'did:web:example.com', alice.address.replace(/^./, '0')]) {
-      assert.ok(!fits('review', edit('review', ['subject'], subject)), subject)
-    }
-    for (const score of ['1', '1.0', '5.5', '9.9', '10', '10.0']) assert.ok(fits('review', edit('review', ['score'], score)), score)
-    for (const score of ['0', '0.5', '10.5', '11', '9.55', '8.', '.5', '07', ' 8', '10.1']) assert.ok(!fits('review', edit('review', ['score'], score)), score)
-    for (const offer of ['maths', 'a', '0', 'portuguese-a1.evening_2', 'x'.repeat(64)]) assert.ok(fits('review', edit('review', ['offer'], offer)), offer)
-    for (const offer of ['', 'Maths', '-maths', '.x', 'offer/maths', 'x'.repeat(65), 'a b']) assert.ok(!fits('review', edit('review', ['offer'], offer)), offer)
-    // An escrow receipt's address, or a payment's signature: base58, 32 to 88 characters.
-    const signature = base58.encode(new Uint8Array(64).fill(0xff))
-    assert.equal(signature.length, 88, 'the longest a 64-byte signature spells')
-    for (const evidence of [alice.address, signature]) assert.ok(fits('review', edit('review', ['evidence'], evidence)), evidence)
-    for (const evidence of ['x', '0a'.repeat(32), '0OIl' + 'a'.repeat(40), signature + 'A', alice.address.slice(13)]) assert.ok(!fits('review', edit('review', ['evidence'], evidence)), evidence)
-    assert.ok(!('dealId' in example('review')))
   })
 
   test('a profile’s pay address is keys/’s payKey for its label: an ed25519 key on Solana, in base58', async () => {
@@ -239,27 +190,25 @@ describe('schemas', () => {
     assert.equal(await verifyHuman(check), true)
     for (const [why, changed] of [
       ['another profile', { profile: aliceBuyer.address }],
-      ['another month', { month: 202610 }],
       ['another issuer name', { issuerName: 'issuer-b.example' }],
       ['another label', { label: 'tutoring/buyer' }],
     ] as const) {
       assert.equal(await verifyHuman({ ...check, ...changed }), false, why)
     }
-    assert.equal(humanCheck({ ...shown, month: '202609' }, alice.address), null)
+    assert.equal(humanCheck({ ...shown, stamp: shown.stamp.toUpperCase() }, alice.address), null)
 
-    for (const field of ['issuer', 'issuerName', 'label', 'stamp', 'month', 'proof']) assert.ok(!fits('profile', set(field, undefined)), field)
+    for (const field of ['issuer', 'issuerName', 'label', 'stamp', 'proof']) assert.ok(!fits('profile', set(field, undefined)), field)
     assert.ok(!fits('profile', set('extra', 1)), 'nothing verifyHuman does not take')
+    assert.ok(!fits('profile', set('month', 202609)), 'the month a proof once showed, too')
     const bad: { [field: string]: unknown[] } = {
       issuer: [shown.issuer.toUpperCase(), shown.issuer.slice(1), shown.issuer + '0', alice.address],
       issuerName: ['', 'x'.repeat(257), 1],
       label: ['', 'x'.repeat(129), 1],
       stamp: [shown.stamp.toUpperCase(), shown.stamp.slice(1), shown.stamp + '0', '0x' + shown.stamp.slice(2)],
-      month: ['202609', 202609.5, 99999, 1000000, -202609],
       proof: [shown.proof.slice(1), shown.proof + 'A', shown.proof.replace(/^./, '+')],
     }
     for (const [field, values] of Object.entries(bad)) {
       for (const value of values) assert.ok(!fits('profile', set(field, value)), `${field} ${JSON.stringify(value)}`)
     }
-    for (const month of [100001, 202612, 999912]) assert.ok(fits('profile', set('month', month)), String(month))
   })
 })

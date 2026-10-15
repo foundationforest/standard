@@ -1,38 +1,9 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "review",
-  "description": "A review of another profile, at the path `review/<id>` in the reviewer's own profile. Only who it is about is required: a review can be as thin as pointing at a person. What is missing weighs less; nothing is refused. Its market is the market of the profile it is about, and that market may add fields.",
+  "description": "A review, at the path `review/<id>` in the reviewer's own profile. Its body is defined by the market the profile lives in (foundationforest/markets). The standard names one field, media, because a host keeps the blobs a record names.",
   "type": "object",
-  "required": ["subject", "createdAt"],
   "properties": {
-    "subject": {
-      "type": "string",
-      "description": "The reviewed profile's name: its address.",
-      "minLength": 32,
-      "maxLength": 44,
-      "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$"
-    },
-    "score": {
-      "type": "string",
-      "description": "From \"1\" to \"10\", with at most one decimal (\"8.5\"): decimal text, since a record holds no fractional numbers.",
-      "pattern": "^(10(\\.0)?|[1-9](\\.[0-9])?)$"
-    },
-    "offer": {
-      "type": "string",
-      "description": "Optional. The offer this review is about: its <id> in offer/<id>, in the subject's folder.",
-      "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
-    },
-    "evidence": {
-      "type": "string",
-      "description": "Optional. What shows the deal took place on chain, in base58: the address of its escrow receipt, or the signature of a direct payment between the two profiles' pay addresses. An index weighs a review without evidence it can check near zero.",
-      "minLength": 32,
-      "maxLength": 88,
-      "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,88}$"
-    },
-    "text": {
-      "type": "string",
-      "maxLength": 3000
-    },
     "media": {
       "type": "array",
       "description": "Optional. Photos and short videos of the work.",
@@ -40,10 +11,6 @@
         "$ref": "#/$defs/media"
       },
       "maxItems": 10
-    },
-    "createdAt": {
-      "type": "string",
-      "format": "date-time"
     }
   },
   "$defs": {

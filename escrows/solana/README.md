@@ -28,9 +28,10 @@ address, never an upgrade, and the old ones keep working.
 
 A buyer pays a seller for an hour of maths.
 
-1. **The offer.** The seller's offer, which it publishes to say what it sells, has a price, and an
-   index, a service that reads what profiles publish and scores them, shows it. The buyer's app
-   reads the offer and agrees the amount.
+1. **The offer.** The seller publishes an offer, whose body its market defines
+   ([markets](https://github.com/foundationforest/markets)), and an index, a service that reads
+   what profiles publish and scores them, shows it. The buyer's app reads the offer and agrees the
+   amount.
 2. **Opening and paying in.** The buyer's app makes the terms (`termsFor`), then in one
    transaction opens the escrow (`create`) and pays the amount into it (`createAndFund`). Or the
    seller opens it first, as an invoice, and the buyer pays into it
@@ -40,7 +41,7 @@ A buyer pays a seller for an hour of maths.
    gives it back; or both sign a split; or the arbiter or the timer, if the terms named one,
    decides ([How money leaves](#how-money-leaves)).
 5. **The receipt stays.** The escrow's account stays at its address, saying how the deal ended,
-   and each side's review names that address as its evidence ([The receipt](#the-receipt)).
+   and a review can point to that address ([The receipt](#the-receipt)).
 
 A buyer with nothing to wait for does steps 2 and 4 in one transaction: `payInOneTap`.
 
@@ -64,10 +65,12 @@ closes, recorded as the payer ([Rent](#rent)).
 
 `create` takes either party as its creator, so an escrow opens one of two ways:
 
-- **The buyer opens it from an offer.** The buyer's app reads the seller's offer and names the
-  seller's address, the amount (the offer's price, times the hours or days bought), the dollar
-  (the price's mint) and the options (the arbiter and the timer in the offer's `terms`, if any):
-  `termsFor`, then `createIx`. It usually pays in the same transaction (`createAndFund`).
+- **The buyer opens it from the offer's terms.** The buyer's app names the seller's address, the
+  amount, the dollar and the options the offer carries, if any: an arbiter, and a timer
+  `{ days, to }`, where `to` is the side it pays (`termsFor`, then `createIx`). This shape is the
+  escrow's own, defined here because the program defines what it means; an offer field that
+  carries it is the market's to suggest. It usually pays in the same transaction
+  (`createAndFund`).
 - **The seller opens it for one buyer: an invoice.** The seller's app names the buyer, the amount,
   the dollar and the options (`invoiceIx`). The buyer pays into its address with a plain transfer,
   from anywhere ([Paying in](#paying-in)), or in one tap (`payInvoiceInOneTap`).
@@ -90,8 +93,7 @@ closes, recorded as the payer ([Rent](#rent)).
   the amount. Every way out checks the balance itself; nothing needs to mark it first.
 - **`mark_funded`**, sent by anyone, records when the amount was there. Only the timer needs it:
   the timer counts from the mark, so only the side the timer favours has a reason to send it.
-- **The amount** is one payment: an app multiplies a price per hour or per day before `create`,
-  one escrow per payment.
+- **The amount** is one payment: one escrow per payment.
 - **The deposit address is made first** when paying in the same transaction as `create`
   (`createAndFund` and the one-tap builders do), so a fee payer (a service that pays Solana's
   costs for others) that checks every transfer's destination before it signs finds it made.
@@ -149,7 +151,8 @@ the receipt: the buyer, the seller, who opened it, the mint, the amount, the arb
 timer, who fronted the rent, when the money was there (the mark's time, or the ending's if nobody
 marked it), whether a side objected and when, how it ended, when, and what each side got. A
 receipt never closes and never changes, and its address never holds a second deal, so the address
-is what a review names as its deal's evidence ([records/](../../records/README.md#folders)).
+is what a review can name to point at its deal; what a review holds is its market's
+([markets](https://github.com/foundationforest/markets)).
 
 Every change is also an event, so an index can read outcomes from the log: `Created`, `Funded`,
 `Objected`, `Ended`, `Closed`, `RecoveredLate`, `RentSwept`.
@@ -194,8 +197,8 @@ objected escrow is open or funded, and ends by any way out but the timer.
 
 ### Use it
 
-- `termsFor(postTerms, deal)`, `optionsFromPost(postTerms)`: an escrow's terms from an offer's
-  optional `terms` block ([offer schema](../../records/schemas/offer.json)) and the deal.
+- `termsFor(postTerms, deal)`, `optionsFromPost(postTerms)`: an escrow's terms from its options,
+  `{ arbiter?, timer?: { days, to } }` as an offer may carry them, and the deal.
 - `tokenOf(mint, account)`: the mint's token program and decimals, read from its account; it
   refuses what `create` refuses.
 - `createIx`, `invoiceIx`, `createAndFund`, `payInOneTap`, `payInvoiceInOneTap`: opening; opening
@@ -360,8 +363,7 @@ extensions, and one more invoice in it. There is no smoke test: read a receipt w
   No dollar on devnet names a hook program: a hook program runs only under LiteSVM, as a builtin.
 - **Tested, not audited.** The fuzzer runs an SBPF v0 build, since its runtime runs no v3 program,
   on a classic mint only, and its runtime checks no signatures. There is no local-validator test:
-  the devnet run is the client's only run against a real runtime. A Solana Pay link to an
-  escrow's address is untried on a phone. No paid review.
+  the devnet run is the client's only run against a real runtime. No paid review.
 
 The [security checklist](security-checklist.md) lists every known limit, with the test that pins
 each.

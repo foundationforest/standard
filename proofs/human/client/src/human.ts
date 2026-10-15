@@ -1,22 +1,21 @@
 // The note and the human proof (../README.md, The note and the human proof).
 //
-// An issuer signs a note for each person: { note number, face embedding, model name, month }. The
-// note number is Poseidon of the person's secret for that issuer (`keys/`'s `issuerSecret`), so
-// the issuer never learns the secret, nor the seed it comes from. The issuer signs
-// Poseidon(tag, note number, the embedding's hash, the model's hash, month) with its EdDSA key on
-// Baby Jubjub over Poseidon: zk-kit's signer, unchanged, which circomlib's verifier checks inside
-// the circuit. The tag is fixed, so nothing the issuer signs for another purpose can be turned
-// into a note. The tag, the embedding and the model enter as `keccak256 >> 8` of their bytes, like
-// the scope and the name hash; the circuit never reads the embedding or the model.
+// An issuer signs a note for each person: { note number, attributes }. The note number is Poseidon
+// of the person's secret for that issuer (`keys/`'s `issuerSecret`), so the issuer never learns the
+// secret, nor the seed it comes from. The attributes are one field element, whatever the issuer
+// attests; the proof keeps them private. The issuer signs Poseidon(tag, note number, attributes)
+// with its EdDSA key on Baby Jubjub over Poseidon: zk-kit's signer, unchanged, which circomlib's
+// verifier checks inside the circuit. The tag is fixed, so nothing the issuer signs for another
+// purpose can be turned into a note.
 //
 // The person proves on the device, from the seed scalar and the note: "this issuer signed a note
 // for the note number my seed gives at it; my stamp for this label at it is this one; this
 // profile's key is the one my seed gives for this label". Public: the stamp, the profile's key,
-// the issuer's key, the label's scope, the issuer's name hash and the month.
+// the issuer's key, the label's scope and the issuer's name hash.
 
 import { derivePublicKey, signMessage, verifySignature } from '@zk-kit/eddsa-poseidon'
 import { poseidon1 } from 'poseidon-lite/poseidon1'
-import { poseidon5 } from 'poseidon-lite/poseidon5'
+import { poseidon3 } from 'poseidon-lite/poseidon3'
 import { groth16 } from 'snarkjs'
 
 import {
@@ -49,19 +48,22 @@ export type IssuerKey = [bigint, bigint]
 export type Note = {
   /** The person's note number for this issuer: `keys/`'s `issuerSecret(seed, name).noteNumber`. */
   noteNumber: bigint
-  /** The face embedding, in the bytes the model gives. Only its hash is signed. */
-  embedding: Uint8Array
-  /** The model that made the embedding. Only its hash is signed. */
-  model: string
-  /** The month the issuer checked the person, as the number YYYYMM, such as 202610. */
-  month: number
+  /** What the issuer attests, as one field element of its choosing. The proof keeps it private. */
+  attributes: bigint
 }
+
+/** A JSON value: what an issuer adds beside a note is one. */
+export type Json = null | boolean | number | string | Json[] | { [key: string]: Json }
 
 /** An EdDSA signature on Baby Jubjub, as zk-kit writes it. */
 export type NoteSignature = { R8: [bigint, bigint]; S: bigint }
 
-/** A note, the key of the issuer that signed it, and the signature. The person keeps it. */
-export type SignedNote = Note & { issuer: IssuerKey; signature: NoteSignature }
+/**
+ * A note, the key of the issuer that signed it, and the signature. The person keeps it. Any other
+ * field is one the issuer added beside them, such as what `attributes` was made from: the note's
+ * functions pass it through unchanged, and nothing here reads it.
+ */
+export type SignedNote = Note & { issuer: IssuerKey; signature: NoteSignature; [field: string]: unknown }
 
 export type HumanProof = {
   /** The stamp for this label at this issuer, `Poseidon(scope, issuer secret)`. */
@@ -74,16 +76,10 @@ export type HumanProof = {
   issuerName: string
   nameHash: bigint
   scope: bigint
-  month: number
   /** The proof as snarkjs wrote it. */
   proof: SnarkjsProof
-  /** In the circuit's order: stamp, profile x, profile y, issuer x, issuer y, scope, name hash, month. */
+  /** In the circuit's order: stamp, profile x, profile y, issuer x, issuer y, scope, name hash. */
   publicSignals: string[]
-}
-
-/** A month as the number YYYYMM: a year from 1000 to 9999, a month from 01 to 12. */
-export function isMonth(value: unknown): value is number {
-  return Number.isSafeInteger(value) && (value as number) >= 100001 && (value as number) <= 999912 && (value as number) % 100 >= 1 && (value as number) % 100 <= 12
 }
 
 /** The person's note number for one issuer, from the seed scalar: what the issuer signs in the note. */
@@ -91,13 +87,11 @@ export function noteNumberOf(seedScalar: bigint, issuerName: string): bigint {
   return poseidon1([issuerScalarOf(seedScalar, issuerName)])
 }
 
-/** What an issuer signs: Poseidon(tag, note number, keccak256(embedding) >> 8, keccak256(model) >> 8, month). */
+/** What an issuer signs: Poseidon(tag, note number, attributes). */
 export function noteHash(note: Note): bigint {
   if (!isFieldElement(note.noteNumber)) throw new RangeError('a note number is a field element')
-  if (!isMonth(note.month)) throw new RangeError('a month is YYYYMM')
-  if (!(note.embedding instanceof Uint8Array) || typeof note.model !== 'string') throw new TypeError('an embedding is bytes and a model is text')
-  // keys/'s hash with no namespace: the place in the note keeps the two apart.
-  return poseidon5([NOTE_TAG, note.noteNumber, fieldHash('', note.embedding), fieldHash('', note.model), BigInt(note.month)])
+  if (!isFieldElement(note.attributes)) throw new RangeError('attributes are a field element')
+  return poseidon3([NOTE_TAG, note.noteNumber, note.attributes])
 }
 
 /** The issuer's key, from its 32-byte private key. */
@@ -106,34 +100,26 @@ export function issuerKeyOf(privateKey: Uint8Array): IssuerKey {
   return derivePublicKey(privateKey)
 }
 
-/** For an issuer: sign a note with its 32-byte private key. */
-export function signNote(privateKey: Uint8Array, note: Note): SignedNote {
+/** For an issuer: sign a note with its 32-byte private key. Fields it adds beside the note pass through. */
+export function signNote(privateKey: Uint8Array, note: Note & { [field: string]: unknown }): SignedNote {
   const issuer = issuerKeyOf(privateKey)
   return { ...note, issuer, signature: signMessage(privateKey, noteHash(note)) }
 }
 
 /**
  * A signed note as JSON: the form a person's vault keeps it in (records/README.md, The vault), and
- * an issuer may hand it over in. Big numbers in decimal text, the month as a number, the
- * embedding in base64url without padding, the issuer's key as 128 characters of lowercase hex,
- * x then y. Every key starts in lower case, so it fits inside a record.
+ * an issuer may hand it over in. Big numbers in decimal text, the issuer's key as 128 characters
+ * of lowercase hex, x then y. Every key starts in lower case, so it fits inside a record. Any other
+ * field is the issuer's, as it wrote it.
  */
 export type NoteJson = {
   noteNumber: string
-  embedding: string
-  model: string
-  month: number
+  attributes: string
   issuer: string
   signature: { r8: [string, string]; s: string }
+  [field: string]: Json
 }
 
-const base64url = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
-const fromBase64url = (text: string): Uint8Array => {
-  if (!/^[A-Za-z0-9_-]*$/.test(text)) throw new Error('not base64url')
-  const bytes = Uint8Array.from(atob(text.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - (text.length % 4)) % 4)), (c) => c.charCodeAt(0))
-  if (base64url(bytes) !== text) throw new Error('base64url in more than one spelling')
-  return bytes
-}
 const field = (n: bigint, what: string): bigint => {
   if (!isFieldElement(n)) throw new Error(`${what} is below BN254's scalar order`)
   return n
@@ -146,33 +132,32 @@ const decimal = (text: unknown, what: string): bigint => {
 /** A signed note as JSON (NoteJson). */
 export function noteToJson(note: SignedNote): NoteJson {
   const hex = (n: bigint) => Array.from(toBytes32(n), (b) => b.toString(16).padStart(2, '0')).join('')
+  const { noteNumber, attributes, issuer, signature, ...added } = note
   return {
-    noteNumber: String(note.noteNumber),
-    embedding: base64url(note.embedding),
-    model: note.model,
-    month: note.month,
-    issuer: hex(note.issuer[0]) + hex(note.issuer[1]),
-    signature: { r8: [String(note.signature.R8[0]), String(note.signature.R8[1])], s: String(note.signature.S) },
+    noteNumber: String(noteNumber),
+    attributes: String(attributes),
+    issuer: hex(issuer[0]) + hex(issuer[1]),
+    signature: { r8: [String(signature.R8[0]), String(signature.R8[1])], s: String(signature.S) },
+    // What the issuer added, as it wrote it: JSON values, so they travel as they came.
+    ...(added as { [field: string]: Json }),
   }
 }
 
-/** A signed note back from its JSON. Refuses any other shape; whether its issuer signed it is noteSigned's to say. */
+/**
+ * A signed note back from its JSON. Refuses a note whose own fields are not as NoteJson says; passes
+ * every other field through unchanged. Whether its issuer signed it is noteSigned's to say.
+ */
 export function noteFromJson(value: unknown): SignedNote {
   const isObject = (v: unknown): v is { [key: string]: unknown } => v !== null && typeof v === 'object' && !Array.isArray(v)
   if (!isObject(value)) throw new Error('a note is an object')
-  const fields = ['noteNumber', 'embedding', 'model', 'month', 'issuer', 'signature']
-  for (const key of Object.keys(value)) if (!fields.includes(key)) throw new Error(`unknown note field ${key}`)
-  if (typeof value.embedding !== 'string' || typeof value.model !== 'string') throw new Error('an embedding is base64url and a model is text')
-  if (!isMonth(value.month)) throw new Error('a month is the number YYYYMM')
-  if (typeof value.issuer !== 'string' || !/^[0-9a-f]{128}$/.test(value.issuer)) throw new Error("an issuer's key is 128 characters of lowercase hex")
-  const sig = value.signature
+  const { noteNumber, attributes, issuer, signature: sig, ...added } = value
+  if (typeof issuer !== 'string' || !/^[0-9a-f]{128}$/.test(issuer)) throw new Error("an issuer's key is 128 characters of lowercase hex")
   if (!isObject(sig) || Object.keys(sig).sort().join() !== 'r8,s' || !Array.isArray(sig.r8) || sig.r8.length !== 2) throw new Error('a signature is { r8: [x, y], s }')
   return {
-    noteNumber: decimal(value.noteNumber, 'noteNumber'),
-    embedding: fromBase64url(value.embedding),
-    model: value.model,
-    month: value.month,
-    issuer: [field(BigInt('0x' + value.issuer.slice(0, 64)), 'issuer x'), field(BigInt('0x' + value.issuer.slice(64)), 'issuer y')],
+    ...added,
+    noteNumber: decimal(noteNumber, 'noteNumber'),
+    attributes: decimal(attributes, 'attributes'),
+    issuer: [field(BigInt('0x' + issuer.slice(0, 64)), 'issuer x'), field(BigInt('0x' + issuer.slice(64)), 'issuer y')],
     signature: { R8: [decimal(sig.r8[0], 'r8 x'), decimal(sig.r8[1], 'r8 y')], S: decimal(sig.s, 's') },
   }
 }
@@ -201,18 +186,16 @@ export function humanInput(input: {
 }): { input: Record<string, unknown>; publicSignals: bigint[] } {
   const { note, seedScalar } = input
   if (!isFieldElement(seedScalar)) throw new RangeError('a seed scalar is a field element')
-  if (!isMonth(note.month)) throw new RangeError('a month is YYYYMM')
+  if (!isFieldElement(note.attributes)) throw new RangeError('attributes are a field element')
   const issuerScalar = issuerScalarOf(seedScalar, input.issuerName)
   const nameHash = nameHashOf(input.issuerName)
   const scope = scopeOf(input.label)
   const profile = publicKeyOf(profileScalarOf(seedScalar, input.label))
   const stamp = stampOf(issuerScalar, input.label)
-  const month = BigInt(note.month)
   return {
     input: {
       seedScalar,
-      embedding: fieldHash('', note.embedding),
-      model: fieldHash('', note.model),
+      attributes: note.attributes,
       R8x: note.signature.R8[0],
       R8y: note.signature.R8[1],
       S: note.signature.S,
@@ -222,9 +205,8 @@ export function humanInput(input: {
       issuerY: note.issuer[1],
       scope,
       issuerNameHash: nameHash,
-      month,
     },
-    publicSignals: [stamp, profile[0], profile[1], note.issuer[0], note.issuer[1], scope, nameHash, month],
+    publicSignals: [stamp, profile[0], profile[1], note.issuer[0], note.issuer[1], scope, nameHash],
   }
 }
 
@@ -240,13 +222,13 @@ export async function proveHuman(input: Parameters<typeof humanInput>[0] & { art
     proof: SnarkjsProof
     publicSignals: string[]
   }
-  // The circuit's order: stamp, profile x, profile y, issuer x, issuer y, scope, name hash, month.
+  // The circuit's order: stamp, profile x, profile y, issuer x, issuer y, scope, name hash.
   // Checked so a change in the circuit or the setup files shows up here, and not as a proof every
   // reader refuses.
-  if (publicSignals.length !== 8 || publicSignals.some((s, i) => BigInt(s) !== want[i])) {
+  if (publicSignals.length !== 7 || publicSignals.some((s, i) => BigInt(s) !== want[i])) {
     throw new Error('the proof carries other public signals than the ones asked for')
   }
-  const [stamp, px, py, ix, iy, scope, nameHash] = want as [bigint, bigint, bigint, bigint, bigint, bigint, bigint, bigint]
+  const [stamp, px, py, ix, iy, scope, nameHash] = want as [bigint, bigint, bigint, bigint, bigint, bigint, bigint]
   const profile: Point = [px, py]
   return {
     stamp,
@@ -256,18 +238,17 @@ export async function proveHuman(input: Parameters<typeof humanInput>[0] & { art
     issuerName: input.issuerName,
     nameHash,
     scope,
-    month: input.note.month,
     proof,
     publicSignals,
   }
 }
 
 /**
- * Does this proof hold: did the issuer with this key and this name sign, in this month, a note for
- * whoever holds the seed behind this profile's key, with this stamp for this label? Every public
- * value must be a field element, the scope and the name hash are derived from the label and the
- * name, and the proof is checked with the committed verification key. Which issuers to trust is
- * the reader's choice. Anything that is not a good proof for these inputs is false.
+ * Does this proof hold: did the issuer with this key and this name sign a note for whoever holds
+ * the seed behind this profile's key, with this stamp for this label? Every public value must be a
+ * field element, the scope and the name hash are derived from the label and the name, and the
+ * proof is checked with the committed verification key. Which issuers to trust is the reader's
+ * choice. Anything that is not a good proof for these inputs is false.
  */
 export async function verifyHuman(input: {
   /** The proof as snarkjs writes it, `proveHuman`'s `proof`, or its 256 bytes (`proofBytes`). */
@@ -278,13 +259,12 @@ export async function verifyHuman(input: {
   /** The profile the proof is for: its address, or its key. */
   profile: string | Point
   stamp: bigint | Uint8Array
-  month: number
 }): Promise<boolean> {
   try {
     const stamp = typeof input.stamp === 'bigint' ? input.stamp : fromBytes32(input.stamp)
     const profile = typeof input.profile === 'string' ? pointOf(input.profile) : pointOf(addressOf(input.profile))
-    if (input.issuer.length !== 2 || ![stamp, ...input.issuer].every(isFieldElement) || !isMonth(input.month)) return false
-    const values = [stamp, profile[0], profile[1], input.issuer[0], input.issuer[1], scopeOf(input.label), nameHashOf(input.issuerName), BigInt(input.month)]
+    if (input.issuer.length !== 2 || ![stamp, ...input.issuer].every(isFieldElement)) return false
+    const values = [stamp, profile[0], profile[1], input.issuer[0], input.issuer[1], scopeOf(input.label), nameHashOf(input.issuerName)]
     const proof = input.proof instanceof Uint8Array ? proofFromBytes(input.proof) : input.proof
     return await groth16.verify(HUMAN_KEY, values.map(String), proof)
   } catch {

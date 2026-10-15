@@ -133,8 +133,7 @@ Each is on purpose, and none can be changed after deploy.
   as named options, so each set of terms it accepts has one encoding. Pinned by
   `every_term_is_in_the_address`, and by one fixed vector asserted in the harness and the client
   (`the_address_of_fixed_terms_is_the_clients`). Version 1's program id differs from this one's,
-  so the same seeds land at different addresses under the two; the registry's seeds never collide
-  with these (`pda_the_two_programs_cannot_share_an_address`).
+  so the same seeds land at different addresses under the two.
 - **2.4 Purpose isolation. Applied.** One PDA type.
 
 ### 3. Arithmetic and logic

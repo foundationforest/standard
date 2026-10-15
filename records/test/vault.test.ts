@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 import { inboxKey, mainKey, seedScalar, vaultKey } from '../../keys/src/index.ts'
-import { noteNumberOf, noteToJson, signNote } from '../../proofs/human/client/src/index.ts'
+import { fieldHash, noteNumberOf, noteToJson, signNote } from '../../proofs/human/client/src/index.ts'
 import { publish, readProfile } from '../src/client.ts'
 import { type Vault, VAULT_PATH, checkVault, openVault, readVault, readerCount, vaultRecord } from '../src/private.ts'
 import { RecordError } from '../src/record.ts'
@@ -19,9 +19,7 @@ const code = (c: string) => (err: unknown) => err instanceof RecordError && err.
 const note = noteToJson(
   signNote(new Uint8Array(32).fill(0x31), {
     noteNumber: noteNumberOf(await seedScalar(SEED), 'issuer-a.example'),
-    embedding: Uint8Array.from({ length: 16 }, (_, i) => i + 1),
-    model: 'example-face-model/1',
-    month: 202609,
+    attributes: fieldHash('forest example attributes', 'issuer-a'),
   }),
 )
 

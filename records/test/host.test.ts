@@ -47,7 +47,7 @@ describe('two hosts, readers', () => {
     const v = await readProfile([h1.url], alice.address, clock.t)
     assert.deepEqual([...liveContent(v).keys()].sort(), ['offer/maths', 'offer/physics', 'profile'])
     const review = (await readProfile([h1.url], bob.address, clock.t)).current.get('review/1')!
-    assert.equal((review.record.body as { subject: string }).subject, alice.address)
+    assert.equal((review.record.body as { about: string }).about, alice.address)
   })
 
   test('an update and a delete reach readers from either host; what they replaced goes after keep days', async () => {
@@ -57,7 +57,7 @@ describe('two hosts, readers', () => {
     await publish([h2.url], [ownerRecord(alice, 'offer/maths', offerBody('35'), nextTime(clock.t, known, 'offer/maths'))])
     await publish([h1.url], [ownerRecord(alice, 'profile', null, nextTime(clock.t, known, 'profile'))])
     const v = await readProfile([h1.url, h2.url], alice.address, clock.t)
-    assert.equal((v.current.get('offer/maths')!.record.body as { price: { amount: string } }).price.amount, '35')
+    assert.equal((v.current.get('offer/maths')!.record.body as { about: string }).about, '35')
     assert.equal(v.current.get('profile')!.record.body, null)
 
     // Host 2 keeps the replaced offer for its keep days (30 by default), then forgets it.

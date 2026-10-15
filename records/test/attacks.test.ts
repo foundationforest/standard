@@ -219,8 +219,8 @@ describe('linking two profiles of one person', () => {
       return out
     }
     const shared = [...tokens(one)].filter((t) => tokens(two).has(t))
-    // What repeats is only what the person chose to repeat: here the host, and shared template text.
-    assert.deepEqual(shared.sort(), ['2026-10-02T12:00:00Z', 'https://big-host.example'].sort())
+    // What repeats is only what the person chose to repeat: here the host.
+    assert.deepEqual(shared, ['https://big-host.example'])
   })
 
   test('FINDING: written in the same moment, two profiles sit side by side in a host’s listing', async () => {

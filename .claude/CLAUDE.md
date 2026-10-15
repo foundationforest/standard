@@ -3,9 +3,10 @@ Read `README.md` and the README of the directory you work in before any task.
 
 ## Words
 
-Use these words: seed, main key, profile, address, label, stamp, issuer, list, registry, row,
-record, folder, host, access key, grant, permissions, private, envelope, inbox key, inbox, blob,
-escrow, receipt, deal, index, fee payer, app, market, role, ramp, and sealed (for programs only).
+Use these words: seed, seed scalar, main key, profile, address, label, scope, stamp, issuer, note,
+note number, attributes, human proof, reputation proof, record, folder, host, access key, write key,
+read key, permissions, private, envelope, inbox key, inbox, pull, vault, blob, escrow, receipt,
+deal, index, fee payer, app, market, role, and sealed (for programs only).
 Plain words, no em-dashes.
 
 Rules for apps: `keys/README.md`, Rules for apps that hold keys. Never copy them here.
@@ -15,6 +16,8 @@ Rules for apps: `keys/README.md`, Rules for apps that hold keys. Never copy them
 - Work in plan mode. One task per session. Open a pull request; never push to main.
 - The promises in each README change only when Carlos says so in a chat; never change one as a side
   effect of a task.
+- Content shapes are never defined in this repo: what an offer, a review or a market holds is
+  `foundationforest/markets`'s.
 - The repo is `keys/`, `proofs/` (`human/`, `reputation/`), `records/`, `escrows/` (`solana/`),
   `README.md` and `LICENSE`, with `.github/` and `.claude/CLAUDE.md`. The README is the standard.
 - Keep the docs true in the same pull request: a change that makes a README wrong fixes it. A README

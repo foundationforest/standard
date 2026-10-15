@@ -95,7 +95,9 @@ const describePull = (pull: SignedPull) => {
 export async function vectors() {
   const inbox = KEYS.mainKeys[0].inbox
   const hostA = 'https://host-a.example'
-  const offer = { description: 'One hour of maths tutoring, online.', price: { amount: '30', mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', per: 'hour' }, createdAt: '2026-09-21T13:33:20Z' }
+  // An offer's fields are its market's; the standard names only media (README.md, Folders).
+  const offer = { media: [{ sha256: '9f2c4e6a8b0d1f3e5a7c9b1d3f5e7a9c0b2d4f6e8a1c3e5b7d9f0a2c4e6b8d1f', mimeType: 'image/jpeg', size: 48213 }] }
+  const written = { media: [{ sha256: '0c7e5a3f1d9b7e5c3a1f8d6b4e2c0a9f7d5b3e1c8a6f4d2b0e9c7a5f3d1b8e6c', mimeType: 'video/mp4', size: 1048576 }] }
   const writeEntry = { key: accessKey.address, scope: 'write' as const, paths: ['offer', 'inbox'] }
   const readEntry = { key: reader.address, recipient: reader.recipient, scope: 'read' as const, paths: ['inbox'] }
   return {
@@ -104,10 +106,10 @@ export async function vectors() {
     writeKey: accessKey.address,
     readKey: reader.address,
     hosts: describe(hostsRecord(alice, [hostA, 'https://host-b.example'], TIME)),
-    profileCard: describe(ownerRecord(alice, 'profile', { market: 'tutoring', role: 'seller', inboxKey: inbox.recipient, inbox: { senders: 'anyone' }, createdAt: '2026-09-21T13:33:20Z' }, TIME)),
+    profileCard: describe(ownerRecord(alice, 'profile', { market: 'tutoring', role: 'seller', inboxKey: inbox.recipient, inbox: { senders: 'anyone' } }, TIME)),
     offer: describe(ownerRecord(alice, 'offer/maths', offer, TIME)),
     permissions: describe(permissionsRecord(alice, [writeEntry, readEntry], TIME)),
-    written: describe(accessRecord(accessKey, alice.address, 'offer/physics', { description: 'Physics, one hour.', createdAt: '2026-09-21T13:34:20Z' }, TIME + 60_000)),
+    written: describe(accessRecord(accessKey, alice.address, 'offer/physics', written, TIME + 60_000)),
     deleted: describe(ownerRecord(alice, 'offer/maths', null, TIME + 120_000)),
     message: describeMessage(signMessage(aliceBuyer, alice.address, { private: SEALED }, TIME + 180_000)),
     keyMessage: describeMessage(signMessage({ key: accessKey, from: alice.address, host: hostA }, aliceBuyer.address, { private: SEALED_TO_BUYER }, TIME + 300_000)),

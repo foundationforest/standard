@@ -33,7 +33,7 @@ const hash = (text: string) => fromBytes32(keccak_256(new TextEncoder().encode(t
 test("the verification key is the circuit's committed one, value for value", () => {
   const committed = JSON.parse(readFileSync(join(here, '../../circuit/devnet/verification-key.json'), 'utf8'))
   assert.deepEqual(HUMAN_KEY, committed)
-  assert.equal(HUMAN_KEY.nPublic, 8)
+  assert.equal(HUMAN_KEY.nPublic, 7)
 })
 
 test("the circuit's constants are keys/'s: the issuer and profile tags, and Base8", () => {

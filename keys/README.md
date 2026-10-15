@@ -4,7 +4,7 @@ Part of Forest's standard: [the top README](../README.md).
 
 ## What it is
 
-A person's keys in Forest: one seed, 24 random words, and the recipe that mixes every other key
+A person's keys in Forest: one seed, 32 random bytes, and the recipe that mixes every other key
 from it, on the person's own device. Any app that follows this page gets the same keys from the
 same seed, so a person is never tied to one app.
 
@@ -16,16 +16,11 @@ defaults an app adopts, or says it doesn't. The library in `src/` follows it, an
 
 ### The seed
 
-- The seed is 32 random bytes, written as 24 English words (BIP39: the 32 bytes plus an 8-bit
-  checksum). The words are the 32 bytes and nothing more: BIP39's own seed step (PBKDF2, with a
-  passphrase) is not used.
-- Case and spacing in the words do not matter. A word not on BIP39's list is refused, and the
-  checksum catches all but about 1 in 256 other mistakes, such as a wrong word or two words
-  swapped.
-- Where the seed lives is the app's choice. By default it stays on the device, locked by the
-  device's secure hardware: a phone's keychain (Apple's Keychain or Android's Keystore), or, in a
-  browser, encrypted under a secret that hardware gives only after the person's face or
-  fingerprint; the 24 words in the person's password manager are the backup.
+- The seed is 32 random bytes.
+- How an app makes, keeps and unlocks it is the app's. The standard asks only that it never leaves
+  the device, is held in memory only to mix keys from it, and is dropped after.
+- A seed can be spelled as 24 words, BIP39's for the 32 bytes and not its PBKDF2 seed step, by
+  `exportWords` and `importWords`, for an app that wants them; the Forest app doesn't.
 - Whoever controls the app that holds the seed controls the seed, since the app can do whatever the
   seed can. A web app's code arrives from its server on each visit; an installed app's does not.
 
@@ -98,9 +93,9 @@ them.
 A main key is one profile: it signs the profile's records (the signed statements in its folder),
 and its address is the profile's name.
 
-- There is one per label. A label is free text saying what the profile is for, used exactly as
-  given, as UTF-8, so `Tutoring/Seller` and `tutoring/seller` are two profiles. The recommended
-  shape is `market/role`, such as `tutoring/seller`, with market names from
+- There is one per label. The recipe takes a label as text, used exactly as given, as UTF-8, so
+  `Tutoring/Seller` and `tutoring/seller` are two profiles. A label is `<market>/<role>`, such as
+  `tutoring/seller`; the market defines its roles in
   [foundationforest/markets](https://github.com/foundationforest/markets).
 - Its scalar is the lowest 250 bits of `Poseidon(profile tag, seed scalar, scope)`. Baby Jubjub's
   subgroup order `l` is above 2^250, so every 250-bit number is already a scalar, and the human
@@ -189,10 +184,10 @@ profiles whose stamps are the person's ([proofs](../proofs/README.md)).
 
 ### The vault key
 
-The vault is a folder of the person's own, on a host, that holds what a new device needs and the
-seed cannot give back: the labels of their profiles, their issuers' notes, and apps' settings
-([records](../records/README.md#the-vault)). Its key is mixed
-from the seed, so a new device finds the vault with the seed alone.
+The vault is one folder on a host, encrypted to the vault's own inbox key, holding what the seed
+cannot recompute: which `<market>/<role>` profiles exist, issuer notes, and settings
+([records](../records/README.md#the-vault)). Its keys are mixed from the seed, so a new device
+finds the vault with the seed alone.
 
 - It is a main key with no label: its scalar is the lowest 250 bits of `Poseidon(vault tag, seed
   scalar)`, its address is the vault folder's name, and it signs the vault's records as a main key
@@ -226,10 +221,9 @@ which access keys may act, a read key with its recipient
 
 ### Rules for apps that hold keys
 
-1. The seed stays on the device, locked by its secure hardware; keys mixed from it are held in
-   memory only for the action that needs them.
-2. Every signature asks for the person's face or fingerprint and shows what is being signed; the
-   person may relax this per action, and the default is never relaxed.
+1. The seed never leaves the device, and is held only while mixing keys for one action.
+2. The app asks for the person's device unlock when acting with the main key; access keys act
+   within their permissions without it.
 3. Nothing leaves the device but access keys and signatures.
 4. Each app, server or AI the person lets act for them gets its own access key for each folder.
 5. Proofs are made in the app, never delegated.
@@ -247,7 +241,7 @@ mixes from the seed scalar is not.
 | Function | Gives |
 |---|---|
 | `newSeed()` | A new seed: 32 random bytes |
-| `exportWords(seed)`, `importWords(text)` | The 24 words, and the seed back from them |
+| `exportWords(seed)`, `importWords(text)` | The seed spelled as words, and the seed back from them |
 | `seedScalar(seed)` | The seed scalar |
 | `mainKey(seed, label)` | The main key: `label`, `scope`, `scalar`, `publicKey`, `address`, and the profile's `secret` |
 | `profileScalarOf(seedScalar, label)` | A main key's scalar, from the seed scalar |
@@ -277,7 +271,7 @@ Node 22.18 or later runs the TypeScript directly.
 
 ### Test vectors
 
-`test/vectors.json` pins, for the seed `00 01 … 1f`: its 24 words; its seed scalar; the three
+`test/vectors.json` pins, for the seed `00 01 … 1f`: its words; its seed scalar; the three
 tags; the main keys for `tutoring/seller` and `tutoring/buyer`, each with its secret and inbox key,
 and their payment keys; for two issuers, `issuer-a.example` and `issuer-b.example`, the name hash,
 the person's secret, the note number and a stamp for each label; the vault key, with its secret and
@@ -305,8 +299,7 @@ human proof's tests check the circuit derives the same main key and stamp
 
 ## Limits
 
-- **It trusts the device's secure hardware and the person's password manager** to keep the seed and
-  the words, and show them to no one else.
+- **It trusts the app that holds the seed** to keep it, and show it to no one else.
 - **It trusts its pieces, used unchanged:** Web Crypto (HKDF-SHA256, and its random source for new
   seeds), `@noble/hashes` 2.4.0 (keccak256, SHA-256, SHA-512), `@noble/curves` 2.4.0 (ed25519, and
   the Edwards curve arithmetic Baby Jubjub runs on, with circomlib's numbers), `@scure/base` 2.4.0
@@ -315,8 +308,8 @@ human proof's tests check the circuit derives the same main key and stamp
   0.3.0.
 - **An issuer's name is its own to keep unique.** Two issuers under one name get the same note
   number from each person, so they can match their people.
-- **No recovery.** Lose the device and the words, and every profile and every stamp is gone.
-  Nobody can reset them, because nobody else has them.
+- **No recovery.** Lose the seed, and every profile and every stamp is gone. Nobody can reset
+  them, because nobody else has them.
 - **No rotation.** A profile's name is its key, so a leaked main key loses that profile for good
   (see the FAQ).
 - **One profile per label per seed.** The same seed and label always give the same key.
@@ -328,19 +321,14 @@ human proof's tests check the circuit derives the same main key and stamp
 
 ## Who decides what
 
-- **The standard:** the 24 words, the recipe, its info strings and its tags.
-- **An app, with the person:** which of the rules above it adopts; where the seed and keys live and
-  how the face or fingerprint opens them; backups; how a read key reaches its reader.
+- **The standard:** the seed's 32 bytes, the recipe, its info strings and its tags.
+- **An app, with the person:** which of the rules above it adopts; how it makes, keeps and unlocks
+  the seed; backups; how a read key reaches its reader.
 - **A service:** nothing. No service holds a main key.
 
 ## FAQ
 
-**Why 24 words?**
-24 words are 256 random bits: nobody guesses them. A secret one provider keeps for you stays with
-that provider; words go anywhere, so the seed works with any app on any device. The cost: whoever
-gets the words gets every key.
-
-**What if I give the words to the wrong app?**
+**What if the wrong app gets the seed?**
 Then that app has everything the seed opens, and nothing takes it back:
 - every profile: a main key is mixed from the seed and a label, and labels are public, so it can
   mix the main key of every profile and sign as it, and every payment key and move its money;
@@ -350,9 +338,7 @@ Then that app has everything the seed opens, and nothing takes it back:
 - the vault, with their issuers' notes.
 
 There is no rotation, so the only way out is a new seed and new profiles, moving the money first if
-there is still time. Another app that asks for 24 words takes them as an ordinary recovery phrase
-and shows unrelated accounts: they are not the person's profiles, but that app now holds the seed.
-Give the words only to an app that follows the rules above.
+there is still time. Give the seed only to an app that follows the rules above.
 
 **Why is a main key on Baby Jubjub, with a payment key beside it?**
 So a proof can derive it. The human proof shows that a profile's key comes from the same seed as
