@@ -1,22 +1,31 @@
-// A profile's two keys: the main key, one per label, mixed from the seed; and its inbox key,
-// mixed from the main key. See README.md, "The recipe".
+// A profile's keys: the main key, one per label, mixed from the seed scalar so the human proof can
+// derive it too; the profile's secret, mixed from the seed; and its inbox key, mixed from that
+// secret. See README.md, "The recipe".
 
-import { ed25519 } from '@noble/curves/ed25519.js'
-import { base58, bech32 } from '@scure/base'
+import { bech32 } from '@scure/base'
 import { identityToRecipient } from 'age-encryption'
+import { poseidon3 } from 'poseidon-lite/poseidon3'
+import { type Point, addressOf, keyScalar, publicKeyOf } from './curve.ts'
+import { TAG, isFieldElement, scopeOf } from './field.ts'
 import { INFO, SEED_LENGTH, assertBytes, assertText, hkdf } from './hkdf.ts'
+import { seedScalar } from './scalar.ts'
 
 /**
- * A profile's main key. Its address is the profile's name and its Solana address: the same 32
- * bytes. It signs the profile's records and its transactions. Held in memory only.
+ * A profile's main key, on Baby Jubjub. Its address is the profile's name. It signs the profile's
+ * records. Held in memory only.
  */
 export type MainKey = {
   label: string
-  /** The 32-byte ed25519 private seed, the form Solana tooling accepts as a keypair seed. */
-  privateKey: Uint8Array
-  publicKey: Uint8Array
-  /** The public key in base58: the profile's name and its Solana address. */
+  /** The label as a number, `scopeOf(label)`. */
+  scope: bigint
+  /** The scalar that signs: the lowest 250 bits of `Poseidon(profile tag, seed scalar, scope)`. */
+  scalar: bigint
+  /** `scalar · Base8`. */
+  publicKey: Point
+  /** The public key packed into 32 bytes, in base58: the profile's name. */
   address: string
+  /** 32 bytes mixed from the seed for this label. The inbox key is mixed from them; no public key gives them. */
+  secret: Uint8Array
 }
 
 /**
@@ -30,26 +39,33 @@ export type InboxKey = {
   recipient: string
 }
 
+/** A profile's scalar from the seed scalar and its label. The human circuit computes the same. */
+export function profileScalarOf(seed: bigint, label: string): bigint {
+  if (!isFieldElement(seed)) throw new RangeError('a seed scalar is a field element')
+  return keyScalar(poseidon3([TAG.profile, seed, scopeOf(label)]))
+}
+
 /**
- * The main key for `label`, from the seed. One HKDF output per label, so two labels give
+ * The main key for `label`, from the seed. One Poseidon mix per label, so two labels give
  * unrelated keys, and the same seed and label always give the same key.
  */
 export async function mainKey(seed: Uint8Array, label: string): Promise<MainKey> {
   assertBytes('seed', seed, SEED_LENGTH)
   assertText('label', label)
-  const privateKey = await hkdf(seed, INFO.profile(label))
-  const publicKey = ed25519.getPublicKey(privateKey)
-  return { label, privateKey, publicKey, address: base58.encode(publicKey) }
+  const scalar = profileScalarOf(await seedScalar(seed), label)
+  const publicKey = publicKeyOf(scalar)
+  const secret = await hkdf(seed, INFO.profile(label))
+  return { label, scope: scopeOf(label), scalar, publicKey, address: addressOf(publicKey), secret }
 }
 
 /**
- * The profile's inbox key, from its main key's 32 private bytes. The 32 mixed bytes are used
+ * An inbox key, from a profile's 32-byte secret or the vault's. The 32 mixed bytes are used
  * unchanged as age's hybrid identity (its seed, which age expands into the ML-KEM-768 and X25519
  * keys); age's own library computes the recipient.
  */
-export async function inboxKey(mainPrivateKey: Uint8Array): Promise<InboxKey> {
-  assertBytes('main private key', mainPrivateKey, 32)
-  const bytes = await hkdf(mainPrivateKey, INFO.read)
+export async function inboxKey(secret: Uint8Array): Promise<InboxKey> {
+  assertBytes('secret', secret, 32)
+  const bytes = await hkdf(secret, INFO.read)
   const identity = bech32.encodeFromBytes('AGE-SECRET-KEY-PQ-', bytes).toUpperCase()
   return { identity, recipient: await identityToRecipient(identity) }
 }

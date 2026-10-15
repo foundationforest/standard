@@ -1,13 +1,7 @@
 {
-  "name": "Ana Ribeiro",
   "market": "tutoring",
   "role": "seller",
-  "photo": {
-    "sha256": "5e3b1f3c2a8a8f2b6c4e9d0a7b1c3d5e7f9a0b2c4d6e8f0a1b3c5d7e9f1a3b5c",
-    "mimeType": "image/jpeg",
-    "size": 20
-  },
-  "about": "Portuguese and Spanish tutor. Ten years teaching adults online.",
+  "pay": "CW2NTeP73exnJe6vVwqfQ9iT8Q2U6fgSbPvw9cofW8jm",
   "inboxKey": "age1pq16knh6anq4f95juxlvsca2lpzmxm8dehg9z4hrvr6tycm0fap2yq93qqfhzqvw67yw6xxhennafwtgftfw8he5tv0fs9pppmexhp5m2mzk4vqgxmpp2usueeaf4f3ahp689swv5gz56as9dxp4hz980erjnv5yntmj98ahqkt6mee0cs8j808gr3c3g5nrjdhxcnuyjfs2gqpy9r89ycx25nggza32vphs7hxv7hn7txvhcjspyuggqgny24pwgvhy2kmejedu7cykcuf3v30pqtfcwv6l5uev55sdr93weaxr9y68q7uxxyfuz7g3aph4kag90n0mvw8w6vdlagp4rxzkpnqgzysevgv2s7t7hrqcqfhkgyvhfhd4w7gaj6p6d43nva986j392fydfch6k2z57dk3k0szk0vkzu39d25veu298e6rs75jc8ayrm2ng9lva9qwac587t5qkf3wc9msy4tkxgkmht9fxzm3thsxa0d9dzkpqvd45xpzh3xh4x5nff7u5tn44svs2tp04tv85ml8xre22z4yvr7q639e3dxq2hdtzdwvzhp2ucqfqs8ag4ftthcpzh8yuhnv8z5mafyea96n4jl53gpc3frhkd802rqfp2rytmvjd7glw0j2z955ummgt63d7cgz8auju8gc2m0p0zpudgv399en0tu7rz0r8pxddggh3rcqae3yswt2pl6w8zw3vnfqrlrfgsewqs65ydfr4slk7c2wnwc04v45yau79906uqwq0cxfc625s3fk07egu3nlvmrvay25x9x50e6swtmu3fr56nvy67fcz9tzxrcy56n8wl7asgsul64hq8uh3xrq8zpvcekzpux03a8wa6t90x8y3jhx6n56wqa76d8cl3z4rwnj2u8uf8627fq0xtu20v3jvsj5feruwepmpvr5um8ee23tel0ppw73zfg0nyeqd68g69y9anzv3r4k6hmqfc2flwf6g2zg733wfmfzzx0vkq9utp6ztlvvqx6jezu4s59m9qk59rj2ucjz02j2fe69jq2gw5fk89nnt4p3shm2asxgzda3pc7kgtuv3nzzsc7qz0eeg9eya785mu4jwr5s7uqvgxqryakdducd3qky6egjwzs022d9gc2h9r77sxfpxku0f33w4zs25xljcaawceyneft4n0k2czrvsmdxjvnnnvxtz4errrwqauyxecw2caa66x99vf55qchhrmd8y3ghjex06s3wfxsvc4wjyspf200van7hssy00uynz9z0n4kq6ee44vq7sd8ete8ryn5d8sn7cpdzrzujfgcrs6xcznmxnjwqvu5h6xgxgcm72rrffudczclr3du7s99vgfgsl9rrcw6qryqlqmm0uf8zf5n6kxxv5rj59t8txey95ddwr98atlpcn6sxrsfgw7rgwpvtxxx2srj9f0rqkkpq50q44gwjr4xmxck9e7uxpk7d2tdfkrs2y2mtpvkcg0frqzhhd9at3quftascuuvxr4j2xavyuqkqyyh8ynksmkffzmv033wyw0u8xnqeagfm48mrdv4rrfj4j6dfavmt8kgu34erv8ey2g6kuwae52lf0rtyn5r2velg9g6vdp22y3n9zacl3ucvxu38wu0rpdz7spp8vs6mt633r6l5dznyjcd69sqaj3vw7l5e0vg9jf5ym9a27zht2wp3m3zxyaz0gwhs7dwv6ecyke8pgmqf99kvglew7n443n4pdx9kpxrrvhn5htxu3uzrwaz4zqcjuuen9342uerl9a3a3683gpnlxk2y8ma2n5ylxdl0tyz77ccajrzgnmndnpxfgm6xkmtx73g6c5f2m89upw4p5gtp6aa0m8cxdf888jrxugvyj68p5yat9w0jl6jpl4flfs4mwp964jfxfeg4xz9fhd7wl0flywvu6apqszdlufq",
   "inbox": {
     "senders": "anyone",
@@ -16,21 +10,21 @@
   "proofs": [
     {
       "circuit": "reputation",
-      "index": "AzXW61LgzhJTXN1so7rBR5auU2oCSzRyNEqFxPkZct3G",
-      "root": "1afc9f1db208eecf737c7e32f480ea6a59675370d58ea83bc80ed5da20a07027",
+      "index": "4jNvddwkWLrr4UC9Y3sggwmoEuEVxsqcBQSTRQvW6xVP",
+      "root": "154c4991643989e296ac03df4689f2be05c6029c253ccf8fe1c3e4813d5c128a",
       "time": 1790812800000,
-      "signature": "tLJI3R1JjT7I7SAV6UdCJSaz5D9wmSAwNV3v6yrFaJoC84YiDn116rqlToRtPMF-2DW5gKrqPT_h7qyNS5BRCw",
+      "signature": "aCITwtUAMbMAGjIatbsGwoCjOlnlufd6K1o9qqxTwZa0ga1kQwQbm3PjtWlBX-Qt3YHDCwl1beKAb6zFloyrAg",
       "score": 87,
-      "stamp": "1190cd2c0ce535af97624d41fb8b393e531ca7d52ee7659c050d4bc79b5033b8",
-      "proof": "GwiAnLXZM7QFosAW_cF503P2DuLFfxj5MgefXnB99dweXECC0GEcvfifWr8EdmMGiw5uDvbav_N9NJhRCpLSggc63wYiM-0uQdARn1Ww9pNBdORt1ctkhFZ5kQHN13IAA0lI1XNSD2llcxrJUe9jyNuF5k5_U7Fz8JZGae8TfuMquvopCdcgL8bnCLHKRZV1b-s3vp1ssGCaINdtj1ii0QSc4NeG24w11CYFwrGywB9HmdQUfmokKRdipbSOPXaTGmA1cBcaIFCBfiQTFS6zo9VjEK27d0XLUBbaig92pGAlMPFgfsDz4nAqcn-qLnid955E8vLKts3WUHtC2PwOBw"
+      "proof": "Avifq0kigvBDCQc_VfiazgSDOhZD1NAMJqug7XtxRpInG8wAl7jjNhYkGPjBqf6zG7UJBVGLBM-CB0BEBLJNzCmwtrZcyru5AI_yLorg5SHZX9bMyCXlGN10IH5xf70aCEoldP73yV7bGMkwSR1PfLLcBdQIf5UGbA_aNO4l23goCCBCKtDSq0JbLw1bzRVf5ywK0kzpjlcsfGOXSFUHfhbVmcYh35SXiwsfnKFK8GpR7amQ4A1w500ahfYQiqs0E11kfT9Hgv93llRijIFm9P1NeU1apwJ2xse168DfDo4SNAxnCk9stPRzhGFE4xqO3Dvb8pPSYC4pXDAgaFdxdw"
     },
     {
-      "circuit": "person",
-      "issuer": "1f94c72d4e5d0f9f6d4ea3b1135b4af2eaec6d14ebe63a96a2f136236887c09611bfedb43d85cb0ead1845d088ba92eb5c96715cde3ccf90607eb007285c2ea6",
+      "circuit": "human",
+      "issuer": "0806a89292cef50914680331e1fc2eb2cb9cc03c272f4b732499ed686d85855217fa7d686710dc7cd69818acba64a9a2cc3ad169c1bfd1400da7e109069f987c",
+      "issuerName": "issuer-a.example",
       "label": "tutoring/seller",
-      "stamp": "1190cd2c0ce535af97624d41fb8b393e531ca7d52ee7659c050d4bc79b5033b8",
-      "tier": "2",
-      "proof": "CIs3Py9gNn5t64SyJacK_25w_EFl2VLT4wqKfPKcfkkWP-8R2yUP03ABThDTtRuvq4Gu7QjrRvxRBzdqc_d23AWw_F6PgSB3ymCBLwLgTXdPAXdEcHAOeEouDkd7OI2dBrf1xzhb46iHPGTVjZFRtlkhVaqXlgfxqY0bqGrYcvcRjqAjoTx6oCfHnZOK745hoL0z76yDdSzdiS4xyYALGCOKCmdGQZMi0kFNxSIE_LD71isOdarLjx44wQNiV-rfIn9DU1anKKgX5pPugj46YKp0Cw2uuFWXMODzBVk99ugJwkPko3QcqSXsRDRfjkYC7BCJbLQO9UD1g4TNYxgTZQ"
+      "stamp": "1ecaeec11a35403d218daebeb9fc9f46fdf2d36888d92243505fe2233e530700",
+      "month": 202609,
+      "proof": "GCpbVVHII-eDwLtLJ0V_pYL_d4gzwIOSszC1i7vYzkIX1QVtCA9W0eH2U1qO9BAIrKf-k2ppV9YANf450NnGAA8rg0HmPzsYlA5PVAX_OExB5lIo_GL9pp8ZRG2dBOVTF-x_OLqn4_b1gH3iZODTETvANWPQIRwrTz_LsmHcl0cRbqJXRaClASltR5Lu8FjX0t8BKk8glLTHVOnPvvZjEiifIORhwp0cfo4dJqLflpOJ4focWSMRR7R1nRgluTOgDs9kRPQ_AmNK688XiBKh_r_98UuylO_UAkbYviDIVEUUj8Mgf4z8IRYsgwwcnmNnBDMGTMBRWbpeMr5XNmgykQ"
     }
   ],
   "createdAt": "2026-09-14T10:00:00Z"

@@ -2,16 +2,17 @@
 //
 //   { v: 1, profile, path, time, body | null, by?, sig }
 //
-// `sig` is Ed25519 (RFC 8032, strict) over 0xff || "forest/v1/record\n" || JCS(the rest), by the
-// main key, or by the access key named in `by`. 0xff can never begin a Solana transaction
-// message, so a main key that also holds money cannot be made to sign a payment through this
-// path, and no payment signature is a record's.
+// `sig` is EdDSA-Poseidon on Baby Jubjub, by keys/'s signBytes, over the signed bytes
+// 0xff || "forest/v1/record\n" || JCS(the rest): the main key's, or the access key's named in
+// `by`. It signs SHA-256 of those bytes, shifted right one byte, as a number, and is written as 64
+// bytes, R8 packed then S, in base64url. A message's and a pull's signed bytes start with their own
+// text, so no signature is ever two of them.
 
-import { ed25519 } from '@noble/curves/ed25519.js'
 import { sha256 } from '@noble/hashes/sha2.js'
-import { b64u, concat, equalBytes, hex, utf8 } from './bytes.ts'
+import { type Point, packSignature, publicKeyOf, signBytes, unpackSignature, verifyBytes } from '../../keys/src/curve.ts'
+import { b64u, concat, hex, utf8 } from './bytes.ts'
 import { type Json, canonical, checkValue, parseCanonical } from './canonical.ts'
-import { publicKeyFromAddress } from './keys.ts'
+import { type Key, publicKeyFromAddress } from './keys.ts'
 
 export const VERSION = 1
 export const SIGN_PREFIX = concat(Uint8Array.of(0xff), utf8('forest/v1/record\n'))
@@ -75,7 +76,6 @@ export function isPrivate(body: Body | null): body is { private: string } {
 
 const FIELDS = new Set(['v', 'profile', 'path', 'time', 'body', 'by', 'sig'])
 const SIG = /^[A-Za-z0-9_-]{86}$/
-const B64U = /^[A-Za-z0-9_-]+$/
 
 /** Everything about a record but its signature. Throws RecordError. */
 export function checkShape(value: unknown, signed = true): asserts value is SignedRecord {
@@ -83,7 +83,7 @@ export function checkShape(value: unknown, signed = true): asserts value is Sign
   const r = value as { [key: string]: unknown }
   for (const key of Object.keys(r)) if (!FIELDS.has(key)) fail('shape', `unknown field ${key}`)
   if (r.v !== VERSION) fail('version', 'v must be 1')
-  if (!publicKeyFromAddress(r.profile)) fail('key', 'profile is not a usable ed25519 address')
+  if (!publicKeyFromAddress(r.profile)) fail('key', 'profile is not a usable address')
   checkPath(r.path)
   if (!Number.isSafeInteger(r.time) || (r.time as number) < 0) fail('time', 'time is whole milliseconds since 1970')
   if (r.body !== null) {
@@ -95,7 +95,7 @@ export function checkShape(value: unknown, signed = true): asserts value is Sign
     }
   }
   if ('by' in r) {
-    if (!publicKeyFromAddress(r.by)) fail('key', 'by is not a usable ed25519 address')
+    if (!publicKeyFromAddress(r.by)) fail('key', 'by is not a usable address')
     if (r.by === r.profile) fail('shape', 'the owner signs without by')
     if (isControlPath(r.path as string)) fail('control', 'only the owner writes hosts and permissions')
   }
@@ -119,28 +119,27 @@ export function recordId(unsigned: UnsignedRecord): string {
   return hex.encode(sha256(signingInput(unsigned)))
 }
 
-export function signRecord(unsigned: UnsignedRecord, privateKey: Uint8Array): SignedRecord {
+export function signRecord(unsigned: UnsignedRecord, signer: Key): SignedRecord {
   checkShape(unsigned, false)
-  const signer = publicKeyFromAddress(unsigned.by ?? unsigned.profile)!
-  if (!equalBytes(ed25519.getPublicKey(privateKey), signer)) fail('key', 'the private key is not the signer the record names')
-  return { ...unsigned, sig: b64u.encode(ed25519.sign(signingInput(unsigned), privateKey)) }
+  return { ...unsigned, sig: signAs(signer, unsigned.by ?? unsigned.profile, signingInput(unsigned)) }
+}
+
+/** Sign `bytes` with `signer`, which must be the key `address` names. The signature in base64url. */
+export function signAs(signer: Key, address: string, bytes: Uint8Array): string {
+  const named = publicKeyFromAddress(address)
+  const own = publicKeyOf(signer.scalar)
+  if (signer.address !== address || !named || named[0] !== own[0] || named[1] !== own[1]) fail('key', 'the key that signs is not the one named to sign')
+  return b64u.encode(packSignature(signBytes(signer.scalar, bytes)))
 }
 
 /**
- * Strict Ed25519: S below the group order, canonical encodings, and both R and the key in the
- * prime-order subgroup (the key also not of small order), then RFC 8032's cofactorless check.
- * With R and A torsion-free, every correct verifier, cofactored or not, gives the same answer.
+ * Strict: the signature's 64 bytes are R8, a point on Baby Jubjub in its one spelling, and S below
+ * the subgroup order; the key is a point of the prime-order subgroup; and the signature holds for
+ * SHA-256 of the signed bytes, shifted right one byte. The equation itself puts R8 in the subgroup.
  */
-export function verifySignature(sig: Uint8Array, message: Uint8Array, publicKey: Uint8Array): boolean {
-  if (sig.length !== 64 || publicKey.length !== 32) return false
-  try {
-    const R = ed25519.Point.fromBytes(sig.subarray(0, 32), false)
-    const A = ed25519.Point.fromBytes(publicKey, false)
-    if (!R.isTorsionFree() || !A.isTorsionFree() || A.isSmallOrder()) return false
-    return ed25519.verify(sig, message, publicKey, { zip215: false })
-  } catch {
-    return false
-  }
+export function verifySignature(sig: Uint8Array, message: Uint8Array, publicKey: Point | string): boolean {
+  const signature = unpackSignature(sig)
+  return signature !== null && verifyBytes(publicKey, message, signature)
 }
 
 /** Shape and signature. Returns the record with its id. Throws RecordError. How large a record to take is each host's own choice, and each reader's. */
@@ -148,8 +147,7 @@ export function checkRecord(value: unknown): Checked {
   checkShape(value)
   const record = value
   const unsigned = unsignedOf(record)
-  const signer = publicKeyFromAddress(record.by ?? record.profile)!
-  if (!verifySignature(b64u.decode(record.sig), signingInput(unsigned), signer)) fail('signature', 'the signature does not verify')
+  if (!verifySignature(b64u.decode(record.sig), signingInput(unsigned), record.by ?? record.profile)) fail('signature', 'the signature does not verify')
   return { record, id: recordId(unsigned) }
 }
 
@@ -179,36 +177,37 @@ export type HostsBody = {
 }
 
 /**
- * What an access key is for. write: signing records where its paths allow. message: signing
- * messages for the main key, and pulling its inbox. read: opening what is sealed to it.
+ * What an access key is for. write: signing records where its paths allow, and messages for the
+ * main key when they cover `inbox`. read: pulling the inbox when its paths cover `inbox`, and
+ * opening what is encrypted to it.
  */
-export type Scope = 'write' | 'message' | 'read'
-export const SCOPES: readonly Scope[] = ['write', 'message', 'read']
+export type Scope = 'write' | 'read'
+export const SCOPES: readonly Scope[] = ['write', 'read']
 
 /**
- * A listed key: one that acts, with its `scope`; or a past key, a write or message key the owner
- * removed, with `was`, the scope it had, in place of `scope`. A past key can no longer act: nothing
- * that checks a scope finds one. What a past write key wrote still counts, at its paths; a past
- * message key never counts for writing.
+ * A listed key: one that acts, with its `scope`; or a past key, a write key the owner removed,
+ * with `was: "write"` in place of `scope`. A past key can no longer act: nothing that checks a
+ * scope finds one. What a past write key wrote still counts, at its paths.
  */
 export type AccessKey = {
-  /** Its public half: an address, or a read key's age post-quantum hybrid recipient (age1pq1…). */
+  /** Its signing key's address. */
   key: string
+  /** A read key's age post-quantum hybrid recipient (age1pq1…): on a read key, and only there. */
+  recipient?: string
   /** What it may do; on a key that acts, and only there. */
   scope?: Scope
   /** The scope a past key had; on a past key, and only there. */
-  was?: 'write' | 'message'
+  was?: 'write'
   /**
-   * Content path prefixes it works under, segment by segment: where a write key writes, and which
-   * private records the owner's devices seal to a read key. Without it, every content path but
-   * those `profile` covers. Never on a message key, past or not.
+   * Path prefixes it works under, segment by segment: where a write key writes, and which private
+   * records the owner's devices encrypt to a read key; `inbox` among them lets a write key send
+   * messages and a read key pull. Without it, every content path but those `profile` covers, and
+   * the inbox.
    */
   paths?: string[]
 }
 export type PermissionsBody = {
   access: AccessKey[]
-  /** The owner's notes on its keys: an envelope sealed to its own inbox key alone, base64url (makeNotes and openNotes in private.ts). */
-  notes?: string
 }
 
 export const MAX_HOSTS = 8
@@ -235,28 +234,26 @@ export function checkControlBody(path: string, body: Body): void {
     if (new Set(urls as string[]).size !== (urls as string[]).length) fail('hosts', 'urls repeat')
     return
   }
-  only(body, ['access', 'notes'], 'permissions', 'permissions')
+  only(body, ['access'], 'permissions', 'permissions')
   const access = body.access
   if (!Array.isArray(access)) fail('permissions', 'access is a list of keys')
-  if ('notes' in body && (typeof body.notes !== 'string' || !B64U.test(body.notes))) fail('permissions', 'notes is an envelope in base64url')
   const listed = new Set<unknown>()
   for (const k of access as unknown[]) {
     if (k === null || typeof k !== 'object' || Array.isArray(k)) fail('permissions', 'an access entry is an object')
-    only(k, ['key', 'scope', 'was', 'paths'], 'permissions', 'access')
-    const { key, scope, was, paths } = k as { [key: string]: unknown }
-    if ('was' in (k as object) ? 'scope' in (k as object) || (was !== 'write' && was !== 'message') : !SCOPES.includes(scope as Scope)) {
-      fail('permissions', `scope is one of ${SCOPES.join(', ')}; a past key has was, write or message, in its place`)
+    only(k, ['key', 'recipient', 'scope', 'was', 'paths'], 'permissions', 'access')
+    const { key, recipient, scope, was, paths } = k as { [key: string]: unknown }
+    if ('was' in (k as object) ? 'scope' in (k as object) || was !== 'write' : !SCOPES.includes(scope as Scope)) {
+      fail('permissions', `scope is one of ${SCOPES.join(', ')}; a past key has was, write, in its place`)
     }
-    const had = (scope ?? was) as Scope
-    if (had === 'read') {
-      if (typeof key !== 'string' || !RECIPIENT.test(key)) fail('permissions', 'a read key is an age post-quantum hybrid recipient, age1pq1…')
-    } else if (!publicKeyFromAddress(key)) fail('permissions', 'an access key is a usable ed25519 address')
-    if ('paths' in (k as object)) {
-      if (had === 'message') fail('permissions', 'a message key has no paths')
-      checkAccessPaths(paths, 'permissions')
+    if (!publicKeyFromAddress(key)) fail('permissions', 'an access key is a usable address')
+    if (scope === 'read') {
+      if (typeof recipient !== 'string' || !RECIPIENT.test(recipient)) fail('permissions', 'a read key gives its recipient, an age post-quantum hybrid recipient, age1pq1…')
+    } else if ('recipient' in (k as object)) fail('permissions', 'only a read key gives a recipient')
+    if ('paths' in (k as object)) checkAccessPaths(paths, 'permissions')
+    for (const half of scope === 'read' ? [key, recipient] : [key]) {
+      if (listed.has(half)) fail('permissions', 'a key is listed twice')
+      listed.add(half)
     }
-    if (listed.has(key)) fail('permissions', 'a key is listed twice')
-    listed.add(key)
   }
 }
 

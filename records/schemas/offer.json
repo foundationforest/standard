@@ -1,14 +1,10 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "offer",
-  "description": "An offer or a request, at the path `offer/<id>`. It names no market or side: those are its author profile's. Markets may add fields.",
+  "description": "An offer, at the path `offer/<id>`. It names no market or role: those are its author profile's, and the role says whether it offers (a seller) or asks (a buyer). Markets may add fields.",
   "type": "object",
-  "required": ["direction", "description", "createdAt"],
+  "required": ["description", "createdAt"],
   "properties": {
-    "direction": {
-      "description": "Offering something, or asking for it.",
-      "enum": ["offer", "request"]
-    },
     "description": {
       "type": "string",
       "maxLength": 3000
@@ -52,7 +48,7 @@
   "$defs": {
     "price": {
       "type": "object",
-      "description": "The price block. Optional. Per hour, per day, per job: the app multiplies before funding, one escrow per payment.",
+      "description": "The price block. Optional. Per item, hour, day, month or job: the app multiplies before funding, one escrow per payment.",
       "required": ["amount", "mint", "per"],
       "properties": {
         "amount": {
@@ -67,8 +63,8 @@
           "maxLength": 44
         },
         "per": {
-          "description": "What one amount buys.",
-          "enum": ["hour", "day", "job"]
+          "description": "What one amount buys: one item, an hour, a day, a month, or the whole job.",
+          "enum": ["item", "hour", "day", "month", "job"]
         }
       }
     },

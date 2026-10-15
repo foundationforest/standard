@@ -59,10 +59,10 @@ export interface BlobStore {
   list(): AsyncIterable<BlobName>
 }
 
-/** The bytes a record's body names: its photo, and each of its media. */
+/** The bytes a record's body names: each of its media. */
 export function blobNames(body: Body | null): BlobName[] {
   if (!body) return []
-  const refs = [body.photo, ...(Array.isArray(body.media) ? body.media : [])]
+  const refs = Array.isArray(body.media) ? body.media : []
   const names: BlobName[] = []
   for (const ref of refs) {
     if (ref === null || typeof ref !== 'object' || Array.isArray(ref)) continue
@@ -490,12 +490,6 @@ export async function rebuild(dir: string, driver: BlobDriver = { kind: 'disk' }
   } finally {
     host.close()
   }
-}
-
-/** For the one-time import from a single-file host: a folder's file, made if missing, to write rows into directly. */
-export function folderForImport(dir: string, address: string): DatabaseSync {
-  mkdirSync(join(dir, 'folders'), { recursive: true })
-  return openFolder(folderFile(dir, address)).db
 }
 
 export function blobStore(dir: string, driver: BlobDriver): BlobStore {

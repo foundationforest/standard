@@ -4,9 +4,9 @@ import assert from 'node:assert/strict'
 import { randomInt } from 'node:crypto'
 import { describe, test } from 'node:test'
 import { type Checked, type SignedRecord, checkRecord } from '../src/record.ts'
-import { liveContent, viewProfile } from '../src/view.ts'
+import { actsOnInbox, allowsInbox, liveContent, viewProfile } from '../src/view.ts'
 import { accessRecord, hostsRecord, nextTime, ownerRecord, permissionsRecord } from '../src/write.ts'
-import { DAY, MINUTE, T0, accessKey, alice, allow, bob, offerBody, pastKey, profileBody, stranger } from './fixtures.ts'
+import { DAY, MINUTE, T0, accessKey, alice, allow, bob, offerBody, pastKey, profileBody, reader, stranger } from './fixtures.ts'
 
 const checked = (...records: SignedRecord[]): Checked[] => records.map((r) => checkRecord(r))
 const view = (records: SignedRecord[], now = T0 + MINUTE) => viewProfile(alice.address, checked(...records), now)
@@ -29,9 +29,9 @@ describe('versions', () => {
   })
 
   test('an edit never loses to its own older version, whatever the app’s clock says', () => {
-    const v1 = ownerRecord(alice, 'profile', profileBody('A'), T0 + 5 * MINUTE)
+    const v1 = ownerRecord(alice, 'profile', profileBody('maths'), T0 + 5 * MINUTE)
     const slowClock = T0 // a phone whose clock is five minutes slow
-    const v2 = ownerRecord(alice, 'profile', profileBody('B'), nextTime(slowClock, view([v1], T0 + 6 * MINUTE), 'profile'))
+    const v2 = ownerRecord(alice, 'profile', profileBody('physics'), nextTime(slowClock, view([v1], T0 + 6 * MINUTE), 'profile'))
     assert.equal(view([v1, v2], T0 + 6 * MINUTE).current.get('profile')!.id, idOf(v2))
   })
 
@@ -53,8 +53,8 @@ describe('versions', () => {
   test('any set of records, in any order, with duplicates, gives the same view', () => {
     const records = [
       permissionsRecord(alice, [allow(accessKey, ['offer'])], T0),
-      ownerRecord(alice, 'profile', profileBody('A'), T0),
-      ownerRecord(alice, 'profile', profileBody('B'), T0), // same time: the larger id wins
+      ownerRecord(alice, 'profile', profileBody('maths'), T0),
+      ownerRecord(alice, 'profile', profileBody('physics'), T0), // same time: the larger id wins
       ownerRecord(alice, 'offer/a', offerBody('1'), T0),
       ownerRecord(alice, 'offer/a', null, T0 + 1),
       accessRecord(accessKey, alice.address, 'offer/a', offerBody('9'), T0 + 2), // the owner wrote here
@@ -104,9 +104,24 @@ describe('access keys and permissions', () => {
     assert.equal(liveContent(view([permissionsRecord(alice, [allow(accessKey, [])], T0), at('offer/x')])).size, 0, 'an empty list covers nothing')
   })
 
-  test('only a write key writes: a record by a key listed as message counts for nothing', () => {
-    const v = view([permissionsRecord(alice, [allow(accessKey, undefined, 'message')], T0), written], T0 + 2 * MINUTE)
-    assert.equal(v.ignored.get(idOf(written)), 'not-allowed')
+  test('only a write key writes: a record a read key signed counts for nothing, at any path, though it lists no paths', () => {
+    const listed = permissionsRecord(alice, [allow(reader, undefined, 'read')], T0)
+    for (const path of ['offer/physics', 'review/1', 'note']) {
+      const sneaked = accessRecord(reader, alice.address, path, offerBody('30'), T0 + MINUTE)
+      assert.equal(view([listed, sneaked], T0 + 2 * MINUTE).ignored.get(idOf(sneaked)), 'not-allowed', path)
+    }
+  })
+
+  test('which keys act on the inbox: a write key sends and a read key pulls when their paths cover inbox, or they list none', () => {
+    const access = [allow(accessKey, ['offer', 'inbox']), allow(stranger, ['offer']), allow(reader, undefined, 'read'), pastKey(bob, ['inbox'])]
+    assert.equal(allowsInbox(access, accessKey.address, 'write'), true)
+    assert.equal(allowsInbox(access, stranger.address, 'write'), false, 'its paths do not cover inbox')
+    assert.equal(allowsInbox(access, reader.address, 'read'), true, 'no paths: the inbox too')
+    assert.equal(allowsInbox(access, reader.address, 'write'), false, 'a read key does not send')
+    assert.equal(allowsInbox(access, accessKey.address, 'read'), false, 'a write key does not pull')
+    assert.equal(allowsInbox(access, bob.address, 'write'), false, 'a past key acts on nothing')
+    assert.equal(actsOnInbox(allow(accessKey, ['inbox/x'])), false, 'inbox/x does not cover inbox')
+    assert.equal(actsOnInbox(allow(accessKey, [])), false, 'an empty list covers nothing')
   })
 
   test('a key the permissions record does not list counts for nothing', () => {
@@ -129,19 +144,11 @@ describe('access keys and permissions', () => {
   })
 
   test('removing a write key is replacing its scope with was: it is still listed, so what it wrote still counts, whatever the date', () => {
-    const past = permissionsRecord(alice, [pastKey(accessKey, 'write', ['offer'])], T0 + 10 * MINUTE)
+    const past = permissionsRecord(alice, [pastKey(accessKey, ['offer'])], T0 + 10 * MINUTE)
     const v = view([permissions, written, past], T0 + 365 * DAY)
     assert.equal(v.current.get('offer/physics')!.id, idOf(written), 'a year later')
     const outside = accessRecord(accessKey, alice.address, 'review/1', { subject: bob.address }, T0 + MINUTE)
     assert.equal(view([past, outside]).ignored.get(idOf(outside)), 'not-allowed', 'a past key keeps its paths')
-  })
-
-  test('a past message key never counts for writing, at any path, though it lists no paths', () => {
-    const past = permissionsRecord(alice, [pastKey(accessKey, 'message')], T0)
-    for (const path of ['offer/physics', 'review/1', 'note']) {
-      const sneaked = accessRecord(accessKey, alice.address, path, offerBody('30'), T0 + MINUTE)
-      assert.equal(view([past, sneaked]).ignored.get(idOf(sneaked)), 'not-allowed', path)
-    }
   })
 
   test('deleting a key’s entry, or the permissions record, disowns what it wrote: it stops counting', () => {

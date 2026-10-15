@@ -5,23 +5,17 @@
 import assert from 'node:assert/strict'
 import { randomBytes } from 'node:crypto'
 import { describe, test } from 'node:test'
+import { inboxKey, readKey } from '../../keys/src/index.ts'
+import { canonical } from '../src/canonical.ts'
 import { publish, readAll, readProfile } from '../src/client.ts'
 import { DAY, DEFAULT_MAX_LINE_BYTES } from '../src/host.ts'
-import { inboxKey } from '../../keys/src/index.ts'
-import { b64u } from '../src/bytes.ts'
-import { type Grant, type Note, checkGrant, checkNote } from '../src/grant.ts'
-import { keyFromPrivate } from '../src/keys.ts'
-import { isPrivate, makeNotes, makePrivate, message, openMessage, openNotes, openPrivate, readerCount } from '../src/private.ts'
+import { isPrivate, makePrivate, openPrivate, readerCount } from '../src/private.ts'
 import { accessRecord, hostsRecord, ownerRecord, permissionsRecord } from '../src/write.ts'
-import { canonical } from '../src/canonical.ts'
-import { type PermissionsBody, RecordError, decodeRecord, encodeRecord } from '../src/record.ts'
-import { KEYS, MINUTE, T0, accessKey, alice, aliceBuyer, allow, bob, messageKey, profileBody } from './fixtures.ts'
+import { KEYS, MINUTE, T0, accessKey, alice, aliceBuyer, allow, bob } from './fixtures.ts'
 import { startHost } from './helpers.ts'
 
-const [aliceInbox, aliceBuyerInbox, bobInbox] = await Promise.all([inboxKey(alice.privateKey), inboxKey(aliceBuyer.privateKey), inboxKey(bob.privateKey)])
+const [aliceInbox, aliceBuyerInbox, bobInbox] = await Promise.all([inboxKey(alice.secret), inboxKey(aliceBuyer.secret), inboxKey(bob.secret)])
 const strangerInbox = await inboxKey(new Uint8Array(32).fill(3))
-/** A read key Alice's app made for Bob. */
-const readKeyForBob = await inboxKey(new Uint8Array(32).fill(9))
 
 describe('keys an envelope is sealed to', () => {
   test("keys/'s inbox key, one per profile: age's post-quantum hybrid, the pinned one", async () => {
@@ -46,8 +40,8 @@ describe('private records', () => {
   test('the owner makes a read key for a reader and hands it over: that reader opens the envelope; the host, a stranger, the owner’s other profile and the reader’s own key cannot', async () => {
     const host = await startHost({ now: () => T0 })
     try {
-      // Alice's app makes a read key for Bob and hands him its private half: Bob needs no profile and no key of his own.
-      const forBob = await inboxKey(randomBytes(32))
+      // Alice's app makes a read key for Bob and hands him its 32 bytes: Bob needs no profile and no key of his own.
+      const forBob = await readKey(randomBytes(32))
       const secret = { text: 'My phone is +00 555 0100; call after six.', createdAt: '2026-10-02T12:00:00Z' }
       await publish([host.url], [hostsRecord(alice, [host.url], T0), ownerRecord(alice, 'note/1', await makePrivate(secret, [forBob.recipient, aliceInbox.recipient]), T0)])
 
@@ -63,7 +57,7 @@ describe('private records', () => {
       await assert.rejects(openPrivate(onHost, aliceBuyerInbox.identity))
       await assert.rejects(openPrivate(onHost, strangerInbox.identity))
       // A made key that leaks opens only what the owner who made it sealed to it.
-      const fromOther = await inboxKey(randomBytes(32))
+      const fromOther = await readKey(randomBytes(32))
       await assert.rejects(openPrivate(await makePrivate(secret, [fromOther.recipient]), forBob.identity))
       // What anyone can see: that it exists, its size, and how many keys it was sealed to.
       assert.equal(readerCount(onHost as { private: string }), 2)
@@ -76,8 +70,8 @@ describe('private records', () => {
     const host = await startHost({ now: () => T0 + MINUTE })
     try {
       await publish([host.url], [permissionsRecord(alice, [allow(accessKey, ['note'])], T0)])
-      // The access key's app holds no read key's private half: it seals to the public halves it was given.
-      const forBob = await inboxKey(randomBytes(32))
+      // The access key's app holds no read key's secret: it seals to the recipients it was given.
+      const forBob = await readKey(randomBytes(32))
       const note = { text: 'The keys are under the mat.', createdAt: '2026-10-02T12:01:00Z' }
       const readers = [aliceInbox.recipient, forBob.recipient]
       const inside = accessRecord(accessKey, alice.address, 'note/door', await makePrivate(note, readers), T0 + MINUTE)
@@ -135,87 +129,19 @@ describe('private records', () => {
   })
 })
 
-describe('grants', () => {
-  const write: Grant = { key: b64u.encode(accessKey.privateKey), folder: alice.address, scope: 'write', paths: ['offer'], from: alice.address, since: T0, note: 'Bob’s calendar app, for the Tuesday lessons' }
-  const read: Grant = { key: readKeyForBob.identity, folder: alice.address, scope: 'read', from: alice.address, since: T0 }
-  const sends: Grant = { key: b64u.encode(messageKey.privateKey), folder: alice.address, scope: 'message', from: alice.address, since: T0 + 1 }
-  const bobCard = { ...profileBody('Bob'), role: 'buyer', inboxKey: bobInbox.recipient, inbox: { senders: 'anyone' } }
-  const code = (c: string) => (err: unknown) => err instanceof RecordError && err.code === c
-  const B64U = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_'
-
-  test('a grant is a key’s private half and what it is for; anything else is refused', () => {
-    for (const g of [write, read, sends]) checkGrant(g)
-    assert.equal(keyFromPrivate(b64u.decode(write.key)).address, accessKey.address, 'the holder gets the key back')
-    const bad: Array<[string, unknown]> = [
-      ['past is not a grant’s scope', { ...sends, scope: 'past' }],
-      ['there is no pay scope', { ...sends, scope: 'pay' }],
-      ['no dates beyond since', { ...write, until: T0 }],
-      ['a read key is an age identity', { ...read, key: write.key }],
-      ['any other key is 32 bytes in base64url', { ...write, key: readKeyForBob.identity }],
-      ['31 bytes', { ...write, key: b64u.encode(accessKey.privateKey.subarray(1)) }],
-      ['one spelling: the same bytes with a padding bit set', { ...write, key: write.key.slice(0, 42) + B64U[B64U.indexOf(write.key[42]!) ^ 1] }],
-      ['a message key has no paths', { ...sends, paths: ['offer'] }],
-      ['paths are content prefixes', { ...write, paths: ['hosts'] }],
-      ['folder', { ...write, folder: 'x' }],
-      ['from', { ...write, from: undefined }],
-      ['since', { ...write, since: -1 }],
-      ['note is text', { ...write, note: 7 }],
-    ]
-    for (const [why, g] of bad) assert.throws(() => checkGrant(g), code('grant'), why)
-  })
-
-  test('a grant reaches its holder as a message body { grant }, sealed to its inbox key alone, never to its inbox’s readers', async () => {
-    const helper = await inboxKey(new Uint8Array(32).fill(13)) // a read key Bob listed as a reader of his inbox
-    const withReader = { ...bobCard, inbox: { senders: 'anyone', readers: [helper.recipient] } }
-    const m = await message(alice, bob.address, { grant: write }, T0, withReader)
-    assert.equal(readerCount(m.body), 1)
-    const opened = await openMessage(m, bobInbox.identity)
-    checkGrant(opened.body.grant)
-    assert.deepEqual(opened.body, { grant: write })
-    await assert.rejects(openMessage(m, helper.identity), 'a reader acts on the inbox; a grant is a key')
-    assert.equal(readerCount((await message(alice, bob.address, { text: 'hi' }, T0, withReader)).body), 2, 'any other message: the readers too')
-    await assert.rejects(message(alice, bob.address, { grant: { ...write, scope: 'admin' } }, T0, withReader), code('grant'))
-  })
-})
-
-describe('notes', () => {
-  const helper: Note = { key: accessKey.address, folder: alice.address, scope: 'write', paths: ['offer'], from: alice.address, since: T0, note: 'Bob’s calendar app, until the end of term' }
-  const reader: Note = { key: readKeyForBob.recipient, folder: alice.address, scope: 'read', from: alice.address, since: T0, note: 'Bob, for the lesson notes' }
-  const code = (c: string) => (err: unknown) => err instanceof RecordError && err.code === c
-
-  test('a note is a grant naming its key by the public half, as the permissions record lists it; never the private half', () => {
-    for (const n of [helper, reader, { ...helper, scope: 'message', paths: undefined }]) checkNote(JSON.parse(JSON.stringify(n)))
-    const bad: Array<[string, unknown]> = [
-      ['a write key’s private half', { ...helper, key: b64u.encode(accessKey.privateKey) }],
-      ['a read key’s age identity', { ...reader, key: readKeyForBob.identity }],
-      ['a read key by an address', { ...reader, key: accessKey.address }],
-      ['past is not a grant’s scope', { ...helper, scope: 'past' }],
-      ['no field a grant lacks', { ...helper, until: T0 }],
-    ]
-    for (const [why, n] of bad) assert.throws(() => checkNote(n), code('grant'), why)
-  })
-
-  test('the permissions record carries them sealed to the owner’s own inbox key alone; hosts and readers ignore them', async () => {
+describe('read keys', () => {
+  test('a read key is one secret: its address signs pulls, its identity opens; the permissions record lists both halves, so a writer finds the recipient there', async () => {
     const host = await startHost({ now: () => T0 })
     try {
-      const access = [allow(accessKey, ['offer']), { key: readKeyForBob.recipient, scope: 'read' as const }]
-      const notes = await makeNotes([helper, reader], aliceInbox.recipient)
-      assert.equal(readerCount({ private: notes }), 1)
-      const [outcome] = await publish([host.url], [permissionsRecord(alice, access, T0, notes)])
-      assert.ok(outcome!.results[0]!.ok)
-      const view = await readProfile([host.url], alice.address, T0)
-      assert.deepEqual(view.access, access, 'the public part stays key, scope and paths')
-      const body = view.current.get('permissions')!.record.body as PermissionsBody
-      assert.deepEqual(await openNotes(body, aliceInbox.identity), [helper, reader])
-      await assert.rejects(openNotes(body, readKeyForBob.identity), 'a read key the folder lists does not open them')
-      await assert.rejects(openNotes(body, aliceBuyerInbox.identity), 'nor the same person’s other profile')
-      assert.deepEqual(await openNotes({ access }, aliceInbox.identity), [], 'no notes, none')
-      const disk = host.dump().join('\n')
-      for (const secret of ['calendar', 'lesson']) assert.ok(!disk.includes(secret), secret)
-
-      await assert.rejects(makeNotes([{ ...helper, key: b64u.encode(accessKey.privateKey) }], aliceInbox.recipient), code('grant'))
-      const other = (await makePrivate({ notes: [], more: 1 }, [aliceInbox.recipient])).private
-      await assert.rejects(openNotes({ access, notes: other }, aliceInbox.identity), code('grant'))
+      const forBob = await readKey(randomBytes(32))
+      const again = await readKey(forBob.secret)
+      assert.deepEqual([again.address, again.recipient, again.identity], [forBob.address, forBob.recipient, forBob.identity], 'the same 32 bytes, the same key')
+      assert.equal((await inboxKey(forBob.secret)).recipient, forBob.recipient, 'its age key is inboxKey of its secret')
+      await publish([host.url], [permissionsRecord(alice, [allow(accessKey, ['offer']), allow(forBob, ['note'], 'read')], T0)])
+      const readers = (await readProfile([host.url], alice.address, T0)).access.filter((k) => k.scope === 'read').map((k) => k.recipient!)
+      assert.deepEqual(readers, [forBob.recipient])
+      const record = ownerRecord(alice, 'note/1', await makePrivate({ text: 'hi' }, [aliceInbox.recipient, ...readers]), T0)
+      assert.deepEqual(await openPrivate(record.body!, forBob.identity), { text: 'hi' })
     } finally {
       await host.close()
     }

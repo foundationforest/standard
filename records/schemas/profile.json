@@ -15,18 +15,12 @@
       "description": "Its role in that market: seller or buyer in a two-sided market, peer in a one-sided one. The second half of its label.",
       "maxLength": 64
     },
-    "name": {
+    "pay": {
       "type": "string",
-      "description": "Optional. What the owner calls the profile. A card without a name is shown by its market and role.",
-      "maxLength": 64
-    },
-    "photo": {
-      "$ref": "#/$defs/photo"
-    },
-    "about": {
-      "type": "string",
-      "description": "What I do.",
-      "maxLength": 1000
+      "description": "Optional. The profile's payment address on Solana: keys/'s payKey(seed, label).address, base58 of an ed25519 public key. Where payments to this profile go; a review's evidence is checked against it.",
+      "minLength": 32,
+      "maxLength": 44,
+      "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$"
     },
     "inboxKey": {
       "type": "string",
@@ -38,7 +32,7 @@
     },
     "proofs": {
       "type": "array",
-      "description": "Optional. Proofs the profile shows, each one data anyone checks with its circuit's verifier (reputation/), for this profile's main key.",
+      "description": "Optional. Proofs the profile shows, each one data anyone checks with its circuit's verifier (proofs/), for this profile's key.",
       "items": {
         "$ref": "#/$defs/proof"
       },
@@ -57,7 +51,7 @@
       "additionalProperties": false,
       "properties": {
         "senders": {
-          "description": "Who may deliver: anyone, or a key holding a registry row from this issuer, under any label.",
+          "description": "Who may deliver: anyone, or a profile whose card carries a human proof from this issuer, under any label.",
           "oneOf": [
             {
               "const": "anyone"
@@ -69,7 +63,7 @@
               "properties": {
                 "issuer": {
                   "type": "string",
-                  "description": "The issuer's key as a registry row holds it: x then y of its point on Baby Jubjub, each 32 bytes big-endian, as 128 characters of lowercase hex.",
+                  "description": "The issuer's key: x then y of its point on Baby Jubjub, each 32 bytes big-endian, as 128 characters of lowercase hex.",
                   "pattern": "^[0-9a-f]{128}$"
                 }
               }
@@ -87,7 +81,7 @@
         },
         "readers": {
           "type": "array",
-          "description": "Optional. Read keys' public halves. A sender seals every message to inboxKey and to each of these, in one envelope, so a reader listed here can act on the inbox while the person is away. Each adds about 2 KB to every message.",
+          "description": "Optional. Read keys' recipients. A sender seals every message to inboxKey and to each of these, in one envelope, so a reader listed here can act on the inbox while the person is away. Each adds about 2 KB to every message.",
           "items": {
             "type": "string",
             "pattern": "^age1pq1[02-9ac-hj-np-z]{1952}$"
@@ -97,12 +91,12 @@
     },
     "proof": {
       "type": "object",
-      "description": "One proof, named by its circuit. A reader ignores a proof whose circuit it does not know, so a profile carrying a newer kind stays valid for an older app. A reputation proof and a person proof have the shapes below; another circuit's fields are its own.",
+      "description": "One proof, named by its circuit. A reader ignores a proof whose circuit it does not know, so a profile carrying a newer kind stays valid for an older app. A human proof and a reputation proof have the shapes below; another circuit's fields are its own.",
       "required": ["circuit"],
       "properties": {
         "circuit": {
           "type": "string",
-          "description": "The circuit that checks it. Today reputation (reputation/) and person (registry/).",
+          "description": "The circuit that checks it. Today human (proofs/human/) and reputation (proofs/reputation/).",
           "pattern": "^[a-z][a-z0-9-]{0,31}$"
         }
       },
@@ -123,20 +117,64 @@
           "if": {
             "properties": {
               "circuit": {
-                "const": "person"
+                "const": "human"
               }
             }
           },
           "then": {
-            "$ref": "#/$defs/person"
+            "$ref": "#/$defs/human"
           }
         }
       ]
     },
+    "human": {
+      "type": "object",
+      "description": "A human proof (proofs/human/): the issuer with this key and this name checked, in this month, the person whose seed gives this profile's key for this label, and this is their stamp for the label at that issuer. Everything verifyHuman takes but the profile's key, which is the profile's own address.",
+      "required": ["circuit", "issuer", "issuerName", "label", "stamp", "month", "proof"],
+      "additionalProperties": false,
+      "properties": {
+        "circuit": {
+          "const": "human"
+        },
+        "issuer": {
+          "type": "string",
+          "description": "The issuer's key: x then y of its point on Baby Jubjub, each 32 bytes big-endian, as 128 characters of lowercase hex.",
+          "pattern": "^[0-9a-f]{128}$"
+        },
+        "issuerName": {
+          "type": "string",
+          "description": "The name the issuer publishes as its own, exactly as keys/'s recipe takes it: the proof's name hash is made from it.",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "label": {
+          "type": "string",
+          "description": "The profile's label, exactly as the seed's mix took it: the proof's scope is made from it.",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "stamp": {
+          "type": "string",
+          "description": "The person's stamp for the label at the issuer: 32 bytes big-endian, lowercase hex.",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "month": {
+          "type": "integer",
+          "description": "The month the issuer checked the person, as the number YYYYMM.",
+          "minimum": 100001,
+          "maximum": 999912
+        },
+        "proof": {
+          "type": "string",
+          "description": "The proof's three points, uncompressed: 256 bytes in base64url without padding, in the reputation proof's order.",
+          "pattern": "^[A-Za-z0-9_-]{342}$"
+        }
+      }
+    },
     "reputation": {
       "type": "object",
-      "description": "A reputation proof (reputation/): the count-weighted score of profiles the person holds in an index's tree, shown on this profile, which profiles hidden. It counts only on the profile whose registry row sits at its stamp, made from the same secret as the profiles it counts: the prover's own. Everything its verifier takes but the main key, which is the profile's own.",
-      "required": ["circuit", "index", "root", "time", "signature", "score", "stamp", "proof"],
+      "description": "A reputation proof (proofs/reputation/): the count-weighted score of profiles in an index's tree that come from the same seed as this one, which profiles hidden. It holds only for this profile's key, which the proof derives from that seed. Everything verifyReputation takes but the profile's key, which is the profile's own address.",
+      "required": ["circuit", "index", "root", "time", "signature", "score", "proof"],
       "additionalProperties": false,
       "properties": {
         "circuit": {
@@ -144,7 +182,7 @@
         },
         "index": {
           "type": "string",
-          "description": "The index's signing key: its address, base58.",
+          "description": "The index's signing key: its address, a packed point on Baby Jubjub in base58.",
           "minLength": 32,
           "maxLength": 44,
           "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$"
@@ -162,7 +200,7 @@
         },
         "signature": {
           "type": "string",
-          "description": "The index's ed25519 signature over the root and the time, as reputation/ defines its signed bytes; 64 bytes in base64url without padding.",
+          "description": "The index's signature over the root and the time, as proofs/reputation/ defines its signed bytes: EdDSA-Poseidon on Baby Jubjub, 64 bytes (R8 packed, then S) in base64url without padding.",
           "pattern": "^[A-Za-z0-9_-]{86}$"
         },
         "score": {
@@ -171,14 +209,9 @@
           "minimum": 0,
           "maximum": 4294967295
         },
-        "stamp": {
-          "type": "string",
-          "description": "The stamp of this profile's registry row, as the row holds it: 32 bytes big-endian, lowercase hex. The proof shows it came from the same secret as the profiles counted.",
-          "pattern": "^[0-9a-f]{64}$"
-        },
         "label": {
           "type": "string",
-          "description": "Present only when the proof shows one market: the label of the one profile counted, exactly as registered.",
+          "description": "Present only when the proof shows one market: the label of the one profile counted, exactly as the seed's mix took it.",
           "minLength": 1,
           "maxLength": 128
         },
@@ -186,67 +219,6 @@
           "type": "string",
           "description": "The proof's three points, uncompressed: 256 bytes in base64url without padding. Eight numbers of 32 bytes big-endian, in snarkjs's names pi_a[0], pi_a[1], pi_b[0][1], pi_b[0][0], pi_b[1][1], pi_b[1][0], pi_c[0], pi_c[1]: the order Ethereum's and Solana's BN254 precompiles read.",
           "pattern": "^[A-Za-z0-9_-]{342}$"
-        }
-      }
-    },
-    "person": {
-      "type": "object",
-      "description": "A person proof (registry/), showing the profile's tier: this issuer signed a note at this tier for the person whose registry row, for this main key and this label, sits at this stamp. Everything registry/client's verifyTier takes but the main key, which is the profile's own.",
-      "required": ["circuit", "issuer", "label", "stamp", "tier", "proof"],
-      "additionalProperties": false,
-      "properties": {
-        "circuit": {
-          "const": "person"
-        },
-        "issuer": {
-          "type": "string",
-          "description": "The issuer's key as the row holds it: x then y of its point on Baby Jubjub, each 32 bytes big-endian, as 128 characters of lowercase hex.",
-          "pattern": "^[0-9a-f]{128}$"
-        },
-        "label": {
-          "type": "string",
-          "description": "The row's label, exactly as registered.",
-          "minLength": 1,
-          "maxLength": 128
-        },
-        "stamp": {
-          "type": "string",
-          "description": "The stamp the row sits at, as the row holds it: 32 bytes big-endian, lowercase hex.",
-          "pattern": "^[0-9a-f]{64}$"
-        },
-        "tier": {
-          "type": "string",
-          "description": "The tier the issuer signed, in decimal: it can be any number below BN254's scalar order, and a record's numbers stop at 2^53 - 1. What it means is the issuer's.",
-          "pattern": "^(0|[1-9][0-9]{0,76})$"
-        },
-        "proof": {
-          "type": "string",
-          "description": "The proof's three points, uncompressed: 256 bytes in base64url without padding, in the reputation proof's order.",
-          "pattern": "^[A-Za-z0-9_-]{342}$"
-        }
-      }
-    },
-    "photo": {
-      "type": "object",
-      "description": "Profile photo, named by the SHA-256 of its bytes.",
-      "required": ["sha256", "mimeType", "size"],
-      "additionalProperties": false,
-      "properties": {
-        "sha256": {
-          "type": "string",
-          "description": "SHA-256 of the file, lowercase hex.",
-          "pattern": "^[0-9a-f]{64}$"
-        },
-        "mimeType": {
-          "type": "string",
-          "description": "The file's media type, type/subtype in lower case, such as image/jpeg. Which types to take is each host's own choice, and each reader's.",
-          "maxLength": 255,
-          "pattern": "^[a-z0-9][a-z0-9!#$&^_.+-]*/[a-z0-9][a-z0-9!#$&^_.+-]*$"
-        },
-        "size": {
-          "type": "integer",
-          "description": "Bytes. How large a blob to take is each host's own choice, and each reader's.",
-          "minimum": 0
         }
       }
     }

@@ -19,7 +19,7 @@ test('with no Buffer, a profile goes to two hosts and reads back whole, and no h
   const [h1, h2] = await Promise.all([startHost({ now: () => T0 }), startHost({ now: () => T0 })])
   try {
     const urls = [h1.url, h2.url]
-    const records = [hostsRecord(alice, urls, T0), ownerRecord(alice, 'profile', profileBody('Alice'), T0), ownerRecord(alice, 'offer/maths', offerBody('30'), T0)]
+    const records = [hostsRecord(alice, urls, T0), ownerRecord(alice, 'profile', profileBody('calculus'), T0), ownerRecord(alice, 'offer/maths', offerBody('30'), T0)]
     for (const outcome of await publish(urls, records)) assert.ok(outcome.status === 200 && outcome.results.every((r) => r.ok), JSON.stringify(outcome))
     for (const post of [false, true]) {
       const v = await readProfile([h1.url], alice.address, T0, { post })

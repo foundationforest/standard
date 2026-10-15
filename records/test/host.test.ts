@@ -11,7 +11,7 @@ import { DAY, DEFAULT_MAX_LINE_BYTES, DEFAULT_MAX_PAGE_BYTES, type Host } from '
 import { type AccessKey, type SignedRecord, checkRecord, encodeRecord } from '../src/record.ts'
 import { liveContent } from '../src/view.ts'
 import { accessRecord, hostsRecord, nextTime, ownerRecord, permissionsRecord } from '../src/write.ts'
-import { MINUTE, T0, accessKey, alice, aliceBuyer, allow, bob, offerBody, pastKey, profileBody, reviewBody, sizedRecord, stranger } from './fixtures.ts'
+import { MINUTE, T0, accessKey, alice, aliceBuyer, allow, bob, offerBody, pastKey, profileBody, reader, reviewBody, sizedRecord, stranger } from './fixtures.ts'
 import { Clock, startHost } from './helpers.ts'
 
 const errors = async (host: Host, records: SignedRecord[]) => (await publish([host.url], records))[0]!.results.map((r) => r.error ?? 'ok')
@@ -33,7 +33,7 @@ describe('two hosts, readers', () => {
     const urls = [h1.url, h2.url]
     const records: SignedRecord[] = [
       hostsRecord(alice, urls, T0),
-      ownerRecord(alice, 'profile', profileBody('Alice'), T0),
+      ownerRecord(alice, 'profile', profileBody('calculus'), T0),
       ownerRecord(alice, 'offer/maths', offerBody('30'), T0),
       hostsRecord(bob, urls, T0),
       ownerRecord(bob, 'review/1', reviewBody(alice.address), T0),
@@ -93,8 +93,8 @@ describe('the socket', () => {
   test('GET by profile, after a cursor, or both; in the order taken', async () => {
     const h = await startHost({ now: () => T0 })
     try {
-      await publish([h.url], [hostsRecord(alice, [h.url], T0), ownerRecord(alice, 'profile', profileBody('Alice'), T0)])
-      await publish([h.url], [hostsRecord(bob, [h.url], T0), ownerRecord(bob, 'profile', profileBody('Bob'), T0)])
+      await publish([h.url], [hostsRecord(alice, [h.url], T0), ownerRecord(alice, 'profile', profileBody('calculus'), T0)])
+      await publish([h.url], [hostsRecord(bob, [h.url], T0), ownerRecord(bob, 'profile', profileBody('chemistry'), T0)])
       await publish([h.url], [ownerRecord(alice, 'offer/a', offerBody('1'), T0)])
       assert.deepEqual((await readAll(h.url)).records.map((c) => c.record.profile), [alice.address, alice.address, bob.address, bob.address, alice.address])
       assert.deepEqual((await readAll(h.url, { profile: alice.address })).records.map((c) => c.record.path), ['hosts', 'profile', 'offer/a'])
@@ -112,7 +112,7 @@ describe('the socket', () => {
   test('POST /v1/records/read: the profile and the cursor in the body, the same answer as the GET', async () => {
     const h = await startHost({ now: () => T0 })
     try {
-      await publish([h.url], [hostsRecord(alice, [h.url], T0), ownerRecord(alice, 'profile', profileBody('Alice'), T0), ownerRecord(bob, 'profile', profileBody('Bob'), T0)])
+      await publish([h.url], [hostsRecord(alice, [h.url], T0), ownerRecord(alice, 'profile', profileBody('calculus'), T0), ownerRecord(bob, 'profile', profileBody('chemistry'), T0)])
       const answer = async (res: Response) => [res.status, res.headers.get('forest-cursor'), await res.text()]
       const posted = async (body: string) => answer(await fetch(`${h.url}/v1/records/read`, { method: 'POST', body }))
       const got = async (query: string) => answer(await fetch(`${h.url}/v1/records?${query}`))
@@ -176,7 +176,7 @@ describe('the socket', () => {
   test('a host is open: it takes a profile whose hosts record does not name it, or that has none', async () => {
     const h = await startHost({ now: () => T0 })
     try {
-      assert.deepEqual(await errors(h, [hostsRecord(alice, ['https://elsewhere.example'], T0), ownerRecord(alice, 'profile', profileBody('A'), T0), ownerRecord(bob, 'profile', profileBody('B'), T0)]), ['ok', 'ok', 'ok'])
+      assert.deepEqual(await errors(h, [hostsRecord(alice, ['https://elsewhere.example'], T0), ownerRecord(alice, 'profile', profileBody('maths'), T0), ownerRecord(bob, 'profile', profileBody('physics'), T0)]), ['ok', 'ok', 'ok'])
     } finally {
       await h.close()
     }
@@ -205,10 +205,10 @@ describe('access keys, checked as they arrive', () => {
       await publish([h.url], [permissionsRecord(alice, [allow(accessKey)], clock.t)])
       assert.deepEqual(await errors(h, [offer(accessKey, 'review/2'), offer(accessKey, 'profile')]), ['ok', 'permission'])
 
-      // Listed with another scope: it writes nothing.
+      // A read key, listed for every path: it writes nothing.
       clock.advance(MINUTE)
-      await publish([h.url], [permissionsRecord(alice, [allow(accessKey, undefined, 'message')], clock.advance(1))])
-      assert.deepEqual(await errors(h, [offer(accessKey, 'offer/message')]), ['permission'])
+      await publish([h.url], [permissionsRecord(alice, [allow(reader, undefined, 'read')], clock.advance(1))])
+      assert.deepEqual(await errors(h, [offer(reader, 'offer/read')]), ['permission'])
     } finally {
       await h.close()
     }
@@ -220,7 +220,7 @@ describe('access keys, checked as they arrive', () => {
     try {
       await publish([h.url], [permissionsRecord(alice, [allow(accessKey, ['offer'])], T0), accessRecord(accessKey, alice.address, 'offer/w', offerBody('9'), T0)])
       clock.advance(MINUTE)
-      await publish([h.url], [permissionsRecord(alice, [pastKey(accessKey, 'write', ['offer'])], clock.t)])
+      await publish([h.url], [permissionsRecord(alice, [pastKey(accessKey, ['offer'])], clock.t)])
       assert.equal((await readProfile([h.url], alice.address, clock.t + 30 * DAY)).current.get('offer/w')!.record.by, accessKey.address, 'what it wrote stays')
       const refused = (await publish([h.url], [accessRecord(accessKey, alice.address, 'offer/again', offerBody('1'), T0 + 1)]))[0]!.results[0]!
       assert.deepEqual([refused.error, refused.message], ['permission', 'this access key is past'], 'nor anything backdated')
@@ -257,7 +257,7 @@ describe('a host that closes, or blocks a reader', () => {
     const three = await startHost({ now: clock.now })
     try {
       // The app posts every record to every host in the hosts record, and keeps its own copies.
-      const copies: SignedRecord[] = [hostsRecord(aliceBuyer, [one.url, two.url], T0), ownerRecord(aliceBuyer, 'profile', profileBody('A.'), T0), ownerRecord(aliceBuyer, 'offer/wanted', offerBody('25'), T0)]
+      const copies: SignedRecord[] = [hostsRecord(aliceBuyer, [one.url, two.url], T0), ownerRecord(aliceBuyer, 'profile', profileBody('algebra'), T0), ownerRecord(aliceBuyer, 'offer/wanted', offerBody('25'), T0)]
       await publish([one.url, two.url], copies)
       const ids = (v: { current: Map<string, { id: string; record: SignedRecord }> }) => [...v.current.values()].filter((c) => c.record.path !== 'hosts').map((c) => c.id).sort()
       const was = ids(await readProfile([one.url], aliceBuyer.address, clock.t))
@@ -290,7 +290,7 @@ describe('a host that closes, or blocks a reader', () => {
     const kept = await startHost({ now: () => T0 })
     try {
       const both = [old.url, kept.url]
-      await publish(both, [hostsRecord(alice, both, T0), ownerRecord(alice, 'profile', profileBody('A'), T0)])
+      await publish(both, [hostsRecord(alice, both, T0), ownerRecord(alice, 'profile', profileBody('maths'), T0)])
       await publish(both, [hostsRecord(alice, [kept.url], T0 + 1)])
 
       // The old host may keep its copies; the reader follows the hosts record it finds there.
@@ -353,7 +353,7 @@ describe('hosts that misbehave', () => {
     const [up, down] = await Promise.all([startHost({ now: () => T0 }), startHost({ now: () => T0 })])
     await down.close()
     try {
-      await publish([up.url], [hostsRecord(alice, [up.url], T0), ownerRecord(alice, 'profile', profileBody('A'), T0)])
+      await publish([up.url], [hostsRecord(alice, [up.url], T0), ownerRecord(alice, 'profile', profileBody('maths'), T0)])
       const v = await readProfile([down.url, up.url], alice.address, T0)
       assert.ok(v.current.has('profile'), 'the host that answered still counts')
       assert.deepEqual(v.failed.map((f) => f.host), [down.url])
@@ -440,9 +440,9 @@ describe('limits: each host’s own size, batch and page; each reader’s own si
       // Size is the one reason a host refuses a permissions record by, and one that only removes a
       // key is never larger: a past key's entry is shorter than a write key's, a deleted one gone.
       const sized = (access: AccessKey[]) => Buffer.byteLength(encodeRecord(permissionsRecord(alice, access, T0)))
-      const listed = sized([allow(accessKey, ['offer']), allow(stranger, undefined, 'message')])
-      assert.ok(sized([pastKey(accessKey, 'write', ['offer']), pastKey(stranger, 'message')]) < listed, 'each made past')
-      assert.ok(sized([allow(accessKey, ['offer'])]) < listed, 'one deleted')
+      const listed = sized([allow(accessKey, ['offer']), allow(reader, undefined, 'read')])
+      assert.ok(sized([pastKey(accessKey, ['offer']), allow(reader, undefined, 'read')]) < listed, 'a write key made past')
+      assert.ok(sized([allow(accessKey, ['offer'])]) < listed, 'a read key deleted')
     } finally {
       await h.close()
       await roomy.close()
@@ -485,7 +485,7 @@ describe('limits: each host’s own size, batch and page; each reader’s own si
     await new Promise<void>((resolve) => away.listen(0, '127.0.0.1', resolve))
     const url = `http://127.0.0.1:${(away.address() as { port: number }).port}`
     try {
-      await publish([h.url], [ownerRecord(alice, 'profile', profileBody('A'), T0)])
+      await publish([h.url], [ownerRecord(alice, 'profile', profileBody('maths'), T0)])
       assert.equal((await readPage(url)).records.length, 1, 'followed unless told')
       await assert.rejects(readPage(url, { redirect: 'error' }))
       await assert.rejects(readAll(url, { redirect: 'error' }))
@@ -514,7 +514,7 @@ describe('limits: each host’s own size, batch and page; each reader’s own si
     const away = createServer((req, res) => res.writeHead(307, { location: `${h.url}${req.url}` }).end())
     await new Promise<void>((resolve) => away.listen(0, '127.0.0.1', resolve))
     const url = `http://127.0.0.1:${(away.address() as { port: number }).port}`
-    const card = ownerRecord(alice, 'profile', profileBody('A'), T0)
+    const card = ownerRecord(alice, 'profile', profileBody('maths'), T0)
     const note = signMessage(bob, alice.address, { private: 'YWdl' }, T0)
     try {
       const asked: string[] = []

@@ -1,0 +1,26 @@
+{
+  "name": "@forest/reputation-circuit",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The reputation proof's circuit: a count-weighted score from up to eight of a person's own profiles in an index's tree, shown on another profile the same seed gives, naming none of them. The circuit, its devnet setup, and its tests through the reputation client.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "fetch": "node scripts/fetch.ts",
+    "compile": "node scripts/compile.ts",
+    "check": "tsc --noEmit",
+    "test": "node --test --test-force-exit test/reputation.test.ts"
+  },
+  "dependencies": {
+    "snarkjs": "0.7.5"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.2",
+    "@zk-kit/binary-merkle-root.circom": "2.0.0",
+    "circomlib": "2.0.5",
+    "typescript": "5.9.3"
+  }
+}

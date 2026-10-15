@@ -3,110 +3,76 @@
 // Other attack tests live next to the code they attack: host.test.ts, view.test.ts, private.test.ts.
 
 import assert from 'node:assert/strict'
-import { createPublicKey, verify as nodeVerify } from 'node:crypto'
 import { after, before, describe, test } from 'node:test'
-import { ed25519 } from '@noble/curves/ed25519.js'
-import { sha512 } from '@noble/hashes/sha2.js'
-import { getCompiledTransactionMessageDecoder } from '@solana/transaction-messages'
+import { sha256 } from '@noble/hashes/sha2.js'
+import { Base8, addPoint, mulPointEscalar } from '@zk-kit/baby-jubjub'
+import { verifySignature as zkVerify } from '@zk-kit/eddsa-poseidon'
+import { poseidon5 } from 'poseidon-lite/poseidon5'
+import { BN254_R, SUBGROUP_ORDER, accessKey as makeAccessKey, bytesMessage, inboxKey, packSignature, unpackSignature, verifyWithPublicKey } from '../../keys/src/index.ts'
 import { b64u, base58, concat, hex, utf8 } from '../src/bytes.ts'
 import { deliver, publish, readAll, readProfile } from '../src/client.ts'
 import type { Host } from '../src/host.ts'
-import { inboxKey } from '../../keys/src/index.ts'
+import { MESSAGE_PREFIX, PULL_PREFIX } from '../src/message.ts'
 import { message } from '../src/private.ts'
-import { checkRecord, encodeRecord, signingInput, unsignedOf, verifySignature } from '../src/record.ts'
+import { SIGN_PREFIX, checkRecord, encodeRecord, signingInput, unsignedOf, verifySignature } from '../src/record.ts'
 import { viewProfile } from '../src/view.ts'
 import { accessRecord, hostsRecord, ownerRecord, permissionsRecord } from '../src/write.ts'
-import { DAY, MINUTE, SEED, T0, accessKey, alice, aliceBuyer, allow, bob, messageKey, offerBody, pastKey, profileBody } from './fixtures.ts'
+import { DAY, MINUTE, SEED, T0, accessKey, alice, aliceBuyer, allow, bob, offerBody, pastKey, profileBody } from './fixtures.ts'
 import { startHost } from './helpers.ts'
 
-const L = 2n ** 252n + 27742317777372353535851937790883648493n
+const L = SUBGROUP_ORDER
 const le = (n: bigint, len = 32) => Uint8Array.from({ length: len }, (_, i) => Number((n >> BigInt(8 * i)) & 255n))
 const fromLe = (b: Uint8Array) => b.reduceRight((acc, byte) => (acc << 8n) + BigInt(byte), 0n)
-const SMALL_ORDER_8 = hex.decode('c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac03fa')
-
-function nodeAccepts(sig: Uint8Array, message: Uint8Array, publicKey: Uint8Array): boolean {
-  try {
-    const key = createPublicKey({ key: Buffer.concat([Buffer.from('302a300506032b6570032100', 'hex'), publicKey]), format: 'der', type: 'spki' })
-    return nodeVerify(null, message, key, sig)
-  } catch {
-    return false
-  }
-}
-
-/** RFC 8032 signing with a chosen public key in the hash: how an attacker makes edge-case signatures. */
-function signWithKey(secret: Uint8Array, publicKeyBytes: Uint8Array, message: Uint8Array): Uint8Array {
-  const { scalar, prefix } = ed25519.utils.getExtendedPublicKey(secret)
-  const r = fromLe(sha512(concat(prefix, message))) % L
-  const R = ed25519.Point.BASE.multiply(r).toBytes()
-  const k = fromLe(sha512(concat(R, publicKeyBytes, message))) % L
-  return concat(R, le((r + k * scalar) % L))
-}
+/** The point of order 2 on Baby Jubjub: on the curve, in no key's subgroup. */
+const ORDER_2: [bigint, bigint] = [0n, BN254_R - 1n]
 
 describe('nobody forges; a signature means one thing everywhere', () => {
   const record = ownerRecord(alice, 'offer/a', offerBody('30'), T0)
   const message = signingInput(unsignedOf(record))
   const sig = b64u.decode(record.sig)
 
-  test('a valid signature: ours and OpenSSL (node:crypto) agree', () => {
-    assert.equal(verifySignature(sig, message, alice.publicKey), true)
-    assert.equal(nodeAccepts(sig, message, alice.publicKey), true)
+  test("a valid signature: ours and zk-kit's agree", () => {
+    assert.equal(verifySignature(sig, message, alice.address), true)
+    assert.equal(zkVerify(bytesMessage(message), unpackSignature(sig)!, alice.publicKey), true)
   })
 
-  test('a second spelling of the same signature (S + L) is refused, and could not make a new id anyway', () => {
+  test('a second spelling of the same signature (S + l) is refused, and could not make a new id anyway', () => {
     const S = fromLe(sig.subarray(32))
     const malleated = concat(sig.subarray(0, 32), le(S + L))
-    assert.equal(verifySignature(malleated, message, alice.publicKey), false)
-    assert.equal(nodeAccepts(malleated, message, alice.publicKey), false)
+    assert.equal(verifySignature(malleated, message, alice.address), false)
+    assert.equal(zkVerify(bytesMessage(message), { R8: unpackSignature(sig)!.R8, S: S + L }, alice.publicKey), false)
     assert.throws(() => checkRecord({ ...record, sig: b64u.encode(malleated) }), /signature/)
   })
 
-  test('a small-order key: (R = identity, S = 0) "verifies" any message for it; Forest refuses the key outright', (t) => {
-    const identity = new Uint8Array(32)
-    identity[0] = 1
-    const universal = concat(identity, new Uint8Array(32))
-    for (const weak of [identity, SMALL_ORDER_8]) {
-      assert.equal(verifySignature(universal, message, weak), false)
-      t.diagnostic(`node:crypto (OpenSSL) accepts the universal signature for small-order key ${hex.encode(weak).slice(0, 8)}…: ${nodeAccepts(universal, message, weak)}`)
-    }
+  test("a small-order key: (R8 = identity, S = 0) verifies any message for it under zk-kit's check; Forest refuses the key outright", (t) => {
+    const universal = { R8: [0n, 1n] as [bigint, bigint], S: 0n }
+    assert.equal(verifyWithPublicKey(ORDER_2, bytesMessage(message), universal), false)
+    assert.equal(verifySignature(packSignature(universal), message, ORDER_2), false)
+    t.diagnostic(`zk-kit's verifySignature accepts the universal signature for the key of order 2: ${zkVerify(bytesMessage(message), universal, ORDER_2)}`)
     // A permissions record naming a small-order access key cannot even be written.
-    assert.throws(() => permissionsRecord(alice, [{ key: base58.encode(identity), scope: 'write', paths: ['offer'] }], T0), /usable/)
+    const packed = le(ORDER_2[1])
+    assert.throws(() => permissionsRecord(alice, [{ key: base58.encode(packed), scope: 'write', paths: ['offer'] }], T0), /usable/)
   })
 
-  test('a mixed-order key (the owner’s key plus a small-order point): verifiers could disagree; Forest refuses it', (t) => {
-    const A = ed25519.Point.fromBytes(alice.publicKey)
-    const mixed = A.add(ed25519.Point.fromBytes(SMALL_ORDER_8)).toBytes()
-    let disagreements = 0
-    for (let i = 0; i < 16; i++) {
-      const m = utf8(`message ${i}`)
-      const s = signWithKey(alice.privateKey, mixed, m)
-      assert.equal(verifySignature(s, m, mixed), false)
-      // A cofactored verifier accepts every one; a cofactorless one about 1 in 8.
-      const R = ed25519.Point.fromBytes(s.subarray(0, 32))
-      const k = fromLe(sha512(concat(s.subarray(0, 32), mixed, m))) % L
-      const lhs = ed25519.Point.BASE.multiply(fromLe(s.subarray(32))).multiply(8n)
-      const rhs = R.add(ed25519.Point.fromBytes(mixed).multiply(k)).multiply(8n)
-      if (lhs.equals(rhs) !== nodeAccepts(s, m, mixed)) disagreements++
+  test("a mixed-order key (the owner's key plus the point of order 2): zk-kit's check takes the owner's signatures for it; Forest refuses it", () => {
+    // (x, y) + (0, -1) = (-x, -y). Signed with Alice's scalar but the mixed key in the hash, the
+    // equation still holds, because 8 times the order-2 point is the identity.
+    const mixed = addPoint(alice.publicKey, ORDER_2) as [bigint, bigint]
+    assert.deepEqual(mixed, [BN254_R - alice.publicKey[0], BN254_R - alice.publicKey[1]])
+    const m = bytesMessage(utf8('a message'))
+    const r = 12345n
+    const R8 = mulPointEscalar(Base8, r) as [bigint, bigint]
+    const hm = poseidon5([R8[0], R8[1], mixed[0], mixed[1], m])
+    const forged = { R8, S: (r + 8n * hm * alice.scalar) % L }
+    assert.equal(zkVerify(m, forged, mixed), true, 'zk-kit takes it: it checks only that a key is on the curve')
+    assert.equal(verifyWithPublicKey(mixed, m, forged), false, 'Forest takes no key outside the subgroup')
+  })
+
+  test('the signed bytes of a record, a message, a pull and an index root each start with their own text', () => {
+    const texts = [SIGN_PREFIX, MESSAGE_PREFIX, PULL_PREFIX, concat(Uint8Array.of(0xff), utf8('forest/v1/reputation\n'))]
+    for (const [i, a] of texts.entries()) {
+      for (const [j, b] of texts.entries()) if (i !== j) assert.notDeepEqual(a.subarray(0, Math.min(a.length, b.length)), b.subarray(0, Math.min(a.length, b.length)), 'no text begins another')
     }
-    t.diagnostic(`cofactored vs OpenSSL disagreed on ${disagreements} of 16 signatures for a mixed-order key`)
-    assert.ok(disagreements > 0, 'the split view is real when keys are not checked')
-  })
-
-  test('no record signature is a Solana transaction’s, and no transaction signature is a record’s', (t) => {
-    const decoder = getCompiledTransactionMessageDecoder()
-    assert.throws(() => decoder.decode(message), /version 127/)
-    // Without the 0xff byte, a long canonical record is not refused by the version check:
-    const outcome = (() => {
-      try {
-        decoder.decode(message.subarray(1))
-        return 'decoded'
-      } catch (err) {
-        return `threw: ${(err as Error).message.slice(0, 40)}`
-      }
-    })()
-    t.diagnostic(`the same bytes without 0xff, fed to Solana's decoder: ${outcome}`)
-    // A Solana-style message signed by the main key is not a record signature.
-    const payment = concat(Uint8Array.of(1, 0, 1, 2), alice.publicKey, new Uint8Array(32), new Uint8Array(32), Uint8Array.of(1, 1, 1, 0, 0))
-    assert.throws(() => checkRecord({ ...record, sig: b64u.encode(ed25519.sign(payment, alice.privateKey)) }), /signature/)
   })
 
   test('replaying a record into another profile, path or time fails; the same record twice is one record', () => {
@@ -124,7 +90,7 @@ describe('a stolen access key', () => {
 
   test('cannot rewrite or delete what the owner wrote, cannot touch hosts or permissions, cannot write outside its paths', () => {
     const overwrite = accessRecord(accessKey, alice.address, 'offer/maths', offerBody('1'), T0 + DAY)
-    const card = accessRecord(accessKey, alice.address, 'profile', profileBody('Not Alice'), T0 + DAY)
+    const card = accessRecord(accessKey, alice.address, 'profile', profileBody('forgery'), T0 + DAY)
     const v = view(permissions, mine, overwrite, card)
     assert.equal(v.current.get('offer/maths')!.id, checkRecord(mine).id)
     assert.equal(v.current.has('profile'), false)
@@ -133,7 +99,7 @@ describe('a stolen access key', () => {
 
   test('with no paths, it still cannot write the card', () => {
     const anywhere = permissionsRecord(alice, [allow(accessKey)], T0)
-    const card = accessRecord(accessKey, alice.address, 'profile', profileBody('Not Alice'), T0 + DAY)
+    const card = accessRecord(accessKey, alice.address, 'profile', profileBody('forgery'), T0 + DAY)
     const v = view(anywhere, card)
     assert.equal(v.current.has('profile'), false)
   })
@@ -150,7 +116,7 @@ describe('a stolen access key', () => {
     // An honest host refuses it (host.test.ts). A reader counts every record a past key wrote,
     // since it is still listed and no date is checked, so whoever holds a host that takes one can
     // show it. The owner's record wins at that path, so the owner deletes it there.
-    const past = permissionsRecord(alice, [pastKey(accessKey, 'write', ['offer'])], T0 + MINUTE)
+    const past = permissionsRecord(alice, [pastKey(accessKey, ['offer'])], T0 + MINUTE)
     const sneaked = accessRecord(accessKey, alice.address, 'offer/new', offerBody('1'), T0 + 2 * MINUTE)
     const later = T0 + 365 * DAY
     assert.equal(viewProfile(alice.address, [past, sneaked].map((r) => checkRecord(r)), later).current.has('offer/new'), true)
@@ -159,20 +125,20 @@ describe('a stolen access key', () => {
   })
 })
 
-describe('a stolen message key', () => {
+describe('a stolen write key that sends', () => {
   test('once past, it cannot send through a host that serves the sender’s old permissions record: the sender’s hosts record does not name that host', async () => {
     const readSender = async (url: string, profile: string) => (await readAll(url, { profile })).records
     const home = await startHost({ now: () => T0 })
     const thief = await startHost({ now: () => T0 }) // keeps copies of Alice's old records: they are public
     const inbox = await startHost({ now: () => T0, readSender })
     try {
-      const listed = permissionsRecord(alice, [allow(messageKey, undefined, 'message')], T0)
-      await publish([home.url], [hostsRecord(alice, [home.url], T0), listed, permissionsRecord(alice, [pastKey(messageKey, 'message')], T0 + 1)])
+      const listed = permissionsRecord(alice, [allow(accessKey, ['inbox'])], T0)
+      await publish([home.url], [hostsRecord(alice, [home.url], T0), listed, permissionsRecord(alice, [pastKey(accessKey, ['inbox'])], T0 + 1)])
       await publish([thief.url], [hostsRecord(alice, [home.url], T0), listed])
-      const bobInbox = await inboxKey(bob.privateKey)
-      const bobCard = { ...profileBody('Bob'), inboxKey: bobInbox.recipient, inbox: { senders: 'anyone' } }
+      const bobInbox = await inboxKey(bob.secret)
+      const bobCard = { ...profileBody('chemistry'), inboxKey: bobInbox.recipient, inbox: { senders: 'anyone' } }
       await publish([inbox.url], [ownerRecord(bob, 'profile', bobCard, T0)])
-      const send = (host: string) => message({ key: messageKey, from: alice.address, host }, bob.address, { text: 'Send me the money.' }, T0 + 2, bobCard)
+      const send = (host: string) => message({ key: accessKey, from: alice.address, host }, bob.address, { text: 'Send me the money.' }, T0 + 2, bobCard)
       const results = async (host: string) => (await deliver([inbox.url], [await send(host)]))[0]!.results[0]!.error
       assert.equal(await results(thief.url), 'permission', 'the old record, from a host she does not name')
       assert.equal(await results(home.url), 'permission', 'her current record says past')
@@ -191,7 +157,7 @@ describe('over real hosts', () => {
     h1 = await startHost({ now: () => T0 + 10 * MINUTE })
     h2 = await startHost({ now: () => T0 + 10 * MINUTE })
     const urls = [h1.url, h2.url]
-    await publish(urls, [hostsRecord(alice, urls, T0), ownerRecord(alice, 'profile', profileBody('A'), T0), ownerRecord(alice, 'offer/a', offerBody('1'), T0)])
+    await publish(urls, [hostsRecord(alice, urls, T0), ownerRecord(alice, 'profile', profileBody('maths'), T0), ownerRecord(alice, 'offer/a', offerBody('1'), T0)])
   })
   after(async () => {
     await h1.close()
@@ -205,11 +171,12 @@ describe('over real hosts', () => {
   })
 
   test('a host holds no key: its whole database holds no secret of the person', async () => {
-    const inbox = await inboxKey(alice.privateKey)
+    const inbox = await inboxKey(alice.secret)
     const disk = [...h1.dump(), ...h2.dump()].join('\n')
-    for (const secret of [alice.privateKey, SEED]) {
+    for (const secret of [alice.secret, SEED, le(alice.scalar), le(alice.scalar).reverse()]) {
       for (const form of [hex.encode(secret), b64u.encode(secret), Buffer.from(secret).toString('base64'), base58.encode(secret)]) assert.ok(!disk.includes(form))
     }
+    assert.ok(!disk.includes(alice.scalar.toString()), 'nor the main key’s scalar')
     assert.ok(!disk.includes(inbox.identity))
   })
 
@@ -230,16 +197,16 @@ describe('over real hosts', () => {
 
 describe('linking two profiles of one person', () => {
   test('addresses, inbox keys and access keys: nothing public repeats across the two profiles', async () => {
-    const [inbox0, inbox1] = await Promise.all([inboxKey(alice.privateKey), inboxKey(aliceBuyer.privateKey)])
-    const accessFor = (n: number) => ({ key: base58.encode(ed25519.getPublicKey(sha512(utf8(`access ${n}`)).subarray(0, 32))), scope: 'write' as const, paths: ['offer'] })
+    const [inbox0, inbox1] = await Promise.all([inboxKey(alice.secret), inboxKey(aliceBuyer.secret)])
+    const accessFor = (n: number) => ({ key: makeAccessKey(sha256(utf8(`access ${n}`))).address, scope: 'write' as const, paths: ['offer'] })
     const one = [
       hostsRecord(alice, ['https://big-host.example'], T0),
-      ownerRecord(alice, 'profile', { ...profileBody('Alice teaches'), inboxKey: inbox0.recipient }, T0),
+      ownerRecord(alice, 'profile', { ...profileBody('statistics'), inboxKey: inbox0.recipient }, T0),
       permissionsRecord(alice, [accessFor(1)], T0),
     ]
     const two = [
       hostsRecord(aliceBuyer, ['https://big-host.example'], T0),
-      ownerRecord(aliceBuyer, 'profile', { ...profileBody('A. buys'), role: 'buyer', inboxKey: inbox1.recipient }, T0),
+      ownerRecord(aliceBuyer, 'profile', { ...profileBody('geometry'), role: 'buyer', inboxKey: inbox1.recipient }, T0),
       permissionsRecord(aliceBuyer, [accessFor(2)], T0),
     ]
     const tokens = (records: object[]) => {
@@ -253,14 +220,14 @@ describe('linking two profiles of one person', () => {
     }
     const shared = [...tokens(one)].filter((t) => tokens(two).has(t))
     // What repeats is only what the person chose to repeat: here the host, and shared template text.
-    assert.deepEqual(shared.sort(), ['2026-10-02T12:00:00Z', 'Maths and physics, secondary level.', 'https://big-host.example'].sort())
+    assert.deepEqual(shared.sort(), ['2026-10-02T12:00:00Z', 'https://big-host.example'].sort())
   })
 
   test('FINDING: written in the same moment, two profiles sit side by side in a host’s listing', async () => {
     const host = await startHost({ now: () => T0 })
     try {
-      await publish([host.url], [ownerRecord(alice, 'profile', profileBody('A'), T0)])
-      await publish([host.url], [ownerRecord(bob, 'profile', profileBody('B'), T0)])
+      await publish([host.url], [ownerRecord(alice, 'profile', profileBody('maths'), T0)])
+      await publish([host.url], [ownerRecord(bob, 'profile', profileBody('physics'), T0)])
       // One app writes both of a person's profiles at once:
       await publish([host.url], [ownerRecord(alice, 'offer/x', offerBody('1'), T0 + 1), ownerRecord(aliceBuyer, 'offer/y', offerBody('1'), T0 + 1)])
       const listing = (await readAll(host.url)).records.map((c) => c.record.profile)

@@ -1,19 +1,17 @@
 // The reference host's storage: a SQLite file per folder, host.sqlite for the log and the blob
 // index, and the bytes on disk or in an S3-compatible bucket. None of it is the standard: the six
 // requests answer the same whatever the storage. Here: where things land, the feed across
-// folders, removing a folder, a malformed address, rebuilding host.sqlite, the S3 driver, and the
-// import from the single-file host.
+// folders, removing a folder, a malformed address, rebuilding host.sqlite, and the S3 driver.
 
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { copyFileSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { type IncomingMessage, createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { after, describe, test } from 'node:test'
 import { inboxKey } from '../../keys/src/index.ts'
-import { importSingleFile } from '../scripts/import-single-file.ts'
 import { deliver, getBlob, publish, pull, putBlob, readAll, readPage } from '../src/client.ts'
 import { type BlobDriver, DAY, Host, rebuild } from '../src/host.ts'
 import { pullRequest } from '../src/message.ts'
@@ -21,7 +19,7 @@ import { message } from '../src/private.ts'
 import type { Body } from '../src/record.ts'
 import { s3Url, signS3 } from '../src/storage.ts'
 import { ownerRecord } from '../src/write.ts'
-import { MINUTE, T0, alice, aliceBuyer, bob, offerBody, profileBody } from './fixtures.ts'
+import { MINUTE, T0, alice, bob, offerBody, profileBody } from './fixtures.ts'
 import { Clock, startHost } from './helpers.ts'
 
 const dirs: string[] = []
@@ -38,9 +36,11 @@ const ref = (bytes: Uint8Array, mimeType: string) => ({ sha256: sha256Hex(bytes)
 const photo = bytesOf(1)
 const clip = bytesOf(2, 3000)
 
-const [aliceInbox, bobInbox] = await Promise.all([inboxKey(alice.privateKey), inboxKey(bob.privateKey)])
-const aliceCard: Body = { ...profileBody('Alice'), inboxKey: aliceInbox.recipient, inbox: { senders: 'anyone' }, photo: ref(photo, 'image/jpeg') }
-const bobCard: Body = { ...profileBody('Bob'), role: 'buyer', inboxKey: bobInbox.recipient, inbox: { senders: 'anyone' } }
+const [aliceInbox, bobInbox] = await Promise.all([inboxKey(alice.secret), inboxKey(bob.secret)])
+const aliceCard: Body = { ...profileBody('calculus'), inboxKey: aliceInbox.recipient, inbox: { senders: 'anyone' } }
+/** Alice's offer with a photo: the one record that names it. */
+const photoOffer = ownerRecord(alice, 'offer/photo', { ...offerBody('5'), media: [ref(photo, 'image/jpeg')] }, T0)
+const bobCard: Body = { ...profileBody('chemistry'), role: 'buyer', inboxKey: bobInbox.recipient, inbox: { senders: 'anyone' } }
 const withClip = (price: string): Body => ({ ...offerBody(price), media: [ref(clip, 'video/mp4')] })
 
 /** Every page of the feed, as [cursor, ids]: what a crawler sees, number for number. */
@@ -69,7 +69,7 @@ describe('a file per folder', () => {
     const dir = scratch()
     const h = await startHost({ dir, now: () => T0 })
     try {
-      const records = [ownerRecord(alice, 'profile', profileBody('Alice'), T0), ownerRecord(bob, 'profile', profileBody('Bob'), T0), ownerRecord(alice, 'offer/a', offerBody('1'), T0)]
+      const records = [ownerRecord(alice, 'profile', profileBody('calculus'), T0), ownerRecord(bob, 'profile', profileBody('chemistry'), T0), ownerRecord(alice, 'offer/a', offerBody('1'), T0)]
       await publish([h.url], records)
       assert.deepEqual(readdirSync(join(dir, 'folders')).sort(), [`${alice.address}.sqlite`, `${bob.address}.sqlite`].sort())
       const profiles = (address: string) => query<{ text: string }>(join(dir, 'folders', `${address}.sqlite`), 'SELECT text FROM records ORDER BY seq').map((r) => (JSON.parse(r.text) as { profile: string }).profile)
@@ -111,7 +111,7 @@ describe('a file per folder', () => {
     const reread = async () => ({ feed: await pages(h.url), bob: await pages(h.url, bob.address), bobInbox: await pull(h.url, pullRequest(bob, 0, T0)) })
     let was: Awaited<ReturnType<typeof reread>>
     try {
-      await publish([h.url], [ownerRecord(alice, 'profile', aliceCard, T0)])
+      await publish([h.url], [ownerRecord(alice, 'profile', aliceCard, T0), photoOffer])
       await publish([h.url], [ownerRecord(bob, 'profile', bobCard, T0)])
       await publish([h.url], [ownerRecord(alice, 'offer/a', offerBody('1'), T0)])
       await publish([h.url], [ownerRecord(bob, 'offer/b', withClip('2'), T0)])
@@ -153,7 +153,7 @@ describe('a file per folder', () => {
     const dir = scratch()
     const h = await startHost({ dir, now: () => T0 })
     try {
-      await publish([h.url], [ownerRecord(alice, 'profile', profileBody('Alice'), T0)])
+      await publish([h.url], [ownerRecord(alice, 'profile', profileBody('calculus'), T0)])
       const files = () => readdirSync(dir, { recursive: true }).map(String).sort()
       const was = files()
       const zeroKey = '1'.repeat(32) // 32 zero bytes: one spelling, but a key of small order
@@ -211,7 +211,7 @@ describe('host.sqlite holds nothing that exists only there', () => {
     let h = await startHost(options)
     let was: Array<[number, string[]]>
     try {
-      await publish([h.url], [ownerRecord(alice, 'profile', aliceCard, T0), ownerRecord(alice, 'offer/a', withClip('1'), T0)])
+      await publish([h.url], [ownerRecord(alice, 'profile', aliceCard, T0), photoOffer, ownerRecord(alice, 'offer/a', withClip('1'), T0)])
       await publish([h.url], [ownerRecord(bob, 'profile', bobCard, T0)])
       assert.deepEqual([...(await putBlob([h.url], photo, 'image/jpeg')), ...(await putBlob([h.url], clip, 'video/mp4'))].map((o) => o.ok), [true, true])
       await publish([h.url], [ownerRecord(alice, 'offer/a', offerBody('2'), clock.advance(MINUTE))]) // nothing names the clip now
@@ -234,7 +234,7 @@ describe('host.sqlite holds nothing that exists only there', () => {
       await publish([h.url], [ownerRecord(bob, 'offer/b', offerBody('3'), clock.t)])
       assert.equal((await readPage(h.url, { after: last })).cursor, clock.t * 1000)
       assert.ok(clock.t * 1000 > last)
-      // The photo is named: kept. The clip was not: dated at the rebuild, which only keeps it longer.
+      // The photo is still named: kept. The clip was not: dated at the rebuild, which only keeps it longer.
       await h.prune(rebuilt + 30 * DAY - 1)
       assert.ok(await h.getBlob(sha256Hex(clip)))
       await h.prune(rebuilt + 30 * DAY)
@@ -298,7 +298,7 @@ describe('the S3 driver', () => {
     const options = { dir, now: clock.now, blobs: driver }
     let h = await startHost(options)
     try {
-      await publish([h.url], [ownerRecord(alice, 'profile', aliceCard, T0), ownerRecord(alice, 'offer/a', withClip('1'), T0)])
+      await publish([h.url], [ownerRecord(alice, 'profile', aliceCard, T0), photoOffer, ownerRecord(alice, 'offer/a', withClip('1'), T0)])
       assert.deepEqual([...(await putBlob([h.url], photo, 'image/jpeg')), ...(await putBlob([h.url], clip, 'video/mp4'))].map((o) => o.ok), [true, true])
       assert.deepEqual([...stub.objects].map(([k, o]) => [k, o.type]).sort(), [[sha256Hex(photo), 'image/jpeg'], [sha256Hex(clip), 'video/mp4']].sort())
       assert.ok(!existsSync(join(dir, 'blobs')), 'nothing on disk')
@@ -331,7 +331,7 @@ describe('the S3 driver', () => {
     // The stub checks signatures: a wrong secret is refused, and the host answers 500.
     const wrong = await startHost({ now: () => T0, blobs: { ...driver, secretAccessKey: 'wrong' } })
     try {
-      await publish([wrong.url], [ownerRecord(alice, 'profile', aliceCard, T0)])
+      await publish([wrong.url], [ownerRecord(alice, 'profile', aliceCard, T0), photoOffer])
       assert.equal((await putBlob([wrong.url], photo, 'image/jpeg'))[0]!.status, 500)
     } finally {
       await wrong.close()
@@ -355,52 +355,5 @@ describe('the S3 driver', () => {
     list.searchParams.set('max-keys', '2')
     list.searchParams.set('prefix', 'J')
     assert.equal(signature('GET', list, {}, empty), '34b48302e7b5fa45bde8084f4b7868a86f0a534bc59db6670ed5711ef69dc6f7')
-  })
-})
-
-describe('the import from a single-file host', () => {
-  // test/single-file.sqlite was written by the single-file host (commit efc581a): Alice's and Bob's
-  // folders, a replaced offer, an access key's offer, a delete, three blobs (one no current record
-  // names), three messages and two once pairs.
-  test('every folder, record, message, once pair and blob comes across, under the same numbers', async () => {
-    const dir = scratch()
-    const old = join(scratch(), 'single-file.sqlite')
-    copyFileSync(new URL('single-file.sqlite', import.meta.url), old)
-    const now = T0 + 10 * MINUTE
-    assert.deepEqual(await importSingleFile(old, { dir, now }), { folders: 2, records: 10, messages: 3, blobs: 3 })
-    await assert.rejects(importSingleFile(old, { dir, now }), /already holds a host/)
-
-    const was = {
-      records: query<{ seq: number; profile: string; text: string }>(old, 'SELECT seq, profile, text FROM records ORDER BY seq'),
-      messages: query<{ seq: number; id: string; recipient: string }>(old, 'SELECT seq, id, recipient FROM messages ORDER BY seq'),
-      blobs: query<{ sha256: string; type: string; data: Uint8Array }>(old, 'SELECT sha256, type, data FROM blobs'),
-    }
-    const h = await startHost({ dir, now: () => now })
-    try {
-      const top = was.records.at(-1)!.seq
-      for (const after of [0, 3, 7]) assert.deepEqual(h.read({ after }), { lines: was.records.filter((r) => r.seq > after).map((r) => r.text), cursor: top }, `after ${after}`)
-      for (const key of [alice, bob]) {
-        const its = was.records.filter((r) => r.profile === key.address)
-        assert.deepEqual(h.read({ profile: key.address }), { lines: its.map((r) => r.text), cursor: its.at(-1)!.seq })
-        const mine = was.messages.filter((m) => m.recipient === key.address)
-        const page = await pull(h.url, pullRequest(key, 0, now))
-        assert.deepEqual([page.messages.map((m) => m.id), page.cursor], [mine.map((m) => m.id), mine.at(-1)!.seq])
-      }
-      assert.deepEqual((await pull(h.url, pullRequest(alice, 1, now))).messages.map((m) => m.id), [was.messages[1]!.id])
-      for (const b of was.blobs) assert.deepEqual(await h.getBlob(b.sha256), { type: b.type, bytes: new Uint8Array(b.data) })
-
-      // Alice's inbox takes one message from each sender: Bob and her other profile have written.
-      const card = h.view(alice.address, now).current.get('profile')!.record.body!
-      const again = await deliver([h.url], [await message(bob, alice.address, { text: 'Again?' }, now, card), await message(aliceBuyer, alice.address, { text: 'Again.' }, now, card)])
-      assert.deepEqual(again[0]!.results.map((r) => r.error), ['once', 'once'])
-
-      // Keep days as before: replaced records at their old date, messages at arrival; the bytes
-      // nothing names at the import, which only keeps them longer.
-      assert.equal(await h.prune(T0 + MINUTE + 30 * DAY - 1), 0)
-      assert.equal(await h.prune(T0 + MINUTE + 30 * DAY), 2)
-      assert.equal(await h.prune(now + 30 * DAY), 4)
-    } finally {
-      await h.close()
-    }
   })
 })

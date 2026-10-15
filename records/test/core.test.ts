@@ -2,20 +2,31 @@
 
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
-import { base58, hex } from '../src/bytes.ts'
+import { BN254_R, accessKey as makeAccessKey, packPoint, packSignature, signBytes } from '../../keys/src/index.ts'
+import { b64u, base58 } from '../src/bytes.ts'
 import { canonical, parseCanonical } from '../src/canonical.ts'
-import { keyFromPrivate, publicKeyFromAddress } from '../src/keys.ts'
-import { RecordError, checkRecord, decodeRecord, encodeRecord, recordId, signRecord, unsignedOf } from '../src/record.ts'
+import { keyFromScalar, publicKeyFromAddress } from '../src/keys.ts'
+import { RecordError, checkRecord, decodeRecord, encodeRecord, recordId, signRecord, signingInput, unsignedOf } from '../src/record.ts'
 import { accessRecord, ownerRecord, permissionsRecord } from '../src/write.ts'
-import { KEYS, T0, accessKey, alice, aliceBuyer, allow, messageKey, offerBody, pastKey, profileBody, sizedRecord, stranger } from './fixtures.ts'
+import { KEYS, T0, accessKey, alice, aliceBuyer, allow, offerBody, pastKey, profileBody, reader, sizedRecord, stranger } from './fixtures.ts'
+
+/** The packed bytes of y, with x's sign bit as given, in base58: an address whatever point it names, or none. */
+const packedY = (y: bigint, negative = false) => {
+  const bytes = new Uint8Array(32)
+  for (let i = 0, v = y; i < 32; i++, v >>= 8n) bytes[i] = Number(v & 0xffn)
+  if (negative) bytes[31]! |= 0x80
+  return base58.encode(bytes)
+}
 
 describe('keys', () => {
-  test("main keys are keys/'s: its pinned profiles sign here, and a name is the key in base58", () => {
+  test("main keys and access keys are keys/'s: its pinned profiles sign here, and a name is the packed key in base58", () => {
     assert.equal(alice.address, KEYS.mainKeys[0].address)
     assert.equal(aliceBuyer.address, KEYS.mainKeys[1].address)
-    assert.equal(alice.address, base58.encode(alice.publicKey), 'the name is the key in base58: the same text as its Solana address')
-    assert.deepEqual(keyFromPrivate(alice.privateKey), { privateKey: alice.privateKey, publicKey: alice.publicKey, address: alice.address })
-    assert.throws(() => keyFromPrivate(alice.privateKey.subarray(1)), /32 bytes/)
+    assert.equal(alice.address, base58.encode(packPoint(alice.publicKey)), 'the name is the packed key in base58')
+    assert.deepEqual(keyFromScalar(alice.scalar), { scalar: alice.scalar, publicKey: alice.publicKey, address: alice.address })
+    assert.equal(accessKey.address, KEYS.accessKeys.write.address)
+    assert.equal(reader.address, KEYS.accessKeys.read.address)
+    assert.equal(reader.recipient, KEYS.accessKeys.read.recipient)
   })
 
   test('an address has one spelling and names a usable key', () => {
@@ -24,11 +35,12 @@ describe('keys', () => {
     assert.equal(publicKeyFromAddress('1' + alice.address), null, 'a leading 1 is a leading zero byte: 33 bytes')
     assert.equal(publicKeyFromAddress(alice.address.replace(/.$/, '0')), null, 'not base58')
     assert.equal(publicKeyFromAddress(`did:key:z${alice.address}`), null)
-    // The identity point, and a small-order point, are refused as names.
-    const identity = new Uint8Array(32)
-    identity[0] = 1
-    assert.equal(publicKeyFromAddress(base58.encode(identity)), null)
-    assert.equal(publicKeyFromAddress(base58.encode(hex.decode('c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac03fa'))), null)
+    // The identity point, a point of order 2 and of order 4, and y past the field are refused as names.
+    assert.equal(publicKeyFromAddress(packedY(1n)), null, 'the identity')
+    assert.equal(publicKeyFromAddress(packedY(BN254_R - 1n)), null, 'order 2: (0, -1)')
+    assert.equal(publicKeyFromAddress(packedY(0n)), null, 'order 4: (±sqrt(1/a), 0)')
+    assert.equal(publicKeyFromAddress(packedY(BN254_R + 1n)), null, 'y past the field: the identity in a second spelling')
+    assert.equal(publicKeyFromAddress(packedY(1n, true)), null, 'x = 0 with the sign bit set')
   })
 })
 
@@ -87,23 +99,27 @@ describe('records', () => {
   })
 
   test('a key cannot sign as another profile, or as an access key it is not', () => {
-    assert.throws(() => signRecord({ v: 1, profile: aliceBuyer.address, path: 'profile', time: T0, body: profileBody('x') }, alice.privateKey), /not the signer/)
-    assert.throws(() => signRecord({ v: 1, profile: alice.address, path: 'profile', time: T0, body: profileBody('x'), by: accessKey.address }, alice.privateKey), /not the signer/)
+    assert.throws(() => signRecord({ v: 1, profile: aliceBuyer.address, path: 'profile', time: T0, body: profileBody('x') }, alice), /not the one named to sign/)
+    assert.throws(() => signRecord({ v: 1, profile: alice.address, path: 'profile', time: T0, body: profileBody('x'), by: accessKey.address }, alice), /not the one named to sign/)
+    // Another key's signature under Alice's name, made by hand past signRecord's check: the record fails.
+    const unsigned = { v: 1 as const, profile: alice.address, path: 'offer/x', time: T0, body: offerBody('1') }
+    const posing = { ...unsigned, sig: b64u.encode(packSignature(signBytes(accessKey.scalar, signingInput(unsigned)))) }
+    assert.throws(() => checkRecord(posing), (err: RecordError) => err.code === 'signature')
   })
 
   test('shape rules: unknown fields, paths, control records, access keys', () => {
-    const base = { v: 1 as const, profile: alice.address, path: 'profile', time: T0, body: profileBody('A') }
+    const base = { v: 1 as const, profile: alice.address, path: 'profile', time: T0, body: profileBody('maths') }
     const code = (c: string) => (err: RecordError) => err.code === c
-    assert.throws(() => signRecord({ ...base, extra: 1 } as never, alice.privateKey), code('shape'))
-    assert.throws(() => signRecord({ ...base, grant: 'a'.repeat(64) } as never, alice.privateKey), code('shape'), 'grants are gone')
-    assert.throws(() => signRecord({ ...base, v: 2 } as never, alice.privateKey), code('version'))
-    assert.throws(() => signRecord({ ...base, path: 'Offer/x' }, alice.privateKey), code('path'))
-    assert.throws(() => signRecord({ ...base, path: 'offer/../x' }, alice.privateKey), code('path'))
-    assert.throws(() => signRecord({ ...base, path: 'a/b/c/d/e' }, alice.privateKey), code('path'))
-    assert.throws(() => signRecord({ ...base, path: 'hosts/x' }, alice.privateKey), code('path'))
-    assert.throws(() => signRecord({ ...base, time: -1 }, alice.privateKey), code('time'))
-    assert.throws(() => signRecord({ ...base, body: [] as never }, alice.privateKey), code('body'))
-    assert.throws(() => signRecord({ ...base, by: alice.address }, alice.privateKey), code('shape'), 'the owner signs without by')
+    assert.throws(() => signRecord({ ...base, extra: 1 } as never, alice), code('shape'))
+    assert.throws(() => signRecord({ ...base, grant: 'a'.repeat(64) } as never, alice), code('shape'), 'grants are gone')
+    assert.throws(() => signRecord({ ...base, v: 2 } as never, alice), code('version'))
+    assert.throws(() => signRecord({ ...base, path: 'Offer/x' }, alice), code('path'))
+    assert.throws(() => signRecord({ ...base, path: 'offer/../x' }, alice), code('path'))
+    assert.throws(() => signRecord({ ...base, path: 'a/b/c/d/e' }, alice), code('path'))
+    assert.throws(() => signRecord({ ...base, path: 'hosts/x' }, alice), code('path'))
+    assert.throws(() => signRecord({ ...base, time: -1 }, alice), code('time'))
+    assert.throws(() => signRecord({ ...base, body: [] as never }, alice), code('body'))
+    assert.throws(() => signRecord({ ...base, by: alice.address }, alice), code('shape'), 'the owner signs without by')
     assert.throws(() => accessRecord(accessKey, alice.address, 'permissions', { access: [] }, T0), code('control'), 'only the owner writes control records')
     assert.throws(() => accessRecord(accessKey, alice.address, 'hosts', null, T0), code('control'))
   })
@@ -118,7 +134,7 @@ describe('records', () => {
     assert.ok(checkRecord(ownerRecord(alice, 'hosts', { urls: ['https://a.example', 'http://127.0.0.1:8080'] }, T0)))
 
     const perms = (access: unknown[]) => () => permissionsRecord(alice, access as never, T0)
-    const readKey = KEYS.mainKeys[1].inbox.recipient as string // any age1pq1 recipient: a read key's public half
+    const recipient = reader.recipient
     assert.throws(perms([{ ...allow(accessKey, ['offer']), pay: 5 }]), /unknown access field pay/)
     assert.throws(perms([{ ...allow(accessKey, ['offer']), until: T0 }]), /unknown access field until/, 'no dates')
     assert.throws(perms([allow(accessKey, ['hosts'])]), /content path/)
@@ -126,26 +142,25 @@ describe('records', () => {
     assert.throws(perms([{ key: `did:key:z${accessKey.address}`, scope: 'write', paths: ['offer'] }]), /usable/)
     assert.throws(perms([{ key: accessKey.address, paths: ['offer'] }]), /scope is one of/)
     assert.throws(perms([{ key: accessKey.address, scope: 'admin' }]), /scope is one of/)
-    assert.throws(perms([{ key: accessKey.address, scope: 'message', paths: ['offer'] }]), /a message key has no paths/)
-    assert.ok(checkRecord(permissionsRecord(alice, [{ key: accessKey.address, scope: 'message' }], T0)), 'message')
-    assert.throws(perms([{ key: accessKey.address, scope: 'pay' }]), /scope is one of write, message, read;/, 'there is no pay scope')
-    assert.throws(perms([{ key: accessKey.address, scope: 'read' }]), /read key is an age/, 'a read key is an age recipient')
-    assert.throws(perms([{ key: readKey, scope: 'write' }]), /usable/, 'every other key is an address')
+    assert.throws(perms([{ key: accessKey.address, scope: 'message' }]), /scope is one of write, read;/, 'no message scope: a write key sends')
+    assert.throws(perms([{ key: accessKey.address, scope: 'pay' }]), /scope is one of write, read;/, 'there is no pay scope')
+    assert.throws(perms([{ key: reader.address, scope: 'read' }]), /read key gives its recipient/, 'a read key gives both halves')
+    assert.throws(perms([{ key: recipient, recipient, scope: 'read' }]), /usable/, 'its key is an address')
+    assert.throws(perms([{ key: reader.address, recipient: alice.address, scope: 'read' }]), /read key gives its recipient/)
+    assert.throws(perms([{ key: accessKey.address, recipient, scope: 'write' }]), /only a read key gives a recipient/)
     assert.throws(perms([{ key: accessKey.address, scope: 'past' }]), /scope is one of/, 'a past key has was, not a scope')
-    for (const was of ['read', 'pay', 'past']) assert.throws(perms([{ key: accessKey.address, was }]), /a past key has was, write or message/, `was ${was}`)
+    for (const was of ['read', 'message', 'pay', 'past']) assert.throws(perms([{ key: accessKey.address, was }]), /a past key has was, write, in its place/, `was ${was}`)
     assert.throws(perms([{ key: accessKey.address, scope: 'write', was: 'write' }]), /a past key has was/, 'one or the other')
-    assert.throws(perms([{ key: readKey, was: 'write' }]), /usable/, 'only write and message keys are past')
-    assert.throws(perms([{ key: accessKey.address, was: 'message', paths: ['offer'] }]), /a message key has no paths/, 'a past message key had none')
-    assert.ok(checkRecord(permissionsRecord(alice, [{ key: readKey, scope: 'read', paths: ['note'] }], T0)), 'a read key may list paths')
-    assert.ok(checkRecord(permissionsRecord(alice, [allow(accessKey), pastKey(messageKey, 'write', ['offer']), pastKey(stranger, 'message')], T0)), 'paths are optional')
-    assert.throws(perms([allow(accessKey), pastKey(accessKey, 'write', ['offer'])]), /listed twice/, 'one key, one entry')
-    assert.throws(perms([{ key: readKey, scope: 'read' }, { key: readKey, scope: 'read', paths: ['note'] }]), /listed twice/)
-    const many = Array.from({ length: 100 }, (_, i) => ({ key: keyFromPrivate(new Uint8Array(32).fill(i + 1)).address, was: 'write' as const }))
+    assert.ok(checkRecord(permissionsRecord(alice, [allow(reader, ['note', 'inbox'], 'read')], T0)), 'a read key may list paths')
+    assert.ok(checkRecord(permissionsRecord(alice, [allow(accessKey), pastKey(stranger, ['offer']), allow(reader, undefined, 'read')], T0)), 'paths are optional')
+    assert.throws(perms([allow(accessKey), pastKey(accessKey, ['offer'])]), /listed twice/, 'one key, one entry')
+    assert.throws(perms([allow(reader, undefined, 'read'), allow(reader, ['note'], 'read')]), /listed twice/)
+    assert.throws(perms([allow(reader, undefined, 'read'), { key: stranger.address, recipient, scope: 'read' }]), /listed twice/, 'one recipient, one entry')
+    const many = Array.from({ length: 100 }, (_, i) => ({ key: makeAccessKey(new Uint8Array(32).fill(i + 1)).address, was: 'write' as const }))
     assert.ok(checkRecord(permissionsRecord(alice, many, T0)), 'no cap on how many keys it lists')
     assert.throws(() => ownerRecord(alice, 'permissions', { access: [], more: 1 }, T0), /unknown permissions field/)
-    assert.ok(checkRecord(permissionsRecord(alice, [allow(accessKey)], T0, 'YWdlLWVuY3J5cHRpb24')), 'notes: an envelope in base64url')
-    for (const notes of ['', 'not base64url!', 5, { private: 'abc' }]) assert.throws(() => ownerRecord(alice, 'permissions', { access: [], notes }, T0), /notes is an envelope/, JSON.stringify(notes))
-    assert.ok(checkRecord(permissionsRecord(alice, [allow(accessKey, ['offer', 'review'])], T0)))
+    assert.throws(() => ownerRecord(alice, 'permissions', { access: [], notes: 'YWdlLWVuY3J5cHRpb24' }, T0), /unknown permissions field notes/, 'no notes in v1')
+    assert.ok(checkRecord(permissionsRecord(alice, [allow(accessKey, ['offer', 'review', 'inbox'])], T0)))
     assert.ok(checkRecord(permissionsRecord(alice, null, T0)), 'a delete removes every access key')
   })
 

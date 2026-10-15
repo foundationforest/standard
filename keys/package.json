@@ -2,7 +2,7 @@
   "name": "@forest/keys",
   "version": "0.0.0",
   "private": true,
-  "description": "Forest keys: a seed of 24 words, and the keys mixed from it: one main key per label (its name, signature and Solana address), each profile's inbox key, and the person's secret and note number for each issuer.",
+  "description": "Forest keys: a seed of 24 words, and the keys mixed from it: the seed scalar the circuits take, one main key per label on Baby Jubjub (its name and signature), one Solana payment key per label, each profile's inbox key, the person's secret and note number for each issuer, and the vault key; access keys from their random bytes; and EdDSA-Poseidon signatures.",
   "license": "Apache-2.0",
   "type": "module",
   "main": "./dist/index.js",
@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@noble/curves": "2.4.0",
+    "@noble/hashes": "2.4.0",
     "@scure/base": "2.4.0",
     "@scure/bip39": "2.4.0",
     "@zk-kit/eddsa-poseidon": "1.0.4",
@@ -21,7 +22,6 @@
     "poseidon-lite": "0.3.0"
   },
   "devDependencies": {
-    "@noble/hashes": "2.4.0",
     "@noble/post-quantum": "0.5.4",
     "@types/node": "22.20.2",
     "@zk-kit/baby-jubjub": "1.0.3",

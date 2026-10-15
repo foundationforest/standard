@@ -1,13 +1,12 @@
 // Shared test fixtures: keys/'s test seed, a few keys, and ready-made bodies. Records mixes no
-// key: the main keys come from keys/, as an app gets them.
+// key: the main keys and access keys come from keys/, as an app gets them.
 
 import { readFileSync } from 'node:fs'
-import { ed25519 } from '@noble/curves/ed25519.js'
-import { mainKey } from '../../keys/src/index.ts'
-import { b64u, hex } from '../src/bytes.ts'
+import { type ReadKey, accessKey as makeAccessKey, mainKey, readKey } from '../../keys/src/index.ts'
+import { hex } from '../src/bytes.ts'
 import { canonical } from '../src/canonical.ts'
-import { keyFromPrivate, type Key } from '../src/keys.ts'
-import { type AccessKey, type Body, type Scope, type SignedRecord, type UnsignedRecord, signingInput } from '../src/record.ts'
+import type { Key } from '../src/keys.ts'
+import { type AccessKey, type Body, type SignedRecord, type UnsignedRecord, signAs, signingInput } from '../src/record.ts'
 
 /** keys/'s pinned vectors: its test seed (bytes 00 01 … 1f), its profiles and their inbox keys. */
 export const KEYS = JSON.parse(readFileSync(new URL('../../keys/test/vectors.json', import.meta.url), 'utf8'))
@@ -18,26 +17,25 @@ export const OTHER_SEED = new Uint8Array(32).fill(7)
 export const alice = await mainKey(SEED, 'tutoring/seller')
 export const aliceBuyer = await mainKey(SEED, 'tutoring/buyer') // the same person, another label
 export const bob = await mainKey(OTHER_SEED, 'tutoring/buyer') // someone else
-/** An access key an app made: never the main key. */
-export const accessKey = keyFromPrivate(new Uint8Array(32).fill(42))
-/** A message key an app made: it signs messages and pulls for a main key whose permissions list it. */
-export const messageKey = keyFromPrivate(new Uint8Array(32).fill(43))
-export const stranger = keyFromPrivate(new Uint8Array(32).fill(99))
+/** A write key an app made: never the main key. With `inbox` among its paths, or no paths, it also sends messages. */
+export const accessKey = makeAccessKey(new Uint8Array(32).fill(42))
+/** A read key an app made: it pulls the inbox and opens what is encrypted to it. */
+export const reader = await readKey(new Uint8Array(32).fill(43))
+export const stranger = makeAccessKey(new Uint8Array(32).fill(99))
 
 export const T0 = Date.UTC(2026, 9, 2, 12, 0, 0)
 export const MINUTE = 60_000
 export const DAY = 86_400_000
 
-export const profileBody = (name: string): Body => ({
+/** A card. `subjects`, a field a market adds, tells one version from another. */
+export const profileBody = (subject: string): Body => ({
   market: 'tutoring',
   role: 'seller',
-  name,
-  about: 'Maths and physics, secondary level.',
+  subjects: [subject],
   createdAt: '2026-10-02T12:00:00Z',
 })
 
 export const offerBody = (price: string): Body => ({
-  direction: 'offer',
   description: 'One hour of maths tutoring, online.',
   price: { amount: price, mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', per: 'hour' },
   remote: true,
@@ -46,21 +44,25 @@ export const offerBody = (price: string): Body => ({
 
 export const reviewBody = (subject: string): Body => ({
   subject,
-  ratings: { overall: '9' },
+  score: '9',
+  offer: 'maths',
   text: 'Clear and patient.',
-  dealId: 'a'.repeat(64),
+  evidence: 'FKmToEDEJAXW8Pc72r9VnkxfzyE1Z6BbhHSJGfS132ud',
   createdAt: '2026-10-02T12:00:00Z',
 })
 
-/** One entry in a permissions record: this key, with this scope (write unless given), under these paths if given. */
-export const allow = (key: Key, paths?: string[], scope: Scope = 'write'): AccessKey => (paths === undefined ? { key: key.address, scope } : { key: key.address, scope, paths })
-/** A past key's entry: `was`, the scope it had, in place of `scope`, and the paths it had. */
-export const pastKey = (key: Key, was: 'write' | 'message', paths?: string[]): AccessKey => (paths === undefined ? { key: key.address, was } : { key: key.address, was, paths })
+/** One entry in a permissions record: a write key, under these paths if given; a read key with its recipient. */
+export const allow = (key: Key | ReadKey, paths?: string[], scope: 'write' | 'read' = 'write'): AccessKey => {
+  const entry: AccessKey = scope === 'read' ? { key: key.address, recipient: (key as ReadKey).recipient, scope } : { key: key.address, scope }
+  return paths === undefined ? entry : { ...entry, paths }
+}
+/** A past write key's entry: `was: "write"` in place of `scope`, and the paths it had. */
+export const pastKey = (key: Key, paths?: string[]): AccessKey => (paths === undefined ? { key: key.address, was: 'write' } : { key: key.address, was: 'write', paths })
 
 /** A signed owner record whose canonical text is exactly `bytes` long, `wide` of its characters two-byte (é). */
 export function sizedRecord(key: Key, path: string, bytes: number, wide = 0): SignedRecord {
   const unsigned = (about: string): UnsignedRecord => ({ v: 1, profile: key.address, path, time: T0, body: { about } })
   const rest = bytes - canonical({ ...unsigned(''), sig: 'x'.repeat(86) }).length - 2 * wide
   const u = unsigned('é'.repeat(wide) + 'x'.repeat(rest))
-  return { ...u, sig: b64u.encode(ed25519.sign(signingInput(u), key.privateKey)) }
+  return { ...u, sig: signAs(key, key.address, signingInput(u)) }
 }

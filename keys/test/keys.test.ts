@@ -3,25 +3,54 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { hkdf as nobleHkdf } from '@noble/hashes/hkdf.js'
 import { sha256 } from '@noble/hashes/sha2.js'
+import { createHash } from 'node:crypto'
+import { keccak_256 } from '@noble/hashes/sha3.js'
 import { blake512 } from '@noble/hashes/blake1.js'
 import { base58, bech32, hex } from '@scure/base'
 import { ed25519 } from '@noble/curves/ed25519.js'
 import { MLKEM768X25519 } from '@noble/post-quantum/hybrid.js'
 import { Decrypter, Encrypter } from 'age-encryption'
-import { subOrder } from '@zk-kit/baby-jubjub'
+import { Base8, addPoint, inCurve, mulPointEscalar, packPoint as zkPack, subOrder } from '@zk-kit/baby-jubjub'
+import { derivePublicKey, packSignature as zkPackSignature, signMessage as zkSign, verifySignature } from '@zk-kit/eddsa-poseidon'
 import { poseidon1 } from 'poseidon-lite/poseidon1'
+import { poseidon2 } from 'poseidon-lite/poseidon2'
+import { poseidon3 } from 'poseidon-lite/poseidon3'
+import { poseidon5 } from 'poseidon-lite/poseidon5'
 import {
+  BN254_R,
   INFO,
   SEED_LENGTH,
+  TAG,
   WORD_COUNT,
+  accessKey,
+  addressOf,
+  bytesMessage,
   exportWords,
   hkdf,
   importWords,
+  inboxKey,
+  issuerScalarOf,
   issuerSecret,
   mainKey,
+  nameHashOf,
   newSeed,
-  inboxKey,
+  packPoint,
+  packSignature,
+  payKey,
+  pointOf,
+  profileScalarOf,
+  readKey,
+  signBytes,
+  scopeOf,
+  seedScalar,
+  signWithScalar,
+  stampOf,
+  unpackPoint,
+  unpackSignature,
   vaultKey,
+  verifyBytes,
+  verifyWithPublicKey,
+  type Point,
 } from '../src/index.ts'
 
 const vectors = JSON.parse(readFileSync(new URL('./vectors.json', import.meta.url), 'utf8'))
@@ -29,25 +58,47 @@ const seed = hex.decode(vectors.seed)
 const otherSeed = new Uint8Array(32).fill(7)
 const [seller, buyer] = vectors.mainKeys
 const [issuerA, issuerB] = vectors.issuers
+const S = BigInt(vectors.seedScalar.scalar)
 const utf8 = (text: string) => new TextEncoder().encode(text)
 // HKDF-SHA256 from a second implementation: empty salt, 32 bytes.
 const mix = (ikm: Uint8Array, info: string) => nobleHkdf(sha256, ikm, undefined, utf8(info), 32)
+// keccak256 of the text, shifted right one byte, from a second implementation.
+const field = (text: string) => BigInt('0x' + hex.encode(keccak_256(utf8(text)))) >> 8n
+// Baby Jubjub from a second implementation: zk-kit's, which circomlib's circuits match. keys/ itself
+// runs on @noble/curves' twisted Edwards curves.
+const times = (scalar: bigint) => {
+  const [x, y] = mulPointEscalar(Base8, scalar)
+  return { x, y }
+}
+// A point packed by hand: y in 32 little-endian bytes, the top bit set when x is above (p - 1) / 2.
+const pack = (x: bigint, y: bigint) => {
+  const out = new Uint8Array(32)
+  for (let i = 0, v = y; i < 32; i++, v >>= 8n) out[i] = Number(v & 0xffn)
+  if (x > (BN254_R - 1n) / 2n) out[31] |= 0x80
+  return base58.encode(out)
+}
+const big = (p: string[]): Point => [BigInt(p[0]), BigInt(p[1])]
 
 // The mixing table
 
-test('the info strings are exactly the standard', () => {
+test('the info strings and the tags are exactly the standard', () => {
+  assert.equal(INFO.seed, 'forest/v1/seed')
   assert.equal(INFO.profile('tutoring/seller'), 'forest/v1/profile/tutoring/seller')
   assert.equal(INFO.read, 'forest/v1/read')
-  assert.equal(INFO.issuer('issuer-a.example'), 'forest/v1/issuer/issuer-a.example')
+  assert.equal(INFO.pay('tutoring/seller'), 'forest/v1/pay/solana/tutoring/seller')
   assert.equal(INFO.vault, 'forest/v1/vault')
+  assert.equal(INFO.seed, vectors.seedScalar.info)
   assert.equal(INFO.vault, vectors.vault.info)
-  for (const v of [...vectors.mainKeys.map((p: { label: string; info: string }) => [INFO.profile(p.label), p.info]), ...vectors.issuers.map((i: { name: string; info: string }) => [INFO.issuer(i.name), i.info])]) {
-    assert.equal(v[0], v[1])
+  for (const p of vectors.mainKeys) assert.equal(INFO.profile(p.label), p.info)
+  for (const p of vectors.payKeys) assert.equal(INFO.pay(p.label), p.info)
+  for (const [name, tag] of Object.entries(vectors.tags) as [keyof typeof TAG, { text: string; value: string }][]) {
+    assert.equal(TAG[name], field(tag.text), name)
+    assert.equal(TAG[name].toString(), tag.value, name)
   }
 })
 
 test('HKDF agrees with an independent implementation', async () => {
-  for (const info of [INFO.profile('tutoring/seller'), INFO.profile(''), INFO.read, INFO.issuer(issuerA.name), INFO.vault]) {
+  for (const info of [INFO.seed, INFO.profile('tutoring/seller'), INFO.profile(''), INFO.read, INFO.pay('tutoring/seller'), INFO.vault]) {
     assert.equal(hex.encode(await hkdf(seed, info)), hex.encode(mix(seed, info)), info)
   }
 })
@@ -81,6 +132,29 @@ test('a new seed is 32 fresh random bytes, and makes 24 words', () => {
   assert.equal(hex.encode(importWords(exportWords(one))), hex.encode(one))
 })
 
+// The seed scalar
+
+test('the seed gives the pinned seed scalar, and gives it again', async () => {
+  for (let round = 0; round < 2; round++) assert.equal(await seedScalar(seed), S)
+  assert.notEqual(await seedScalar(otherSeed), S)
+  await assert.rejects(seedScalar(seed.subarray(1)), /seed must be 32 bytes/)
+})
+
+test('the seed scalar is the one Semaphore v4 made from the mixed bytes, step by step', () => {
+  // HKDF, then BLAKE-512 of the 32 bytes, the first 32, pruned, read little-endian, shifted right
+  // 3, mod the subgroup order: done here without zk-kit, so a change in its derivation shows up as
+  // a failing test rather than silently.
+  const bytes = mix(seed, 'forest/v1/seed')
+  assert.equal(hex.encode(bytes), vectors.seedScalar.bytes)
+  const h = blake512(bytes).slice(0, 32)
+  h[0] &= 0xf8
+  h[31] &= 0x7f
+  h[31] |= 0x40
+  let scalar = 0n
+  for (let i = 31; i >= 0; i--) scalar = (scalar << 8n) | BigInt(h[i])
+  assert.equal((scalar >> 3n) % subOrder, S)
+})
+
 // Main keys
 
 test('each label gives the pinned main key, and gives it again', async () => {
@@ -88,19 +162,30 @@ test('each label gives the pinned main key, and gives it again', async () => {
     for (let round = 0; round < 2; round++) {
       const key = await mainKey(seed, expected.label)
       assert.equal(key.label, expected.label)
-      assert.equal(hex.encode(key.privateKey), expected.privateKey)
+      assert.equal(key.scope.toString(), expected.scope)
+      assert.equal(key.scalar.toString(), expected.scalar)
+      assert.deepEqual(key.publicKey, big(expected.publicKey))
       assert.equal(key.address, expected.address)
-      assert.equal(key.publicKey.length, 32)
+      assert.equal(hex.encode(key.secret), expected.secret)
     }
   }
 })
 
-test('the main key, recomputed without the library: HKDF, ed25519, base58', async () => {
-  const privateKey = mix(seed, seller.info)
-  assert.equal(hex.encode(privateKey), seller.privateKey)
-  const publicKey = ed25519.getPublicKey(privateKey)
-  assert.equal(base58.encode(publicKey), seller.address)
-  assert.equal(hex.encode((await mainKey(seed, 'tutoring/seller')).publicKey), hex.encode(publicKey))
+test('the main key, recomputed without the library: keccak, Poseidon, the low 250 bits, Baby Jubjub, the packing', () => {
+  for (const expected of vectors.mainKeys) {
+    const scope = field('forest.foundation/label/v1/' + expected.label)
+    assert.equal(scope.toString(), expected.scope)
+    const raw = poseidon3([TAG.profile, S, scope])
+    assert.equal(raw.toString(), expected.raw)
+    const scalar = raw % 2n ** 250n
+    assert.equal(scalar.toString(), expected.scalar)
+    assert.ok(scalar < subOrder && 2n ** 250n < subOrder, 'a 250-bit number is a scalar already')
+    const point = times(scalar)
+    assert.deepEqual([point.x, point.y], big(expected.publicKey))
+    assert.equal(pack(point.x, point.y), expected.address)
+    assert.equal(hex.encode(mix(seed, expected.info)), expected.secret)
+  }
+  assert.equal(profileScalarOf(S, seller.label).toString(), seller.scalar)
 })
 
 test('the label is used exactly: another case, another space, another profile', async () => {
@@ -113,6 +198,7 @@ test('the label is used exactly: another case, another space, another profile', 
 
 test('keys of one seed have nothing to do with keys of another seed', async () => {
   assert.notEqual((await mainKey(seed, 'tutoring/seller')).address, (await mainKey(otherSeed, 'tutoring/seller')).address)
+  assert.notEqual((await payKey(seed, 'tutoring/seller')).address, (await payKey(otherSeed, 'tutoring/seller')).address)
   assert.notEqual((await issuerSecret(seed, issuerA.name)).noteNumber, (await issuerSecret(otherSeed, issuerA.name)).noteNumber)
 })
 
@@ -120,21 +206,118 @@ test('a main key needs a 32-byte seed and a label that is text', async () => {
   await assert.rejects(mainKey(seed.subarray(0, 16), 'tutoring/seller'), /seed must be 32 bytes/)
   await assert.rejects(mainKey(seed, 'tutoring/\ud800seller'), /label must be text/)
   await assert.rejects(mainKey(seed, 7 as unknown as string), /label must be text/)
+  assert.throws(() => profileScalarOf(BN254_R, 'tutoring/seller'), /field element/)
+})
+
+test('an address names its key and nothing else, in one spelling', () => {
+  for (const p of [...vectors.mainKeys, vectors.vault]) {
+    assert.deepEqual(pointOf(p.address), big(p.publicKey))
+    assert.equal(addressOf(pointOf(p.address)), p.address)
+  }
+  const bytes = base58.decode(seller.address)
+  const flipped = bytes.slice()
+  flipped[31] ^= 0x80 // the other x for the same y: the negated point, its own key, not this one
+  const negated = pointOf(base58.encode(flipped))
+  assert.deepEqual(negated, [BN254_R - BigInt(seller.publicKey[0]), BigInt(seller.publicKey[1])])
+  const yIsP = new Uint8Array(32)
+  for (let i = 0, v = BN254_R; i < 32; i++, v >>= 8n) yIsP[i] = Number(v & 0xffn) // y = p, the spelling of y = 0 past the field
+  const bad: [string, string][] = [
+    ['not base58', 'O0Il'],
+    ['31 bytes', base58.encode(bytes.subarray(1))],
+    ['33 bytes', base58.encode(new Uint8Array([...bytes, 0]))],
+    ['y past the field', base58.encode(yIsP)],
+    ['no point there', base58.encode(new Uint8Array(32).fill(0x11))],
+    ['the identity', base58.encode(new Uint8Array([1, ...new Uint8Array(31)]))],
+  ]
+  for (const [what, address] of bad) assert.throws(() => pointOf(address), Error, what)
+  // A point of order 2, (0, -1), is on the curve but in no key's subgroup.
+  const order2 = new Uint8Array(32)
+  for (let i = 0, v = BN254_R - 1n; i < 32; i++, v >>= 8n) order2[i] = Number(v & 0xffn)
+  assert.throws(() => pointOf(base58.encode(order2)), /subgroup/)
+  assert.throws(() => addressOf([0n, BN254_R - 1n]), /subgroup/)
+})
+
+// Signatures
+
+test('the main key signs: the pinned signature, again the same, and it holds', () => {
+  const v = vectors.signature
+  const scalar = BigInt(seller.scalar)
+  const message = BigInt(v.message)
+  assert.equal(message, field(v.messageText))
+  const sig = signWithScalar(scalar, message)
+  assert.deepEqual(sig, { R8: big(v.R8), S: BigInt(v.S) })
+  assert.deepEqual(signWithScalar(scalar, message), sig, 'deterministic')
+  assert.equal(verifyWithPublicKey(big(seller.publicKey), message, sig), true)
+  assert.equal(verifyWithPublicKey(seller.address, message, sig), true, 'from its address')
+  assert.equal(verifySignature(message, sig, big(seller.publicKey)), true, "zk-kit's own check")
+})
+
+test('the signature, checked without the library: S·Base8 = R8 + 8·Poseidon(R8, A, message)·A', () => {
+  const v = vectors.signature
+  const A = big(seller.publicKey)
+  const R8 = big(v.R8)
+  const hm = poseidon5([R8[0], R8[1], A[0], A[1], BigInt(v.message)])
+  const left = mulPointEscalar(Base8, BigInt(v.S))
+  const right = addPoint(R8, mulPointEscalar(A, 8n * hm))
+  assert.deepEqual(left, right)
+  assert.ok(BigInt(v.S) < subOrder)
+})
+
+test("a signature in 64 bytes: R8 packed, then S, as zk-kit packs it; and back, strictly", () => {
+  const v = vectors.signature
+  const sig = { R8: big(v.R8), S: BigInt(v.S) }
+  const bytes = packSignature(sig)
+  assert.deepEqual(Buffer.from(bytes), Buffer.from(zkPackSignature(sig)))
+  assert.deepEqual(unpackSignature(bytes), sig)
+  const sPlusL = bytes.slice()
+  for (let i = 0, v2 = sig.S + subOrder; i < 32; i++, v2 >>= 8n) sPlusL[32 + i] = Number(v2 & 0xffn)
+  assert.equal(unpackSignature(sPlusL), null, 'S plus l')
+  const noPoint = bytes.slice()
+  noPoint.fill(0x11, 0, 32)
+  assert.equal(unpackSignature(noPoint), null, 'R8 not on the curve')
+  assert.equal(unpackSignature(bytes.subarray(1)), null, '63 bytes')
+  // A point packs as zk-kit packs it, and unpacks to itself.
+  for (const p of [...vectors.mainKeys, vectors.vault]) {
+    const point = big(p.publicKey)
+    const packed = packPoint(point)
+    let n = 0n
+    for (let i = 31; i >= 0; i--) n = (n << 8n) | BigInt(packed[i]!)
+    assert.equal(n, zkPack(point))
+    assert.deepEqual(unpackPoint(packed), point)
+    assert.ok(inCurve(point))
+  }
+})
+
+test('a signature holds for its message and key only', () => {
+  const scalar = BigInt(seller.scalar)
+  const message = 12345n
+  const sig = signWithScalar(scalar, message)
+  assert.equal(verifyWithPublicKey(seller.address, message + 1n, sig), false, 'another message')
+  assert.equal(verifyWithPublicKey(buyer.address, message, sig), false, 'another key')
+  assert.equal(verifyWithPublicKey(seller.address, message, { ...sig, S: sig.S + 1n }), false, 'S changed')
+  assert.equal(verifyWithPublicKey(seller.address, message, { ...sig, S: sig.S + subOrder }), false, 'S plus l')
+  assert.equal(verifyWithPublicKey(seller.address, message, { ...sig, R8: [sig.R8[0], sig.R8[1] + 1n] }), false, 'R8 off the curve')
+  assert.equal(verifyWithPublicKey('not an address', message, sig), false, 'no key')
+  assert.equal(verifyWithPublicKey(seller.address, BN254_R, sig), false, 'a message past the field')
+  assert.notDeepEqual(signWithScalar(scalar, message + 1n).R8, sig.R8, 'another message, another nonce')
+  assert.throws(() => signWithScalar(0n, message), /scalar/)
+  assert.throws(() => signWithScalar(subOrder, message), /scalar/)
+  assert.throws(() => signWithScalar(scalar, BN254_R), /field element/)
 })
 
 // Inbox keys
 
-test('each profile gives the pinned inbox key, from its main key alone', async () => {
+test("each profile gives the pinned inbox key, from its secret, never from the main key's scalar", async () => {
   for (const expected of vectors.mainKeys) {
     const key = await mainKey(seed, expected.label)
     const { privateKey, ...inbox } = expected.inbox
-    assert.deepEqual(await inboxKey(key.privateKey), inbox)
-    assert.equal(hex.encode(await hkdf(key.privateKey, INFO.read)), privateKey)
+    assert.deepEqual(await inboxKey(key.secret), inbox)
+    assert.equal(hex.encode(await hkdf(key.secret, INFO.read)), privateKey)
   }
 })
 
-test("the inbox key, recomputed without the library: HKDF, ML-KEM-768 with X25519, age's bech32", () => {
-  const privateKey = mix(hex.decode(seller.privateKey), INFO.read)
+test("the inbox key, recomputed without the library: HKDF twice, ML-KEM-768 with X25519, age's bech32", () => {
+  const privateKey = mix(mix(seed, seller.info), INFO.read)
   assert.equal(hex.encode(privateKey), seller.inbox.privateKey)
   assert.equal(bech32.encodeFromBytes('AGE-SECRET-KEY-PQ-', privateKey).toUpperCase(), seller.inbox.identity)
   // The recipient is the hybrid public key the 32 bytes expand to, in bech32 under age1pq, with
@@ -157,81 +340,94 @@ test('age encrypts to the inbox key, and only that profile opens it', async () =
   await assert.rejects(other.decrypt(encrypted, 'text'))
 })
 
-test('an inbox key needs the 32 private bytes of a main key', async () => {
-  await assert.rejects(inboxKey(new Uint8Array(64)), /main private key must be 32 bytes/)
+test('an inbox key needs a 32-byte secret', async () => {
+  await assert.rejects(inboxKey(new Uint8Array(64)), /secret must be 32 bytes/)
+})
+
+// Payment keys
+
+test('each label gives the pinned payment key, recomputed without the library: HKDF, ed25519, base58', async () => {
+  for (const expected of vectors.payKeys) {
+    const key = await payKey(seed, expected.label)
+    assert.equal(hex.encode(key.privateKey), expected.privateKey)
+    assert.equal(key.address, expected.address)
+    const privateKey = mix(seed, expected.info)
+    assert.equal(hex.encode(privateKey), expected.privateKey)
+    assert.equal(base58.encode(ed25519.getPublicKey(privateKey)), expected.address)
+  }
+  assert.notEqual(vectors.payKeys[0].address, vectors.payKeys[1].address)
+  for (const p of vectors.payKeys) assert.ok(vectors.mainKeys.every((m: { address: string }) => m.address !== p.address))
+  await assert.rejects(payKey(seed, 'tutoring/\ud800seller'), /label must be text/)
 })
 
 // The vault key
 
-test('the seed gives the pinned vault key, and gives it again; its inbox key is any main key\'s', async () => {
+test('the seed gives the pinned vault key, recomputed without the library, and its inbox key', async () => {
   for (let round = 0; round < 2; round++) {
     const key = await vaultKey(seed)
-    assert.equal(hex.encode(key.privateKey), vectors.vault.privateKey)
+    assert.equal(key.scalar.toString(), vectors.vault.scalar)
     assert.equal(key.address, vectors.vault.address)
+    assert.equal(hex.encode(key.secret), vectors.vault.secret)
     assert.equal('label' in key, false, 'it belongs to no label')
     const { privateKey, ...inbox } = vectors.vault.inbox
-    assert.deepEqual(await inboxKey(key.privateKey), inbox)
-    assert.equal(hex.encode(await hkdf(key.privateKey, INFO.read)), privateKey)
+    assert.deepEqual(await inboxKey(key.secret), inbox)
+    assert.equal(hex.encode(await hkdf(key.secret, INFO.read)), privateKey)
   }
+  const raw = poseidon2([TAG.vault, S])
+  assert.equal(raw.toString(), vectors.vault.raw)
+  const point = times(raw % 2n ** 250n)
+  assert.equal(pack(point.x, point.y), vectors.vault.address)
+  assert.equal(hex.encode(mix(seed, 'forest/v1/vault')), vectors.vault.secret)
 })
 
-test('the vault key, recomputed without the library: HKDF, ed25519, base58, and its inbox key', () => {
-  const privateKey = mix(seed, 'forest/v1/vault')
-  assert.equal(hex.encode(privateKey), vectors.vault.privateKey)
-  assert.equal(base58.encode(ed25519.getPublicKey(privateKey)), vectors.vault.address)
-  const inbox = mix(privateKey, INFO.read)
-  assert.equal(hex.encode(inbox), vectors.vault.inbox.privateKey)
-  assert.equal(bech32.encodeFromBytes('AGE-SECRET-KEY-PQ-', inbox).toUpperCase(), vectors.vault.inbox.identity)
-  assert.equal(bech32.encode('age1pq', bech32.toWords(MLKEM768X25519.getPublicKey(inbox)), false), vectors.vault.inbox.recipient)
-})
-
-test('the vault key is no profile\'s, and another seed gives another', async () => {
-  // A profile's text always starts forest/v1/profile/, so no label can spell the vault's.
-  for (const label of ['', 'vault', '../vault', 'tutoring/seller']) assert.notEqual(INFO.profile(label), INFO.vault)
-  const vault = await vaultKey(seed)
-  for (const p of vectors.mainKeys) assert.notEqual(vault.address, p.address)
-  assert.notEqual(vault.address, (await mainKey(seed, 'vault')).address)
-  assert.notEqual((await vaultKey(otherSeed)).address, vault.address)
+test("the vault key is no profile's, and another seed gives another", async () => {
+  // Its mix has its own tag and two inputs, a profile's three, so no label can give it.
+  assert.notEqual(TAG.vault, TAG.profile)
+  for (const label of ['', 'vault', '../vault', 'tutoring/seller']) {
+    assert.notEqual((await mainKey(seed, label)).address, vectors.vault.address)
+    assert.notEqual(INFO.profile(label), INFO.vault)
+  }
+  assert.notEqual((await vaultKey(otherSeed)).address, vectors.vault.address)
   await assert.rejects(vaultKey(new Uint8Array(31)), /seed must be 32 bytes/)
 })
 
-// Issuer secrets and note numbers
+// Issuer secrets, note numbers and stamps
 
-test('each issuer gives the pinned secret, scalar and note number, and gives them again', async () => {
+test('each issuer gives the pinned name hash, secret, note number and stamps, and gives them again', async () => {
   for (const expected of vectors.issuers) {
     for (let round = 0; round < 2; round++) {
-      const { secret, scalar, noteNumber } = await issuerSecret(seed, expected.name)
-      assert.equal(hex.encode(secret), expected.secret)
-      assert.equal(hex.encode(mix(seed, expected.info)), expected.secret)
+      const { name, nameHash, scalar, noteNumber } = await issuerSecret(seed, expected.name)
+      assert.equal(name, expected.name)
+      assert.equal(nameHash.toString(), expected.nameHash)
       assert.equal(scalar.toString(), expected.scalar)
       assert.equal(noteNumber.toString(), expected.noteNumber)
+      for (const [label, stamp] of Object.entries(expected.stamps)) assert.equal(stampOf(scalar, label).toString(), stamp)
     }
   }
 })
 
-test('the scalar is the one Semaphore v4 made, and the note number Poseidon of it, step by step', () => {
-  // BLAKE-512 of the 32 bytes, the first 32, pruned, read little-endian, shifted right 3, mod the
-  // subgroup order: done here without zk-kit, so a change in its derivation shows up as a failing
-  // test rather than silently. The note number is Poseidon(1) of the scalar.
+test('the issuer secret, the note number and a stamp, recomputed without the library', () => {
   for (const expected of vectors.issuers) {
-    const h = blake512(hex.decode(expected.secret)).slice(0, 32)
-    h[0] &= 0xf8
-    h[31] &= 0x7f
-    h[31] |= 0x40
-    let scalar = 0n
-    for (let i = 31; i >= 0; i--) scalar = (scalar << 8n) | BigInt(h[i])
-    scalar = (scalar >> 3n) % subOrder
+    const nameHash = field('forest/v1/issuer/' + expected.name)
+    assert.equal(nameHash.toString(), expected.nameHash)
+    assert.equal(nameHashOf(expected.name), nameHash)
+    const scalar = poseidon3([TAG.issuer, S, nameHash])
     assert.equal(scalar.toString(), expected.scalar)
+    assert.equal(issuerScalarOf(S, expected.name), scalar)
     assert.equal(poseidon1([scalar]).toString(), expected.noteNumber)
+    for (const [label, stamp] of Object.entries(expected.stamps)) {
+      assert.equal(poseidon2([field('forest.foundation/label/v1/' + label), scalar]).toString(), stamp)
+      assert.equal(scopeOf(label), field('forest.foundation/label/v1/' + label))
+    }
   }
 })
 
-test('two issuers, two unrelated note numbers; and none of it is a main key', async () => {
+test('two issuers, two unrelated note numbers and stamps; and none of it is a key', async () => {
   const a = await issuerSecret(seed, issuerA.name)
   const b = await issuerSecret(seed, issuerB.name)
   assert.notEqual(a.noteNumber, b.noteNumber)
-  assert.notEqual(hex.encode(a.secret), hex.encode(b.secret))
-  const all = [issuerA.secret, issuerB.secret, seller.privateKey, buyer.privateKey, seller.inbox.privateKey, buyer.inbox.privateKey, vectors.seed]
+  assert.notEqual(stampOf(a.scalar, 'tutoring/seller'), stampOf(b.scalar, 'tutoring/seller'))
+  const all = [issuerA.scalar, issuerB.scalar, seller.scalar, buyer.scalar, vectors.vault.scalar, vectors.seedScalar.scalar, seller.raw, buyer.raw]
   assert.equal(new Set(all).size, all.length)
 })
 
@@ -245,4 +441,42 @@ test('the name is used exactly, and must be text; the seed is 32 bytes', async (
     await assert.rejects(issuerSecret(seed, name as string), /issuer name must be text/, String(name))
   }
   await assert.rejects(issuerSecret(seed.subarray(1), issuerA.name), /seed must be 32 bytes/)
+  assert.throws(() => stampOf(BN254_R, 'tutoring/seller'), /field element/)
+  assert.throws(() => issuerScalarOf(-1n, issuerA.name), /field element/)
+})
+
+// Access keys, and signing bytes
+
+test("an access key's 32 bytes are a zk-kit EdDSA-Poseidon private key: the pinned keys, and zk-kit's own", async () => {
+  const v = vectors.accessKeys
+  const w = accessKey(hex.decode(v.write.secret))
+  assert.equal(w.scalar.toString(), v.write.scalar)
+  assert.equal(w.address, v.write.address)
+  assert.deepEqual(w.publicKey, derivePublicKey(hex.decode(v.write.secret)), "zk-kit's public key for the same bytes")
+  const r = await readKey(hex.decode(v.read.secret))
+  assert.equal(r.address, v.read.address)
+  assert.equal(r.identity, v.read.identity)
+  assert.equal(r.recipient, v.read.recipient)
+  // The read key's identity is mixed as an inbox key is, from the same 32 bytes: no public number gives it.
+  assert.deepEqual(await inboxKey(hex.decode(v.read.secret)), { identity: v.read.identity, recipient: v.read.recipient })
+  assert.equal(hex.encode(mix(hex.decode(v.read.secret), INFO.read)), hex.encode(await hkdf(hex.decode(v.read.secret), INFO.read)))
+  // zk-kit signs with the same bytes; the signature holds under the access key.
+  const m = 777n
+  assert.equal(verifyWithPublicKey(w.address, m, zkSign(hex.decode(v.write.secret), m)), true)
+  assert.throws(() => accessKey(new Uint8Array(31)), /32 bytes/)
+})
+
+test('bytes are signed as SHA-256 of them, shifted right one byte', () => {
+  const bytes = new TextEncoder().encode('forest/v1/record\nsome canonical text')
+  const digest = BigInt('0x' + createHash('sha256').update(bytes).digest('hex')) >> 8n
+  assert.equal(bytesMessage(bytes), digest)
+  assert.ok(digest < BN254_R)
+  const scalar = BigInt(seller.scalar)
+  const sig = signBytes(scalar, bytes)
+  assert.deepEqual(sig, signWithScalar(scalar, digest))
+  assert.equal(verifyBytes(seller.address, bytes, sig), true)
+  assert.equal(verifySignature(digest, sig, big(seller.publicKey)), true, "zk-kit's own check")
+  const other = bytes.slice()
+  other[0]! ^= 1
+  assert.equal(verifyBytes(seller.address, other, sig), false)
 })
