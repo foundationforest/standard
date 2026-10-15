@@ -1,28 +1,9 @@
 {
-  "description": "Conversation-first Portuguese lessons for adults, A1 to B2. One-hour sessions over video; homework optional.",
-  "price": {
-    "amount": "25",
-    "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-    "per": "hour"
-  },
-  "availability": "Weekday evenings, Lisbon time.",
-  "remote": true,
   "media": [
     {
       "sha256": "9f2c4e6a8b0d1f3e5a7c9b1d3f5e7a9c0b2d4f6e8a1c3e5b7d9f0a2c4e6b8d1f",
       "mimeType": "image/jpeg",
       "size": 48213
     }
-  ],
-  "expires": "2026-12-31T23:59:59Z",
-  "createdAt": "2026-09-14T10:05:00Z",
-  "subjects": [
-    "portuguese",
-    "spanish"
-  ],
-  "languages": [
-    "pt",
-    "es",
-    "en"
   ]
 }

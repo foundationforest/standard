@@ -1,6 +1,6 @@
 # standard
 
-Part of [Forest](https://github.com/foundationforest), open software for people to offer, pay and review each other through profiles they own. A person holds one secret seed on their device and gets one profile for each side of each market they take part in, such as `tennis/seller` or `tennis/buyer`.
+Part of [Forest](https://github.com/foundationforest), open software for people to offer, pay and review each other through profiles they own. A person holds one secret seed on their device and gets one profile for each market and role they take part in, labelled `<market>/<role>`, such as `tennis/seller`.
 
 The standard is the only part of Forest everyone shares: the rules and math every app, host, index and issuer must agree on, along with the libraries, circuits and escrow programs that implement them.
 
@@ -15,12 +15,12 @@ Everything outside these rules lives in [markets](https://github.com/foundationf
 
 Every piece here is sorted by one test: what must two strangers' programs agree on for one profile, one deal and one reputation to work across the open internet?
 
-- **Keys and proofs are fixed by math.** One seed and one label (`market/side`) must always produce the same profile key, and a zero-knowledge proof must show that an issuer checked the human behind that seed without revealing the seed or linking the person's other profiles. Because the circuit derives the profile key directly from the seed and label, one human can only ever produce one valid profile key per market side. No blockchain registry is needed. A second proof lets a person carry a score from their other profiles onto a new one without linking them.
+- **Keys and proofs are fixed by math.** One seed and one label (`<market>/<role>`) must always produce the same profile key, and a zero-knowledge proof must show that an issuer checked the human behind that seed without revealing the seed or linking the person's other profiles. Because the circuit derives the profile key directly from the seed and label, one human can only ever produce one valid profile key per label. No blockchain registry is needed. A second proof lets a person carry a score from their other profiles onto a new one without linking them.
 - **Records and escrows are shared formats.** Records define how a folder is written, read and encrypted. Escrows hold money on chain when a deal needs payment locked in advance.
 
 ## The folders
 
-A **label** names a market and side, such as `plumbing/seller` or `plumbing/buyer`. A **stamp** is a number made from a person's seed for one label at one issuer, so an index's score tree can track the profile without linking it to others. Every profile has one **folder** kept on one or more hosts; the **vault** is one more folder, encrypted to the person alone, holding what a new device needs that the seed alone cannot recompute (such as issuer notes).
+A **label** is `<market>/<role>`, such as `plumbing/seller`; the market defines its roles, offer fields and review fields in [markets](https://github.com/foundationforest/markets). A **stamp** is a number made from a person's seed for one label at one issuer, so an index's score tree can track the profile without linking it to others. Every profile has one **folder** kept on one or more hosts; the **vault** is one more folder on a host, encrypted to the vault's own inbox key, which only the person's seed gives, holding what the seed cannot recompute: which `<market>/<role>` profiles exist, issuer notes and settings.
 
 | Folder | What it is | What runs | Where |
 |---|---|---|---|
@@ -34,23 +34,23 @@ Each folder's README follows the same structure: What it is, How it works, Promi
 ## Who decides what
 
 - **The standard** holds only what two strangers' programs must agree on to verify keys, proofs, records and escrows.
-- **A market** (in [markets](https://github.com/foundationforest/markets)) suggests offer fields, review text rules, role words and escrow terms for a specific trade.
+- **A market** (in [markets](https://github.com/foundationforest/markets)) defines its roles, its offers' fields and its reviews' fields, and may suggest an offer field that carries an escrow's terms.
 - **A service** (issuer, host, index, fee payer) sets its own prices and policies. An index decides which issuers it trusts and how it weights evidence.
 - **An app** chooses how it holds the seed and which services it uses by default, together with the person.
 - **The person** decides which markets to enter, which AI or app gets scoped access keys, and when to link reputation across profiles.
 
 ## For builders
 
-- **Verify a profile.** Read the profile's `card` record from its folder on any host. The `card` holds the profile's `market`, `side`, `inbox` encryption key, seed-derived `pay` address, and its `proofs` array. Verify each `human` proof against the issuer's public key to see which issuers stand behind the profile and since which month.
+- **Verify a profile.** Read the profile's `card` record from its folder on any host. The `card` holds the profile's `market`, `role`, `inboxKey` encryption key, seed-derived `pay` address, and its `proofs` array. Verify each `human` proof against the issuer's public key to see which issuers stand behind the profile.
 - **Find a profile's folder.** A profile's address is the public half of its main key (`Baby Jubjub`). Ask any host you know for its records, and check its signed `hosts` record to see every host that mirrors the folder.
 - **Delegate to an AI.** The person's app writes scoped `write` and `read` keys into the folder's `permissions` record and hands the private halves to the AI. With a `write` key, the AI signs offers, reviews and outgoing messages without ever touching the person's seed or main key. With a `read` key, the AI pulls and decrypts the paths it was granted (such as `inbox`).
-- **Back a review with payment evidence.** A review names its `subject` profile, a `score` from 1 to 10 (up to one decimal), an optional `offer` ID in the subject's folder, and optional on-chain payment `evidence` (either a direct transfer between the two profiles' declared `pay` addresses or a completed escrow receipt).
+- **Write offers and reviews.** Their bodies are defined by the market the profile lives in ([markets](https://github.com/foundationforest/markets)); the standard names only `media`, the photos and videos a host keeps for a record.
 
 ## Privacy
 
 What Forest does:
 - Nothing in a person's keys ties their profiles together. Each profile key and each default payment address is mixed separately from the seed and label (`keys/`).
-- A `human` proof shows which issuer checked the person and the month of the check, never who the person is or which other profiles they hold (`proofs/human/`).
+- A `human` proof shows which issuer signed the person a note, never who the person is, what the note holds, or which other profiles they hold (`proofs/human/`).
 - Private records and inbox messages are encrypted to post-quantum `age` keys (`ML-KEM` hybrid), so copies taken today stay closed even against future quantum computers (`records/`).
 - No blockchain is touched to create a seed, get an issuer note, open a profile, post an offer, send a message or write a review. Only payments and escrows touch a chain.
 
@@ -63,7 +63,7 @@ What others can still see:
 ## Promises
 
 - **The seed never leaves the device.** Neither the seed nor any profile main key is sent to any server (`keys/`).
-- **One seed, one profile per market side.** The `human` circuit derives the profile key inside the proof, making a second profile key for the same seed and label mathematically invalid (`proofs/human/`).
+- **One seed, one profile per label.** The `human` circuit derives the profile key inside the proof, making a second profile key for the same seed and label mathematically invalid (`proofs/human/`).
 - **Updates and deletes are just writes.** Every record is versioned by ID; writing an empty tombstone deletes it from active view (`records/`).
 - **Nothing in the standard charges a fee.** There is no protocol token and no protocol cut on deals.
 - **Escrows have no admin key.** Once money enters an escrow, only the buyer, both sides together, the named arbiter or the timer set at the start can move it (`escrows/`).
@@ -71,7 +71,7 @@ What others can still see:
 ## Limits
 
 - **Test phase.** The circuits have not yet run their production multi-party setup ceremony, and the programs have not yet completed a security review.
-- **No seed recovery.** Losing the seed (for example, losing the passkey and having no backup) loses the profiles derived from it, and the same human cannot verify a new seed at the same deduplicating issuer.
+- **No seed recovery.** Losing the seed loses the profiles derived from it, and the same human cannot verify a new seed at the same deduplicating issuer.
 - **A host can withhold.** A host cannot forge or alter a signed record, but it can stop serving a folder; keeping a folder on more than one host covers for it.
 - **Quantum signing migration.** Encryption is already post-quantum (`age`), while profile signatures and zero-knowledge proofs use elliptic curves (`Baby Jubjub` / `BN254`) and will require a key-migration proof before large quantum computers arrive.
 

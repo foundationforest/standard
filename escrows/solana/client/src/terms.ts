@@ -2,11 +2,11 @@
 // before they work or pay, when the timer is due, until when a party may object, and what a split
 // pays.
 //
-// An offer's `terms` block is optional and holds only the escrow's two options, each off unless set
-// (`records/schemas/offer.json`, `terms`): `arbiter`, a key that may decide any split, and `timer`,
-// `{ days, to }`. Everything else about a deal (the seller, the amount, the
-// token) comes from the deal itself. Nothing here reads a market file: a market says nothing about
-// money or time.
+// The escrow's two options, each off unless set: `arbiter`, a key that may decide any split, and
+// `timer`, `{ days, to }`. Their shape is defined here, since the program defines what they mean;
+// an offer field that carries them is the market's to suggest (foundationforest/markets).
+// Everything else about a deal (the seller, the amount, the token) comes from the deal itself.
+// Nothing here reads a market file.
 
 import { PublicKey } from '@solana/web3.js'
 
@@ -23,8 +23,8 @@ import {
 } from './program.ts'
 
 /**
- * An offer's `terms` block, as `records/schemas/offer.json` defines it. Records stay open, so a
- * block may carry other keys: they are ignored and mean nothing to an escrow.
+ * The escrow's options, as an offer may carry them. Records stay open, so they may sit beside other
+ * keys: those are ignored and mean nothing to an escrow.
  */
 export type PostTerms = {
   /** A Solana key, base58, that may decide any split. Absent: no arbiter. */

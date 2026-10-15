@@ -1,9 +1,9 @@
 {
-  "subject": "BFUnj3MPQpetapTpwcPJRsnanXLqcK4XZ3EZjotTqEfY",
-  "score": "9.5",
-  "offer": "portuguese",
-  "text": "Patient, well prepared, and on time for all eight sessions. I went from nothing to ordering dinner in Portuguese.",
-  "evidence": "FKmToEDEJAXW8Pc72r9VnkxfzyE1Z6BbhHSJGfS132ud",
-  "sessions": 8,
-  "createdAt": "2026-11-02T18:30:00Z"
+  "media": [
+    {
+      "sha256": "5d1a7c3e9b2f4a6c8e0b1d3f5a7c9e2b4d6f8a0c2e4b6d8f1a3c5e7b9d0f2a4c",
+      "mimeType": "image/jpeg",
+      "size": 61877
+    }
+  ]
 }

@@ -32,24 +32,12 @@ export const profileBody = (subject: string): Body => ({
   market: 'tutoring',
   role: 'seller',
   subjects: [subject],
-  createdAt: '2026-10-02T12:00:00Z',
 })
 
-export const offerBody = (price: string): Body => ({
-  description: 'One hour of maths tutoring, online.',
-  price: { amount: price, mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', per: 'hour' },
-  remote: true,
-  createdAt: '2026-10-02T12:00:00Z',
-})
-
-export const reviewBody = (subject: string): Body => ({
-  subject,
-  score: '9',
-  offer: 'maths',
-  text: 'Clear and patient.',
-  evidence: 'FKmToEDEJAXW8Pc72r9VnkxfzyE1Z6BbhHSJGfS132ud',
-  createdAt: '2026-10-02T12:00:00Z',
-})
+// An offer's and a review's fields are the market's, not the standard's (README.md, Folders):
+// these tests need only bodies that differ, so `about` stands in for them.
+export const offerBody = (about: string): Body => ({ about })
+export const reviewBody = (about: string): Body => ({ about })
 
 /** One entry in a permissions record: a write key, under these paths if given; a read key with its recipient. */
 export const allow = (key: Key | ReadKey, paths?: string[], scope: 'write' | 'read' = 'write'): AccessKey => {

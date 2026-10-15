@@ -21,12 +21,12 @@ record shapes as JSON Schemas, and test vectors.
 
 ### Folders
 
-A profile is one main key, mixed from the person's seed (24 words every key comes from) and a
-label such as `tutoring/seller` ([keys/](../keys/README.md)). The main key is a key on Baby
-Jubjub, the curve the proofs work on, and its address is its name on the network: the public key
-packed into 32 bytes, in base58. Its inbox key, mixed from the profile's secret, opens what is
-encrypted to it, and its payment key, an ed25519 key of its own, is its Solana address. Nothing
-else is needed: no account, no sign-up, no directory.
+A profile is one main key, mixed from the person's seed (32 bytes every key comes from) and a label,
+`<market>/<role>`, such as `tutoring/seller` ([keys/](../keys/README.md)). The main key is a key on
+Baby Jubjub, the curve the proofs work on, and its address is its name on the network: the public
+key packed into 32 bytes, in base58. Its inbox key, mixed from the profile's secret, opens what is
+encrypted to it, and its payment key, an ed25519 key of its own, is its Solana address. Nothing else
+is needed: no account, no sign-up, no directory.
 
 Its folder is everything signed for it, one current record per path:
 
@@ -35,7 +35,7 @@ Its folder is everything signed for it, one current record per path:
 | `hosts` | where the folder lives |
 | `permissions` | the access keys the profile hands out: keys that act for it within limits |
 | `profile` | the card: market, role, payment address, inbox, proofs |
-| `offer/<id>` | an offer, or a request for one |
+| `offer/<id>` | an offer |
 | `review/<id>` | a review this profile wrote of another |
 
 - `hosts` and `permissions` are the control paths: only the main key writes them. Every other path
@@ -43,16 +43,14 @@ Its folder is everything signed for it, one current record per path:
 - A path is 1 to 4 segments separated by `/`, each `[a-z0-9][a-z0-9._-]{0,63}`, at most 256
   bytes. A prefix covers a path segment by segment: `offer` covers `offer` and `offer/x`, not
   `offerx`.
-- `profile`, `offer/<id>` and `review/<id>` are shaped by the JSON Schemas in `schemas/`; a market
-  (the trade a label names, such as `tutoring`) adds fields beside the standard's, never a shape.
-  An offer names no market and no side: its profile's label does, so a seller's offer offers and a
-  buyer's asks.
+- `profile`, `offer/<id>` and `review/<id>` are shaped by the JSON Schemas in `schemas/`. A card's
+  fields are the standard's, and its market (the trade a label names, such as `tutoring`) adds
+  fields beside them. An offer's and a review's body is defined by the market the profile lives in,
+  in [foundationforest/markets](https://github.com/foundationforest/markets): the standard names
+  only `media`, since a host keeps the blobs a record names (Blobs). Neither names a market: its
+  profile's label does.
 - A review sits in the folder of the profile that wrote it: the one it is about cannot erase it;
-  the one who wrote it can. It names its subject by address, a score from 1 to 10, and, if it
-  wants, the offer by its `<id>` and the deal by its `evidence`: the escrow receipt's address (the
-  account the escrow leaves on chain when a deal ends) when the deal went through the
-  [escrow](../escrows/solana/README.md), or the signature of the payment between the two profiles'
-  payment addresses.
+  the one who wrote it can.
 
 **The hosts record** is `{ "urls": [origin, …] }`: 1 to 8 distinct origins, `https://host[:port]`,
 lower case, no path (`http` only on loopback, for tests). Each host it names holds the whole
@@ -272,13 +270,13 @@ requests today, and the other fields are that kind's parameters:
 | `send` | `to`, the recipient's address; and `text`, or `body`, an object in its place, one of the two |
 | `private` | `path`, if wanted: only the private records under this path |
 | `inbox` | `after`, if wanted: the cursors a pull returned, by host, for newer messages only |
-| `pay` | `offer`, `units` and `note`, as below |
+| `pay` | `offer`, `amount`, `mint` and `note`, as below |
 
-For `pay` they are `offer`, the offer as `<profile address>/offer/<id>`, and if wanted `units`, a
-whole number of hours or days for an offer priced per hour or per day, and `note`, text for the
-person: `{ "request": "pay", "offer": <profile address>/offer/<id>, "units": 2, "note": … }`. The
-app reads the offer and opens the escrow from it
-([escrow](../escrows/solana/README.md#two-ways-to-open-it)).
+For `pay` they are `offer`, the offer as `<profile address>/offer/<id>`; `amount`, decimal text in
+whole units of the mint, such as `"25"` or `"12.50"`; `mint`, the money's mint address on Solana;
+and, if wanted, `note`, text for the person: `{ "request": "pay", "offer": <profile
+address>/offer/<id>, "amount": "25", "mint": <mint address>, "note": … }`. The app reads the offer
+and opens the escrow from it ([escrow](../escrows/solana/README.md#two-ways-to-open-it)).
 
 An app acts on a request only when it was sent to the profile's own inbox by the profile's main
 key or by a write key its permissions record lists for the inbox, and shows any other `request`
@@ -288,11 +286,11 @@ writes records only under `inbox`, and moves no money.
 
 ### The vault
 
-The vault holds what a new device needs and the seed alone cannot give back: the labels of the
-person's profiles and where each lives, their issuers' notes (the signed word each issuer gave them
-that it checked them), and apps' settings. It lives on hosts in a folder of its own, whose main key
-is the vault key, mixed from the seed ([keys](../keys/README.md#the-vault-key)), so a new device
-finds it with the seed alone.
+The vault is one folder on a host, encrypted to the vault's own inbox key, holding what the seed
+cannot recompute: which `<market>/<role>` profiles exist and where each lives, their issuers' notes
+(the signed word each issuer gave them), and settings. Its main key is the vault key, mixed from
+the seed ([keys](../keys/README.md#the-vault-key)), so a new device finds it with the seed alone;
+like any folder, its hosts record may name more than one host.
 
 ```
 { "profiles": [{ "label": <label>, "hosts": [<origin>, …] }, …],
@@ -332,12 +330,11 @@ proof in the profile record only when the person chooses to show it there:
 checks no proof itself: `humanCheck` and `reputationCheck` turn a card's proof into what its
 verifier takes, for the profile that carries it.
 
-- **`human`** shows that an issuer checked the person whose seed gives this profile's key for its
-  label ([proofs/human/](../proofs/human/README.md)). It carries the issuer's key and name, the
-  label, the profile's stamp at that issuer, the month the issuer checked the person as `YYYYMM`,
-  and the proof's 256 bytes, in the reputation proof's order. A reader checks it with
-  proofs/human/client's `verifyHuman`, which works the name hash and the scope out of the name and
-  the label itself. Each reader decides which issuers it trusts and how old a month it accepts.
+- **`human`** shows that an issuer signed a note for the person whose seed gives this profile's
+  key for its label ([proofs/human/](../proofs/human/README.md)). It carries the issuer's key and name, the
+  label, the profile's stamp at that issuer, and the proof's 256 bytes, in the reputation proof's
+  order. A reader checks it with proofs/human/client's `verifyHuman`, which works the name hash and
+  the scope out of the name and the label itself. Each reader decides which issuers it trusts.
 - **`reputation`** shows the score of profiles the person holds in an index's tree, without
   saying which. It carries the index's key, the root and time the index signed and its signature,
   the score, the label when the proof shows one market, and the proof's 256 bytes. A reader checks
@@ -458,13 +455,13 @@ reference host does (Run it).
 
 ### Indexes
 
-An index reads records from hosts and weighs them as it chooses. It MAY answer one request,
-`POST /v1/hosts`: the body is a profile's hosts record as canonical text, and the answer is the
-HTTP status and nothing else. The index checks the signature, then crawls the hosts the record
-names, reading each host itself, page by page (`GET /v1/records`). Sending the record again asks it
-to look now. An app sends the hosts record to the indexes the person chose. Which hosts and
-profiles an index crawls or refuses is its own choice: a human proof from an issuer it trusts may
-be among its reasons.
+An index reads the hosts it lists in full, page by page (`GET /v1/records`), verifies the human
+proof on each profile, and interprets records by the market files it reads
+([foundationforest/markets](https://github.com/foundationforest/markets)). Each index chooses which
+hosts it reads. It MAY answer one request, `POST /v1/hosts`: the body is a profile's hosts record
+as canonical text, and the answer is the HTTP status and nothing else. The index checks the
+signature, then reads the hosts the record names, if it chooses to; sending the record again asks
+it to look now. An app sends the hosts record to the indexes the person chose.
 
 ### Run it
 
@@ -502,9 +499,9 @@ import { accessKey, mainKey } from '@forest/keys' // keys/
 import { accessRecord, hostsRecord, ownerRecord, permissionsRecord, publish,
   readProfile } from '@forest/records'
 
-const me = await mainKey(seed, 'tutoring/seller') // seed: the 32 bytes the 24 words encode
+const me = await mainKey(seed, 'tutoring/seller') // seed: its 32 bytes
 const now = Date.now()
-const maths = { description: 'One hour of maths, online.', createdAt: new Date(now).toISOString() }
+const maths = { ...fields } // an offer's fields are its market's (foundationforest/markets)
 await publish([host], [hostsRecord(me, [host], now), ownerRecord(me, 'offer/maths', maths, now)])
 // Your own profile: by POST, so its address is in the body, not the URL.
 const view = await readProfile([host], me.address, Date.now(), { post: true })
@@ -513,7 +510,7 @@ view.current.get('offer/maths')?.record.body
 const helper = accessKey(randomBytes(32)) // the other app's write key: these 32 bytes go to it
 const access = [{ key: helper.address, scope: 'write' as const, paths: ['offer'] }]
 await publish(view.hosts, [permissionsRecord(me, access, now)])
-const physics = { description: 'Physics, one hour.', createdAt: new Date(now).toISOString() }
+const physics = { ...otherFields }
 await publish(view.hosts, [accessRecord(helper, me.address, 'offer/physics', physics, now)])
 ```
 
@@ -693,19 +690,21 @@ with their verifiers.
 
 - **The standard:** the record and the message, and what makes each valid (the ten-minute
   window); the seven requests and their codes; the control records and the scopes of access keys;
-  envelopes; the three shapes; the inbox, its rules and the request body; the vault; the proofs
-  field.
+  envelopes; the card's fields, and `media` in offers and reviews; the inbox, its rules and the
+  request body; the vault; the proofs field.
+- **A market chooses:** its roles, and the bodies of its offers and reviews
+  ([foundationforest/markets](https://github.com/foundationforest/markets)).
 - **A host chooses:** its keep days; the largest record, message and blob it takes;
   batch and page sizes; which blob types it takes; which inbox rules it supports; whether it reads
   senders' records to take a write key's message, and how long it keeps what it read; rate
   limits; logging; storage.
 - **An app, with the person:** the copies it keeps; which hosts, the vault's among them; which
   private records it encrypts to a read key; how an access key reaches its holder; whether to
-  forward a message to email or a notification; dropping a message that arrives twice; what it
-  finds too big to read; and what asks for the person's face. The profile can change or delete
+  forward a message to email or a notification; dropping a message that arrives twice; what it finds
+  too big to read; and what asks for the person's device unlock. The profile can change or delete
   anything it wrote, at will. What others wrote about it, and payments, stay.
-- **An index chooses:** which hosts, issuers and markets count, which hosts it crawls,
-  how much each review weighs, and which proofs it accepts.
+- **An index chooses:** which hosts it reads, which issuers and markets count, how much each
+  review weighs, and which proofs it accepts.
 
 ## FAQ
 
@@ -750,15 +749,6 @@ which inboxes one device watches, and so which profiles are one person's.
 A rule that asks senders to pay would have every host check payments. An inbox's `senders` is a
 field with kinds, and a host refuses deliveries under a kind it does not know, so a kind can be
 added later without breaking anything.
-
-**Why do offers and reviews name no market?**
-A profile names one market and role, from its label. An offer's market and side are its author's;
-a review's market is that of the profile it is about. A human proof counts for a profile under its
-own label, so neither needs more.
-
-**Does a review need proof of a deal?**
-No. A review needs only its subject. Its `evidence` weighs, it never rejects: what is missing
-weighs less, and nothing is refused. An index decides how much each review weighs.
 
 **Why is the vault a folder of its own?**
 A new device has only the seed. A record inside a profile's folder could be found only by first

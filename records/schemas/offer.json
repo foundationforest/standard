@@ -1,32 +1,9 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "offer",
-  "description": "An offer, at the path `offer/<id>`. It names no market or role: those are its author profile's, and the role says whether it offers (a seller) or asks (a buyer). Markets may add fields.",
+  "description": "An offer, at the path `offer/<id>`. Its body is defined by the market the profile lives in (foundationforest/markets). The standard names one field, media, because a host keeps the blobs a record names.",
   "type": "object",
-  "required": ["description", "createdAt"],
   "properties": {
-    "description": {
-      "type": "string",
-      "maxLength": 3000
-    },
-    "price": {
-      "$ref": "#/$defs/price"
-    },
-    "terms": {
-      "$ref": "#/$defs/terms"
-    },
-    "availability": {
-      "type": "string",
-      "description": "When, in the poster's words.",
-      "maxLength": 500
-    },
-    "remote": {
-      "type": "boolean",
-      "description": "Optional. True when the work happens online."
-    },
-    "location": {
-      "$ref": "#/$defs/location"
-    },
     "media": {
       "type": "array",
       "description": "Optional. Photos and short videos of the work.",
@@ -34,102 +11,9 @@
         "$ref": "#/$defs/media"
       },
       "maxItems": 10
-    },
-    "expires": {
-      "type": "string",
-      "description": "Optional. After this the offer is stale.",
-      "format": "date-time"
-    },
-    "createdAt": {
-      "type": "string",
-      "format": "date-time"
     }
   },
   "$defs": {
-    "price": {
-      "type": "object",
-      "description": "The price block. Optional. Per item, hour, day, month or job: the app multiplies before funding, one escrow per payment.",
-      "required": ["amount", "mint", "per"],
-      "properties": {
-        "amount": {
-          "type": "string",
-          "description": "Amount in whole units of the token, as decimal text: \"25\", \"12.50\".",
-          "maxLength": 32
-        },
-        "mint": {
-          "type": "string",
-          "description": "The token, named by its mint's address on Solana, base58. Any token the escrow takes; which tokens an index weighs is the index's call.",
-          "minLength": 32,
-          "maxLength": 44
-        },
-        "per": {
-          "description": "What one amount buys: one item, an hour, a day, a month, or the whole job.",
-          "enum": ["item", "hour", "day", "month", "job"]
-        }
-      }
-    },
-    "terms": {
-      "type": "object",
-      "description": "Optional. The options an escrow made from this offer is created with, each off unless set. Absent or empty: no arbiter and no timer.",
-      "properties": {
-        "arbiter": {
-          "type": "string",
-          "description": "Optional. A Solana key, base58, that may decide any split. Absent: no arbiter.",
-          "minLength": 32,
-          "maxLength": 44
-        },
-        "timer": {
-          "$ref": "#/$defs/timer"
-        }
-      }
-    },
-    "timer": {
-      "type": "object",
-      "description": "Optional. This many days after funding, everything goes to the named side. The only clock an escrow has.",
-      "required": ["days", "to"],
-      "properties": {
-        "days": {
-          "type": "integer",
-          "description": "Whole days from funding.",
-          "minimum": 1,
-          "maximum": 65535
-        },
-        "to": {
-          "description": "The side that gets everything when the timer ends.",
-          "enum": ["seller", "buyer"]
-        }
-      }
-    },
-    "location": {
-      "type": "object",
-      "description": "Optional. Where: a point the app rounds to precisionKm before writing, and the place in words. Degrees are decimal text, since a record holds no fractional numbers.",
-      "required": ["lat", "lon", "precisionKm", "area"],
-      "properties": {
-        "lat": {
-          "type": "string",
-          "description": "Latitude in degrees, -90 to 90, as decimal text with at most 4 decimals: \"38.72\".",
-          "maxLength": 8,
-          "pattern": "^-?((0{0,2}[0-9]|0?[0-8][0-9])(\\.[0-9]{1,4})?|0?90(\\.0{1,4})?)$"
-        },
-        "lon": {
-          "type": "string",
-          "description": "Longitude in degrees, -180 to 180, as decimal text with at most 4 decimals: \"-9.14\".",
-          "maxLength": 9,
-          "pattern": "^-?(([0-9]{1,2}|0[0-9]{2}|1[0-7][0-9])(\\.[0-9]{1,4})?|180(\\.0{1,4})?)$"
-        },
-        "precisionKm": {
-          "type": "integer",
-          "description": "How far, in whole kilometres, the point may be from the real place: the app rounds the point to this before writing. 0 is an exact point, for a shop or a venue.",
-          "minimum": 0,
-          "maximum": 20000
-        },
-        "area": {
-          "type": "string",
-          "description": "The place in words: a neighbourhood, a town.",
-          "maxLength": 128
-        }
-      }
-    },
     "media": {
       "type": "object",
       "description": "A photo or a short video, named by the SHA-256 of its bytes.",

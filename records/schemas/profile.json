@@ -1,9 +1,9 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "profile",
-  "description": "A profile's public card, at the path `profile`: one per profile. A profile lives in one market, in one role; its label is market/role. Markets may add fields.",
+  "description": "A profile's public card, at the path `profile`: one per profile. A profile lives in one market, in one role; its label is <market>/<role>. The fields below are the standard's; any other field is the market's (foundationforest/markets).",
   "type": "object",
-  "required": ["market", "role", "createdAt"],
+  "required": ["market", "role"],
   "properties": {
     "market": {
       "type": "string",
@@ -12,12 +12,12 @@
     },
     "role": {
       "type": "string",
-      "description": "Its role in that market: seller or buyer in a two-sided market, peer in a one-sided one. The second half of its label.",
+      "description": "Its role in that market, the second half of its label: any text. Which roles exist, and which count, is the market's and each index's.",
       "maxLength": 64
     },
     "pay": {
       "type": "string",
-      "description": "Optional. The profile's payment address on Solana: keys/'s payKey(seed, label).address, base58 of an ed25519 public key. Where payments to this profile go; a review's evidence is checked against it.",
+      "description": "Optional. The profile's payment address on Solana: keys/'s payKey(seed, label).address, base58 of an ed25519 public key. Where payments to this profile go.",
       "minLength": 32,
       "maxLength": 44,
       "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$"
@@ -37,10 +37,6 @@
         "$ref": "#/$defs/proof"
       },
       "maxItems": 4
-    },
-    "createdAt": {
-      "type": "string",
-      "format": "date-time"
     }
   },
   "$defs": {
@@ -129,8 +125,8 @@
     },
     "human": {
       "type": "object",
-      "description": "A human proof (proofs/human/): the issuer with this key and this name checked, in this month, the person whose seed gives this profile's key for this label, and this is their stamp for the label at that issuer. Everything verifyHuman takes but the profile's key, which is the profile's own address.",
-      "required": ["circuit", "issuer", "issuerName", "label", "stamp", "month", "proof"],
+      "description": "A human proof (proofs/human/): the issuer with this key and this name signed a note for the person whose seed gives this profile's key for this label, and this is their stamp for the label at that issuer. Everything verifyHuman takes but the profile's key, which is the profile's own address.",
+      "required": ["circuit", "issuer", "issuerName", "label", "stamp", "proof"],
       "additionalProperties": false,
       "properties": {
         "circuit": {
@@ -158,12 +154,6 @@
           "description": "The person's stamp for the label at the issuer: 32 bytes big-endian, lowercase hex.",
           "pattern": "^[0-9a-f]{64}$"
         },
-        "month": {
-          "type": "integer",
-          "description": "The month the issuer checked the person, as the number YYYYMM.",
-          "minimum": 100001,
-          "maximum": 999912
-        },
         "proof": {
           "type": "string",
           "description": "The proof's three points, uncompressed: 256 bytes in base64url without padding, in the reputation proof's order.",
@@ -173,7 +163,7 @@
     },
     "reputation": {
       "type": "object",
-      "description": "A reputation proof (proofs/reputation/): the count-weighted score of profiles in an index's tree that come from the same seed as this one, which profiles hidden. It holds only for this profile's key, which the proof derives from that seed. Everything verifyReputation takes but the profile's key, which is the profile's own address.",
+      "description": "A reputation proof (proofs/reputation/): the count-weighted score of profiles in an index's tree that come from the same seed as this one, which profiles hidden. It holds only for this profile's key, which the proof derives from that seed. What the score means is what the index says its root holds. Everything verifyReputation takes but the profile's key, which is the profile's own address.",
       "required": ["circuit", "index", "root", "time", "signature", "score", "proof"],
       "additionalProperties": false,
       "properties": {
@@ -205,7 +195,7 @@
         },
         "score": {
           "type": "integer",
-          "description": "The score the proof shows: the count-weighted score of the profiles counted, times ten, rounded down.",
+          "description": "The score the proof shows: the count-weighted score of the profiles counted, rounded down.",
           "minimum": 0,
           "maximum": 4294967295
         },

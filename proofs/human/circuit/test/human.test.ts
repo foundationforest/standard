@@ -11,7 +11,7 @@ import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 
 import { signMessage } from '@zk-kit/eddsa-poseidon'
-import { poseidon4 } from 'poseidon-lite/poseidon4'
+import { poseidon2 } from 'poseidon-lite/poseidon2'
 import { groth16 } from 'snarkjs'
 
 import { keyScalar, mainKey, publicKeyOf, seedScalar, signWithScalar, stampOf, issuerSecret } from '../../../../keys/src/index.ts'
@@ -49,14 +49,8 @@ const strangerPrivate = new Uint8Array(32).fill(3)
 const issuer = issuerKeyOf(issuerPrivate)
 const otherIssuer = issuerKeyOf(otherPrivate)
 
-const MONTH = 202610
-const noteFor = (noteNumber: bigint, key = issuerPrivate): SignedNote =>
-  signNote(key, {
-    noteNumber,
-    embedding: new Uint8Array(Float32Array.from({ length: 128 }, (_, i) => Math.sin(i)).buffer),
-    model: 'example-face-model/1',
-    month: MONTH,
-  })
+const ATTRIBUTES = fieldHash('forest example attributes', 'issuer-a')
+const noteFor = (noteNumber: bigint, key = issuerPrivate): SignedNote => signNote(key, { noteNumber, attributes: ATTRIBUTES })
 const note = noteFor(noteNumberOf(mine, NAME))
 
 const LABEL = 'tutoring/seller'
@@ -66,7 +60,7 @@ const otherProfile = await mainKey(seed, OTHER_LABEL)
 const theirProfile = await mainKey(theirSeed, LABEL)
 
 const valid = await proveHuman({ seedScalar: mine, issuerName: NAME, note, label: LABEL, artifacts })
-const good = { proof: valid.proof, issuer, issuerName: NAME, label: LABEL, profile: profile.address, stamp: valid.stamp, month: MONTH }
+const good = { proof: valid.proof, issuer, issuerName: NAME, label: LABEL, profile: profile.address, stamp: valid.stamp }
 
 /** The circuit's witness for these inputs, proven straight through snarkjs. */
 const prove = (input: Record<string, unknown>) => groth16.fullProve(input, artifacts.wasm, artifacts.zkey)
@@ -84,7 +78,7 @@ test("a valid proof: the issuer signed my note; my stamp for this label; the pro
   assert.equal(valid.stamp, stampOf((await issuerSecret(seed, NAME)).scalar, LABEL))
   assert.equal(valid.stamp.toString(), keysVectors.issuers[0].stamps[LABEL], "keys/'s pinned stamp")
   assert.deepEqual(valid.issuer, issuer)
-  assert.equal(valid.month, MONTH)
+  assert.equal(valid.publicSignals.length, 7, 'the stamp, then profileX, profileY, issuerX, issuerY, scope, issuerNameHash')
 })
 
 test('a proof for another profile fails, and so does a profile key the seed does not give for the label', async () => {
@@ -115,7 +109,7 @@ test('a wrong issuer key or issuer name fails', async () => {
   await assert.rejects(proveHuman({ seedScalar: mine, issuerName: OTHER_NAME, note, label: LABEL, artifacts }), /not for this seed at this issuer/)
 })
 
-test('a forged signature fails, and so do a signature without the tag and a month the issuer did not sign', async () => {
+test('a forged signature fails, and so do a signature without the tag and attributes the issuer did not sign', async () => {
   // A key that is not the issuer's signs a note, which then claims the issuer's key.
   const forged = { ...noteFor(note.noteNumber, strangerPrivate), issuer }
   assert.equal(noteSigned(forged), false)
@@ -126,12 +120,11 @@ test('a forged signature fails, and so do a signature without the tag and a mont
   const l = 2736030358979909402780800718157159386076813972158567259200215660948447373041n
   await assert.rejects(prove(inputOf({ ...note, signature: { ...note.signature, S: note.signature.S + l } })), NO_WITNESS)
   // The issuer's own signature over the same fields without the tag: no witness.
-  const untagged = poseidon4([note.noteNumber, fieldHash('', note.embedding), fieldHash('', note.model), BigInt(note.month)])
+  const untagged = poseidon2([note.noteNumber, note.attributes])
   await assert.rejects(prove(inputOf({ ...note, signature: signMessage(issuerPrivate, untagged) })), NO_WITNESS)
-  // The signed note with another month, in the proof or in the check.
-  await assert.rejects(prove(inputOf({ ...note, month: 202611 })), NO_WITNESS)
-  assert.equal(await verifyHuman({ ...good, month: 202611 }), false)
-  assert.equal(await verifyHuman({ ...good, month: 202613 }), false, 'no month at all')
+  // The signed note with other attributes: no witness.
+  await assert.rejects(prove(inputOf({ ...note, attributes: note.attributes + 1n })), NO_WITNESS)
+  await assert.rejects(proveHuman({ seedScalar: mine, issuerName: NAME, note: { ...note, attributes: 0n }, label: LABEL, artifacts }), /signature is not on this note/)
 })
 
 test("another person's seed fails", async () => {
@@ -161,7 +154,7 @@ test("an issuer may sign with keys/'s signWithScalar: circomlib's verifier, insi
   // An independent check of keys/'s signer: the circuit's EdDSA-Poseidon verifier accepts it.
   const scalar = keyScalar(fieldHash('example issuer scalar'))
   const key = publicKeyOf(scalar)
-  const unsigned = { noteNumber: note.noteNumber, embedding: note.embedding, model: note.model, month: MONTH }
+  const unsigned = { noteNumber: note.noteNumber, attributes: note.attributes }
   const scalarNote: SignedNote = { ...unsigned, issuer: key, signature: signWithScalar(scalar, noteHash(unsigned)) }
   assert.equal(noteSigned(scalarNote), true)
   const r = await proveHuman({ seedScalar: mine, issuerName: NAME, note: scalarNote, label: LABEL, artifacts })

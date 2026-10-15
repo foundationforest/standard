@@ -14,7 +14,7 @@ Object.defineProperty(globalThis, 'Buffer', { configurable: true, get: () => (/\
 const { hexToBytes } = await import('@noble/hashes/utils.js')
 const { sha256 } = await import('@noble/hashes/sha2.js')
 const { mainKey, seedScalar } = await import('../../../../keys/src/index.ts')
-const { noteNumberOf, proofBytes, proveHuman, signNote, verifyHuman } = await import('../src/index.ts')
+const { fieldHash, noteNumberOf, proofBytes, proveHuman, signNote, verifyHuman } = await import('../src/index.ts')
 
 const here = dirname(fileURLToPath(import.meta.url))
 const artifacts = { wasm: join(here, '../../circuit/devnet/human.wasm'), zkey: join(here, '../../circuit/devnet/human.zkey') }
@@ -27,14 +27,12 @@ test('with no Buffer: an issuer signs a note, the device proves, a reader checks
   const S = await seedScalar(seed)
   const note = signNote(sha256(new TextEncoder().encode('forest human fixture: issuer A')), {
     noteNumber: noteNumberOf(S, NAME),
-    embedding: new Uint8Array(Float32Array.from([0.25, -0.5, 0.125]).buffer),
-    model: 'example-face-model/1',
-    month: 202610,
+    attributes: fieldHash('forest example attributes', 'issuer-a'),
   })
   const r = await proveHuman({ seedScalar: S, issuerName: NAME, note, label: LABEL, artifacts })
   const main = await mainKey(seed, LABEL)
   assert.equal(r.address, main.address)
-  const shown = { issuer: r.issuer, issuerName: NAME, label: LABEL, profile: main.address, stamp: r.stamp, month: 202610 }
+  const shown = { issuer: r.issuer, issuerName: NAME, label: LABEL, profile: main.address, stamp: r.stamp }
   assert.equal(await verifyHuman({ ...shown, proof: r.proof }), true)
   assert.equal(await verifyHuman({ ...shown, proof: proofBytes(r.proof) }), true, 'from its 256 bytes')
 })

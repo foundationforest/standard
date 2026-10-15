@@ -16,7 +16,6 @@ export type HumanCheck = {
   /** The profile that carries the proof: its address. */
   profile: string
   stamp: Uint8Array
-  month: number
 }
 
 /** What verifyReputation takes, for one card's reputation proof. */
@@ -49,9 +48,9 @@ export function proofsOf(card: Body | null | undefined): Array<{ [key: string]: 
 /** A card's human proof as verifyHuman takes it, for the profile `profile`; null if it is not one. */
 export function humanCheck(proof: unknown, profile: string): HumanCheck | null {
   if (!isObject(proof) || proof.circuit !== 'human') return null
-  const { issuer, issuerName, label, stamp, month } = proof
+  const { issuer, issuerName, label, stamp } = proof
   if (typeof issuer !== 'string' || !ISSUER.test(issuer) || typeof issuerName !== 'string' || typeof label !== 'string') return null
-  if (typeof stamp !== 'string' || !HEX64.test(stamp) || !Number.isSafeInteger(month) || typeof proof.proof !== 'string' || !PROOF.test(proof.proof)) return null
+  if (typeof stamp !== 'string' || !HEX64.test(stamp) || typeof proof.proof !== 'string' || !PROOF.test(proof.proof)) return null
   return {
     proof: b64u.decode(proof.proof),
     issuer: [BigInt('0x' + issuer.slice(0, 64)), BigInt('0x' + issuer.slice(64))],
@@ -59,7 +58,6 @@ export function humanCheck(proof: unknown, profile: string): HumanCheck | null {
     label,
     profile,
     stamp: hex.decode(stamp),
-    month: month as number,
   }
 }
 

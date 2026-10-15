@@ -12,11 +12,9 @@ import { checkRecord, decodeRecord, encodeRecord, signingInput, unsignedOf, veri
 import { viewProfile } from '../src/view.ts'
 import { ownerRecord } from '../src/write.ts'
 
+// An offer about the size of a short one. Its fields are its market's; `about` stands in for them.
 const offer = {
-  description: 'One hour of maths tutoring, online, for secondary school students preparing for exams.',
-  price: { amount: '30', mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', per: 'hour' },
-  remote: true,
-  createdAt: '2026-09-29T12:00:00Z',
+  about: 'One hour of maths tutoring, online, for secondary school students preparing for exams. Thirty a session, paid in a dollar on Solana; evenings and weekends.',
 }
 
 function rate(label: string, n: number, run: (i: number) => void): number {
@@ -48,7 +46,7 @@ const host = new Host({ now: () => 1_790_000_000_000 })
 const lines: string[] = []
 for (let p = 0; p < 500; p++) {
   const k = accessKey(new Uint8Array(32).map((_, j) => (p * 13 + j * 7 + 1) & 255))
-  lines.push(encodeRecord(ownerRecord(k, 'profile', { market: 'tutoring', role: 'seller', createdAt: '2026-09-29T12:00:00Z' }, 1_790_000_000_000)))
+  lines.push(encodeRecord(ownerRecord(k, 'profile', { market: 'tutoring', role: 'seller' }, 1_790_000_000_000)))
   for (let o = 0; o < 4; o++) lines.push(encodeRecord(ownerRecord(k, `offer/${o}`, offer, 1_790_000_000_000 + o)))
 }
 let start = performance.now()
