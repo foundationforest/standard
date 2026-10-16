@@ -1,4 +1,4 @@
-# escrow
+# solana
 
 Part of Forest's standard: [the top README](../../README.md), under [escrows](../README.md). Down:
 the [security checklist](security-checklist.md).

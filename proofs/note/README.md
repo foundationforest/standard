@@ -212,8 +212,8 @@ Measured in Node 22 on a 4-core machine:
 
 - **The standard:** the note, the proof, the circuit and its public signals.
 - **An issuer:** whom it signs notes for, how many each gets, what its attributes hold, what it adds
-  beside them, and its name: text for the stamp recipe, and for an issuer that changes its key,
-  whose people keep their stamps.
+  beside them, and its name. The name is text the stamp recipe uses, so an issuer that changes its
+  key keeps its people's stamps.
 - **Each reader:** which issuer keys count is its own list, and how much each weighs.
 - **An app, with the person:** which proofs to show on which profile, made on the device.
 
@@ -226,6 +226,3 @@ a note to a new seed is that issuer's choice.
 same profile, with its own stamp, and the profile shows them all. Each reader decides which issuers
 it counts and how much each weighs. The same issuer never gives a second stamp under one label: a
 new note from it gives the same stamp.
-
-**What if someone steals my seed, or I sell it?** Whoever holds the seed acts as every profile and
-can make its proofs ([keys](../../keys/README.md#faq)).

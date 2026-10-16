@@ -77,10 +77,6 @@ same transaction.
 - `client/`: the library that builds its transactions and reads its accounts.
 - `devnet/`: the deploy script and the public record of what runs on that chain's test network.
 
-## Promises
-
-Each escrow's promises are in its own README: [solana](solana/README.md#promises).
-
 ## Limits
 
 - **One chain.** Only Solana has an escrow here, and only on devnet.

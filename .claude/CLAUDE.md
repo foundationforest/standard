@@ -25,8 +25,9 @@ Rules for apps: `keys/README.md`, Rules for apps that hold keys. Never copy them
   everything else is version 1.
 - One README per level: the repo's, and one in each directory; each starts with what it is and how
   it works.
-- Each piece's README ends Promises, Limits, Who decides what, FAQ; the repo README has Who decides
-  what after the sort.
+- Each piece's README ends Limits and FAQ, and Promises and Who decides what where it has them; a
+  parent README carries a section only when it has content of its own, never a pointer to the
+  directories below; the repo README has Who decides what after the sort.
 - A question lives at the lowest level whose README explains the thing it is about.
 - A FAQ is only for what the explanation does not answer; when a question shows the explanation is
   missing something, the explanation changes.

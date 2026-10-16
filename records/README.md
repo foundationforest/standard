@@ -258,9 +258,7 @@ gives the last message on a page, so the next ask starts after it (`POST /v1/inb
 
 **Requests.** A message body may be `{ "request": <kind>, … }`: something the sender was not
 allowed to do itself, for the receiving profile's app to do with its main key. `request` names one
-of the kinds below, which are the actions the
-[mcp directory in services](https://github.com/foundationforest/services/tree/main/mcp) accepts as
-requests, and the other fields are that kind's parameters:
+of the kinds below, and the other fields are that kind's parameters:
 `{ "request": "post-offer", "offer": { … } }`, `{ "request": "send", "to": <address>, "text": … }`.
 
 | Kind | Parameters |
@@ -278,7 +276,7 @@ For `pay` they are `offer`, the offer as `<profile address>/offer/<id>`; `amount
 whole units of the mint, such as `"25"` or `"12.50"`; `mint`, the money's mint address on Solana;
 and, if wanted, `note`, text for the person: `{ "request": "pay", "offer": <profile
 address>/offer/<id>, "amount": "25", "mint": <mint address>, "note": … }`. The app reads the offer
-and opens the escrow from it ([escrow](../escrows/solana/README.md#two-ways-to-open-it)).
+and opens the escrow from it ([solana](../escrows/solana/README.md#two-ways-to-open-it)).
 
 An app acts on a request only when it was sent to the profile's own inbox by the profile's main
 key or by a write key its permissions record lists for the inbox, and shows any other `request`
@@ -711,8 +709,8 @@ checks both with their verifiers.
   Older history is in the app's copies, or nowhere.
 - **A removed key can still write a record dated before you removed it.** A newer record at that
   path wins, and you can delete it.
-- **A message a write key sent proves the key signed it, and that the host checked the key was
-  allowed.**
+- **A message a write key sent proves only that the key signed it.** The host that took it checked
+  the key was allowed at the time; the message itself does not carry that.
 - **A host sees who wrote to whom.** It holds each message's `from`, `to`, time and size, and the
   write key when one signed, though not what it says. To take a write key's message, or one to an
   inbox with an issuer's rule, it asks the sender's host for the sender's records, which tells that
