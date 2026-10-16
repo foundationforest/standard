@@ -27,7 +27,7 @@ A **label** is `<market>/<role>`, such as `plumbing/seller`; the market defines 
 | [`keys/`](keys/README.md) | The recipe that mixes every profile key, payment address, encryption key and issuer secret from the person's seed | a library | on the person's device |
 | [`proofs/`](proofs/README.md) | The zero-knowledge proofs a device makes and anyone can check: [`human/`](proofs/human/README.md) (proving a profile's key and stamp come from an issuer-checked seed) and [`reputation/`](proofs/reputation/README.md) (proving a score across hidden profiles from an index's tree) | circuits and client libraries | made on the device; checked by anyone in milliseconds |
 | [`records/`](records/README.md) | How a profile speaks: versioned folder entries (`card`, `hosts`, `permissions`, `offer`, `review`, `private`), scoped `write` and `read` access keys for AI and apps, the encrypted `inbox`, the `vault`, the blobs a folder holds (photos and videos its keys put and delete), and the reference host | a library and reference host | wherever an app, AI, host or index runs |
-| [`escrows/`](escrows/README.md) | On-chain lockboxes that release money when the buyer approves, both sides agree, a chosen arbiter decides, or a timer expires ([`solana/`](escrows/solana/README.md) today, other chains later) | an on-chain program and client library | on chain when a deal uses escrow |
+| [`escrows/`](escrows/README.md) | On-chain lockboxes that release money when a side gives it to the other, both sides agree, a chosen arbiter decides, or the schedule set at the start says so ([`solana/`](escrows/solana/README.md) today, other chains later) | an on-chain program and client library | on chain when a deal uses escrow |
 
 Each folder's README follows the same structure: What it is, How it works, Promises, Limits, Who decides what, FAQ.
 
@@ -66,7 +66,7 @@ What others can still see:
 - **One seed, one profile per label.** The `human` circuit derives the profile key inside the proof, making a second profile key for the same seed and label mathematically invalid (`proofs/human/`).
 - **Updates and deletes are just writes.** Every record is versioned by ID; writing an empty tombstone deletes it from active view (`records/`).
 - **Nothing in the standard charges a fee.** There is no protocol token and no protocol cut on deals.
-- **Escrows have no admin key.** Once money enters an escrow, only the buyer, both sides together, the named arbiter or the timer set at the start can move it (`escrows/`).
+- **Escrows have no admin key.** Once money enters an escrow, only a side giving it to the other, both sides together, the named arbiter, or the schedule set at the start can move it (`escrows/`).
 
 ## Limits
 

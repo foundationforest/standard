@@ -32,7 +32,7 @@ use spl_token_2022_interface::instruction as t22;
 use spl_token_2022_interface::state::{Account as TokenAccount22, AccountState, Mint as Mint22};
 use spl_transfer_hook_interface::instruction::ExecuteInstruction;
 
-use crate::{ata_address_under, create_ata_idempotent_ix_under, Harness, BUYER_START, SYSTEM_PROGRAM, TOKEN_2022_PROGRAM};
+use crate::{ata_address_under, create_ata_idempotent_ix_under, Harness, PAYER_START, SYSTEM_PROGRAM, TOKEN_2022_PROGRAM};
 
 /// Open USD, on mainnet.
 pub const OPEN_USD: Address = solana_address::address!("ousd2mJsPEckLHcSCDxyKD7NDGARZcfLbDZkKiatYHB");
@@ -220,14 +220,14 @@ fn base64_decode(s: &str) -> Vec<u8> {
     out
 }
 
-fn system_create(payer: &Address, account: &Address, lamports: u64, space: usize, owner: &Address) -> Instruction {
+fn system_create(funder: &Address, account: &Address, lamports: u64, space: usize, owner: &Address) -> Instruction {
     let mut data = 0u32.to_le_bytes().to_vec();
     data.extend_from_slice(&lamports.to_le_bytes());
     data.extend_from_slice(&(space as u64).to_le_bytes());
     data.extend_from_slice(owner.as_ref());
     Instruction {
         program_id: SYSTEM_PROGRAM,
-        accounts: vec![AccountMeta::new(*payer, true), AccountMeta::new(*account, true)],
+        accounts: vec![AccountMeta::new(*funder, true), AccountMeta::new(*account, true)],
         data,
     }
 }
@@ -241,7 +241,7 @@ pub fn make_other_account(h: &mut Harness, owner: &Address) -> Address {
     let space = ExtensionType::try_calculate_account_len::<TokenAccount22>(&needed).unwrap();
     let lamports = h.svm.minimum_balance_for_rent_exemption(space);
     let ixs = [
-        system_create(&h.payer.pubkey(), &account.pubkey(), lamports, space, &TOKEN_2022_PROGRAM),
+        system_create(&h.sponsor.pubkey(), &account.pubkey(), lamports, space, &TOKEN_2022_PROGRAM),
         t22::initialize_account3(&TOKEN_2022_PROGRAM, &account.pubkey(), &h.mint, owner).unwrap(),
     ];
     h.send(&ixs, &[&account]).expect("a token account");
@@ -250,14 +250,14 @@ pub fn make_other_account(h: &mut Harness, owner: &Address) -> Address {
 
 /// `owner`'s standard account for the harness's mint, made by the associated token program.
 pub fn make_standard_account(h: &mut Harness, owner: &Address) -> Address {
-    let (ix, ata) = create_ata_idempotent_ix_under(h.payer.pubkey(), *owner, h.mint, h.token_program);
+    let (ix, ata) = create_ata_idempotent_ix_under(h.sponsor.pubkey(), *owner, h.mint, h.token_program);
     h.send(&[ix], &[]).expect("a standard account");
     ata
 }
 
 /// Makes the harness's mint: Open USD's eight extensions in Open USD's order, each by its own
 /// Token-2022 instruction, then the mint, then its metadata; the test hook's validation and
-/// counter accounts if `hook` names it; then the parties' accounts and the buyer's ten dollars.
+/// counter accounts if `hook` names it; then the parties' accounts and the payer's ten dollars.
 pub(crate) fn make_open_usd(h: &mut Harness, hook: HookProgram) {
     h.svm.add_builtin(TEST_HOOK_PROGRAM, TestHook::register);
     let issuer = Issuer { admin: Keypair::new(), minter: Keypair::new(), freezer: Keypair::new(), delegate: Keypair::new() };
@@ -285,7 +285,7 @@ pub(crate) fn make_open_usd(h: &mut Harness, hook: HookProgram) {
         HookProgram::Test => Some(TEST_HOOK_PROGRAM),
     };
     let ixs = [
-        system_create(&h.payer.pubkey(), &m, lamports, space, &TOKEN_2022_PROGRAM),
+        system_create(&h.sponsor.pubkey(), &m, lamports, space, &TOKEN_2022_PROGRAM),
         t22::initialize_mint_close_authority(&TOKEN_2022_PROGRAM, &m, Some(&admin)).unwrap(),
         t22::initialize_permanent_delegate(&TOKEN_2022_PROGRAM, &m, &issuer.delegate.pubkey()).unwrap(),
         default_account_state::instruction::initialize_default_account_state(&TOKEN_2022_PROGRAM, &m, &AccountState::Initialized).unwrap(),
@@ -318,20 +318,20 @@ pub(crate) fn make_open_usd(h: &mut Harness, hook: HookProgram) {
     let rent = h.svm.minimum_balance_for_rent_exemption(8);
     h.svm.set_account(hook_counter(), Account { lamports: rent, data: vec![0; 8], owner: TEST_HOOK_PROGRAM, executable: false, rent_epoch: 0 }).unwrap();
 
-    let buyer = h.buyer.pubkey();
-    let seller = h.seller.pubkey();
-    h.buyer_tokens = make_other_account(h, &buyer);
-    let buyer_tokens = h.buyer_tokens;
+    let payer = h.payer.pubkey();
+    let recipient = h.recipient.pubkey();
+    h.payer_wallet = make_other_account(h, &payer);
+    let payer_wallet = h.payer_wallet;
     h.send(
-        &[t22::mint_to_checked(&TOKEN_2022_PROGRAM, &m, &buyer_tokens, &minter.pubkey(), &[], BUYER_START, 6).unwrap()],
+        &[t22::mint_to_checked(&TOKEN_2022_PROGRAM, &m, &payer_wallet, &minter.pubkey(), &[], PAYER_START, 6).unwrap()],
         &[&minter],
     )
-    .expect("the buyer's ten dollars");
-    make_standard_account(h, &buyer);
-    h.seller_tokens = make_standard_account(h, &seller);
-    h.seller_other = make_other_account(h, &seller);
+    .expect("the payer's ten dollars");
+    make_standard_account(h, &payer);
+    h.recipient_tokens = make_standard_account(h, &recipient);
+    h.recipient_other = make_other_account(h, &recipient);
     h.issuer = Some(issuer);
-    assert_eq!(h.refund(), ata_address_under(&buyer, &m, &TOKEN_2022_PROGRAM));
+    assert_eq!(h.payer_account(), ata_address_under(&payer, &m, &TOKEN_2022_PROGRAM));
 }
 
 /// Writes the test hook's validation account for the harness's mint, listing `accounts`.
@@ -400,7 +400,7 @@ pub fn transfer_fee_mint(h: &mut Harness, bps: u16) -> Address {
     let lamports = h.svm.minimum_balance_for_rent_exemption(space);
     let authority = Address::new_unique();
     let ixs = [
-        system_create(&h.payer.pubkey(), &m, lamports, space, &TOKEN_2022_PROGRAM),
+        system_create(&h.sponsor.pubkey(), &m, lamports, space, &TOKEN_2022_PROGRAM),
         transfer_fee::instruction::initialize_transfer_fee_config(&TOKEN_2022_PROGRAM, &m, Some(&authority), Some(&authority), bps, u64::MAX).unwrap(),
         t22::initialize_mint2(&TOKEN_2022_PROGRAM, &m, &authority, None, 6).unwrap(),
     ];
@@ -439,7 +439,7 @@ pub fn one_extension_mint(h: &mut Harness, extension: OneExtension) -> (Address,
     let space = ExtensionType::try_calculate_account_len::<Mint22>(&[kind]).unwrap();
     let lamports = h.svm.minimum_balance_for_rent_exemption(space);
     let ixs = [
-        system_create(&h.payer.pubkey(), &m, lamports, space, &TOKEN_2022_PROGRAM),
+        system_create(&h.sponsor.pubkey(), &m, lamports, space, &TOKEN_2022_PROGRAM),
         init,
         t22::initialize_mint2(&TOKEN_2022_PROGRAM, &m, &authority.pubkey(), None, 6).unwrap(),
     ];
@@ -447,21 +447,21 @@ pub fn one_extension_mint(h: &mut Harness, extension: OneExtension) -> (Address,
     (m, authority)
 }
 
-/// Makes `mint` the harness's: the buyer's non-standard account holding ten of it, both parties'
-/// standard accounts, a second seller account. `authority` mints.
+/// Makes `mint` the harness's: the payer's non-standard account holding ten of it, both parties'
+/// standard accounts, a second recipient account. `authority` mints.
 pub fn use_mint(h: &mut Harness, mint: Address, authority: &Keypair) {
     h.mint = mint;
     h.token_program = TOKEN_2022_PROGRAM;
     h.decimals = 6;
-    let buyer = h.buyer.pubkey();
-    let seller = h.seller.pubkey();
-    h.buyer_tokens = make_other_account(h, &buyer);
-    let buyer_tokens = h.buyer_tokens;
-    h.send(&[t22::mint_to_checked(&TOKEN_2022_PROGRAM, &mint, &buyer_tokens, &authority.pubkey(), &[], BUYER_START, 6).unwrap()], &[authority])
-        .expect("ten to the buyer");
-    make_standard_account(h, &buyer);
-    h.seller_tokens = make_standard_account(h, &seller);
-    h.seller_other = make_other_account(h, &seller);
+    let payer = h.payer.pubkey();
+    let recipient = h.recipient.pubkey();
+    h.payer_wallet = make_other_account(h, &payer);
+    let payer_wallet = h.payer_wallet;
+    h.send(&[t22::mint_to_checked(&TOKEN_2022_PROGRAM, &mint, &payer_wallet, &authority.pubkey(), &[], PAYER_START, 6).unwrap()], &[authority])
+        .expect("ten to the payer");
+    make_standard_account(h, &payer);
+    h.recipient_tokens = make_standard_account(h, &recipient);
+    h.recipient_other = make_other_account(h, &recipient);
 }
 
 /// What Token-2022 shows for `amount` of the harness's mint now: its `AmountToUiAmount`.
@@ -478,7 +478,7 @@ pub fn plain_2022_mint(h: &mut Harness) -> Address {
     let space = ExtensionType::try_calculate_account_len::<Mint22>(&[]).unwrap();
     let lamports = h.svm.minimum_balance_for_rent_exemption(space);
     let ixs = [
-        system_create(&h.payer.pubkey(), &m, lamports, space, &TOKEN_2022_PROGRAM),
+        system_create(&h.sponsor.pubkey(), &m, lamports, space, &TOKEN_2022_PROGRAM),
         t22::initialize_mint2(&TOKEN_2022_PROGRAM, &m, &Address::new_unique(), None, 6).unwrap(),
     ];
     h.send(&ixs, &[&mint]).expect("a plain Token-2022 mint");

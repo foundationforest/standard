@@ -13,9 +13,10 @@
 #      key    = the ed25519 keypair whose secret seed is `seed` (Solana's Keypair.fromSeed)
 #
 #    One label per key: `deploy` (pays for the deploy and keeps the upgrade authority), `payer`
-#    (pays every fee and deposit in escrows/solana/client/scripts/devnet.ts, as a fee payer would), `buyer`,
-#    `seller`, and `escrow-v2-program-2`, the program id (the closed first deploy used
-#    `escrow-v2-program`). The keypair files go to FOREST_DEVNET_KEYS (default
+#    (pays every fee and deposit in escrows/solana/client/scripts/devnet.ts, as a fee payer would:
+#    each escrow's sponsor), `buyer` and `seller` (each escrow's payer and recipient), and
+#    `escrow-v2-program-2`, the program id, upgraded in place to v3 (the closed first deploy used
+#    `escrow-v2-program`). The labels are the recipe's, so they keep their names. The keypair files go to FOREST_DEVNET_KEYS (default
 #    ~/.forest-devnet/keys), never under the repo: the directory mode 700, the files 600, and a file
 #    holding another key is refused, not overwritten. Only public keys are printed, and the phrase
 #    is in no file. The public keys must be the ones escrows/solana/devnet/devnet.json names in `keys` (a
@@ -115,7 +116,7 @@ cp -r "$root/escrows/solana/program/src" "$out/program/src"
 node - "$out/program/src/lib.rs" "$id" <<'JS'
 const fs = require('fs')
 const [file, id] = process.argv.slice(2)
-const from = 'declare_id!("FoRE2EscrowV2objectsTimerFundedAtPayer222222");'
+const from = 'declare_id!("FoRE3EscrowV3scheduLeWindowsPayRefund3333333");'
 const to = `declare_id!("${id}");`
 const text = fs.readFileSync(file, 'utf8')
 if (text.split(from).length !== 2) throw new Error(`${file}: expected exactly one ${from}`)
@@ -228,11 +229,11 @@ if (mode !== 'none') {
   if (mode === 'deploy') {
     p.deploySignature = d.signature
     p.deployCost = cost
-    record.transactions.push({ program: 'escrow-v2', what: `deploy: the escrow (SBPF ${p.sbpfVersion}), upgrade authority kept on the deploy key`, signature: d.signature })
+    record.transactions.push({ program: 'escrow-v3', what: `deploy: the escrow (SBPF ${p.sbpfVersion}), upgrade authority kept on the deploy key`, signature: d.signature })
   } else {
     p.upgrades ??= []
     p.upgrades.push({ slot: show.lastDeploySlot, signature: d.signature, soSha256: sha, soBytes: p.soBytes, cost })
-    record.transactions.push({ program: 'escrow-v2', what: `upgrade in place: the escrow, now ${p.soBytes} bytes (sha256 ${sha.slice(0, 16)}…), same address`, signature: d.signature })
+    record.transactions.push({ program: 'escrow-v3', what: `upgrade in place: the escrow, now ${p.soBytes} bytes (sha256 ${sha.slice(0, 16)}…), same address`, signature: d.signature })
   }
 }
 fs.writeFileSync(recordPath, JSON.stringify(record, null, 2) + '\n')

@@ -2,7 +2,7 @@
 name = "forest-escrow"
 version = "0.1.0"
 edition = "2021"
-description = "The Forest escrow: an amount of a token (classic SPL Token or Token-2022) held between two keys, out only when the two sides agree; either side may object once, which stops the timer. Sealed per version."
+description = "The Forest escrow: an amount of a token (classic SPL Token or Token-2022) held between a payer and a recipient under a schedule set at creation: generous moves always, selfish moves by the schedule, a stop that freezes it, a default at the end. To be sealed on mainnet."
 license = "Apache-2.0"
 publish = false
 exclude = ["tests-litesvm"]
