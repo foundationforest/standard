@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "profile",
-  "description": "A profile's public card, at the path `profile`: one per profile. A profile lives in one market, in one role; its label is <market>/<role>. The fields below are the standard's; any other field is the market's (foundationforest/markets).",
+  "description": "A profile's public profile record, at the path `profile`: one per profile. A profile lives in one market, in one role; its label is <market>/<role>. The fields below are the standard's; any other field is the market's (foundationforest/markets).",
   "type": "object",
   "required": ["market", "role"],
   "properties": {
@@ -24,7 +24,7 @@
     },
     "inboxKey": {
       "type": "string",
-      "description": "Optional. The profile's inbox key, as an age post-quantum hybrid recipient (mlkem768x25519, 1,959 characters): what senders seal messages to, and others seal private records to. Without it, nobody can seal anything to this profile.",
+      "description": "Optional. The profile's inbox key, as an age post-quantum hybrid key (`age1pq1…`, mlkem768x25519, 1,959 characters): what senders seal messages to, and others seal private records to. Without it, nobody can seal anything to this profile.",
       "pattern": "^age1pq1[02-9ac-hj-np-z]{1952}$"
     },
     "inbox": {
@@ -47,7 +47,7 @@
       "additionalProperties": false,
       "properties": {
         "senders": {
-          "description": "Who may deliver: anyone, or a profile whose card carries a human proof from this issuer, under any label.",
+          "description": "Who may deliver: anyone, or a profile whose profile record carries a note proof from this issuer, under any label.",
           "oneOf": [
             {
               "const": "anyone"
@@ -59,8 +59,10 @@
               "properties": {
                 "issuer": {
                   "type": "string",
-                  "description": "The issuer's key: x then y of its point on Baby Jubjub, each 32 bytes big-endian, as 128 characters of lowercase hex.",
-                  "pattern": "^[0-9a-f]{128}$"
+                  "description": "The issuer's key: its address, a packed point on Baby Jubjub in base58.",
+                  "minLength": 32,
+                  "maxLength": 44,
+                  "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$"
                 }
               }
             }
@@ -77,7 +79,7 @@
         },
         "readers": {
           "type": "array",
-          "description": "Optional. Read keys' recipients. A sender seals every message to inboxKey and to each of these, in one envelope, so a reader listed here can act on the inbox while the person is away. Each adds about 2 KB to every message.",
+          "description": "Optional. What read keys are sealed to (their sealTo). A sender seals every message to inboxKey and to each of these, in one envelope, so a reader listed here can act on the inbox while the person is away. Each adds about 2 KB to every message.",
           "items": {
             "type": "string",
             "pattern": "^age1pq1[02-9ac-hj-np-z]{1952}$"
@@ -87,12 +89,12 @@
     },
     "proof": {
       "type": "object",
-      "description": "One proof, named by its circuit. A reader ignores a proof whose circuit it does not know, so a profile carrying a newer kind stays valid for an older app. A human proof and a reputation proof have the shapes below; another circuit's fields are its own.",
+      "description": "One proof, named by its circuit. A reader ignores a proof whose circuit it does not know, so a profile carrying a newer kind stays valid for an older app. A note proof and a reputation proof have the shapes below; another circuit's fields are its own.",
       "required": ["circuit"],
       "properties": {
         "circuit": {
           "type": "string",
-          "description": "The circuit that checks it. Today human (proofs/human/) and reputation (proofs/reputation/).",
+          "description": "The circuit that checks it: note (proofs/note/) and reputation (proofs/reputation/) have the shapes below.",
           "pattern": "^[a-z][a-z0-9-]{0,31}$"
         }
       },
@@ -113,29 +115,31 @@
           "if": {
             "properties": {
               "circuit": {
-                "const": "human"
+                "const": "note"
               }
             }
           },
           "then": {
-            "$ref": "#/$defs/human"
+            "$ref": "#/$defs/note"
           }
         }
       ]
     },
-    "human": {
+    "note": {
       "type": "object",
-      "description": "A human proof (proofs/human/): the issuer with this key and this name signed a note for the person whose seed gives this profile's key for this label, and this is their stamp for the label at that issuer. Everything verifyHuman takes but the profile's key, which is the profile's own address.",
+      "description": "A note proof (proofs/note/): the issuer with this key and this name signed a note for the person whose seed gives this profile's key for this label, and this is their stamp for the label at that issuer. Everything verifyNote takes but the profile's key, which is the profile's own address.",
       "required": ["circuit", "issuer", "issuerName", "label", "stamp", "proof"],
       "additionalProperties": false,
       "properties": {
         "circuit": {
-          "const": "human"
+          "const": "note"
         },
         "issuer": {
           "type": "string",
-          "description": "The issuer's key: x then y of its point on Baby Jubjub, each 32 bytes big-endian, as 128 characters of lowercase hex.",
-          "pattern": "^[0-9a-f]{128}$"
+          "description": "The issuer's key: its address, a packed point on Baby Jubjub in base58.",
+          "minLength": 32,
+          "maxLength": 44,
+          "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$"
         },
         "issuerName": {
           "type": "string",

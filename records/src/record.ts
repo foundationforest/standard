@@ -179,7 +179,7 @@ export type HostsBody = {
 /**
  * What an access key is for. write: signing records where its paths allow, and messages for the
  * main key when they cover `inbox`. read: pulling the inbox when its paths cover `inbox`, and
- * opening what is encrypted to it.
+ * opening what is sealed to it.
  */
 export type Scope = 'write' | 'read'
 export const SCOPES: readonly Scope[] = ['write', 'read']
@@ -192,15 +192,15 @@ export const SCOPES: readonly Scope[] = ['write', 'read']
 export type AccessKey = {
   /** Its signing key's address. */
   key: string
-  /** A read key's age post-quantum hybrid recipient (age1pq1…): on a read key, and only there. */
-  recipient?: string
+  /** What others seal to for a read key, its age post-quantum hybrid key (age1pq1…): on a read key, and only there. */
+  sealTo?: string
   /** What it may do; on a key that acts, and only there. */
   scope?: Scope
   /** The scope a past key had; on a past key, and only there. */
   was?: 'write'
   /**
    * Path prefixes it works under, segment by segment: where a write key writes, and which private
-   * records the owner's devices encrypt to a read key; `inbox` among them lets a write key send
+   * records the owner's devices seal to a read key; `inbox` among them lets a write key send
    * messages and a read key pull. Without it, every content path but those `profile` covers, and
    * the inbox.
    */
@@ -212,8 +212,8 @@ export type PermissionsBody = {
 
 export const MAX_HOSTS = 8
 export const MAX_ACCESS_PATHS = 16
-/** An age post-quantum hybrid recipient (mlkem768x25519): an inbox key's or a read key's public half. */
-export const RECIPIENT = /^age1pq1[02-9ac-hj-np-z]{1952}$/
+/** What an envelope is sealed to: an age post-quantum hybrid key (mlkem768x25519), an inbox key's or a read key's public half. */
+export const SEAL_TO = /^age1pq1[02-9ac-hj-np-z]{1952}$/
 
 const only = (body: object, fields: string[], code: string, what: string) => {
   for (const key of Object.keys(body)) if (!fields.includes(key)) fail(code, `unknown ${what} field ${key}`)
@@ -240,17 +240,17 @@ export function checkControlBody(path: string, body: Body): void {
   const listed = new Set<unknown>()
   for (const k of access as unknown[]) {
     if (k === null || typeof k !== 'object' || Array.isArray(k)) fail('permissions', 'an access entry is an object')
-    only(k, ['key', 'recipient', 'scope', 'was', 'paths'], 'permissions', 'access')
-    const { key, recipient, scope, was, paths } = k as { [key: string]: unknown }
+    only(k, ['key', 'sealTo', 'scope', 'was', 'paths'], 'permissions', 'access')
+    const { key, sealTo, scope, was, paths } = k as { [key: string]: unknown }
     if ('was' in (k as object) ? 'scope' in (k as object) || was !== 'write' : !SCOPES.includes(scope as Scope)) {
       fail('permissions', `scope is one of ${SCOPES.join(', ')}; a past key has was, write, in its place`)
     }
     if (!publicKeyFromAddress(key)) fail('permissions', 'an access key is a usable address')
     if (scope === 'read') {
-      if (typeof recipient !== 'string' || !RECIPIENT.test(recipient)) fail('permissions', 'a read key gives its recipient, an age post-quantum hybrid recipient, age1pq1…')
-    } else if ('recipient' in (k as object)) fail('permissions', 'only a read key gives a recipient')
+      if (typeof sealTo !== 'string' || !SEAL_TO.test(sealTo)) fail('permissions', 'a read key gives sealTo, an age post-quantum hybrid key, age1pq1…')
+    } else if ('sealTo' in (k as object)) fail('permissions', 'only a read key gives sealTo')
     if ('paths' in (k as object)) checkAccessPaths(paths, 'permissions')
-    for (const half of scope === 'read' ? [key, recipient] : [key]) {
+    for (const half of scope === 'read' ? [key, sealTo] : [key]) {
       if (listed.has(half)) fail('permissions', 'a key is listed twice')
       listed.add(half)
     }

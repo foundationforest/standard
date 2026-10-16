@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 import { inboxKey, mainKey, seedScalar, vaultKey } from '../../keys/src/index.ts'
-import { fieldHash, noteNumberOf, noteToJson, signNote } from '../../proofs/human/client/src/index.ts'
+import { fieldHash, noteNumberOf, noteToJson, signNote } from '../../proofs/note/client/src/index.ts'
 import { publish, readProfile } from '../src/client.ts'
 import { type Vault, VAULT_PATH, checkVault, openVault, readVault, readerCount, vaultRecord } from '../src/private.ts'
 import { RecordError } from '../src/record.ts'
@@ -15,7 +15,7 @@ import { startHost } from './helpers.ts'
 const vault = await vaultKey(SEED)
 const vaultInbox = await inboxKey(vault.secret)
 const code = (c: string) => (err: unknown) => err instanceof RecordError && err.code === c
-// A note an example issuer signed for keys/'s test person, as proofs/human/client's noteToJson writes it.
+// A note an example issuer signed for keys/'s test person, as proofs/note/client's noteToJson writes it.
 const note = noteToJson(
   signNote(new Uint8Array(32).fill(0x31), {
     noteNumber: noteNumberOf(await seedScalar(SEED), 'issuer-a.example'),
@@ -27,7 +27,7 @@ describe('the vault', () => {
   test('its folder is the vault key’s, no profile’s; only the vault’s inbox key opens it', async () => {
     assert.equal(vault.address, KEYS.vault.address)
     for (const p of KEYS.mainKeys) assert.notEqual(vault.address, p.address)
-    const record = await vaultRecord(vault, vaultInbox.recipient, { settings: { theme: 'dark' } }, T0)
+    const record = await vaultRecord(vault, vaultInbox.sealTo, { settings: { theme: 'dark' } }, T0)
     assert.equal(record.path, VAULT_PATH)
     assert.equal(record.profile, vault.address)
     assert.equal(readerCount(record.body as { private: string }), 1, 'sealed to the vault alone')
@@ -38,7 +38,7 @@ describe('the vault', () => {
 
   test('every field may be missing, and an app keeps the fields it does not know, at the top and in settings', async () => {
     const contents = { tickets: [{ for: 'later' }], settings: { theme: 'dark', anotherApp: { a: 1 } } }
-    const record = await vaultRecord(vault, vaultInbox.recipient, contents as Vault, T0)
+    const record = await vaultRecord(vault, vaultInbox.sealTo, contents as Vault, T0)
     assert.deepEqual(await openVault(record.body!, vaultInbox.identity), contents)
     checkVault({})
   })
@@ -58,7 +58,7 @@ describe('the vault', () => {
       ['settings is an object', { settings: [] }],
     ]
     for (const [why, v] of bad) assert.throws(() => checkVault(v), code('vault'), why)
-    await assert.rejects(vaultRecord(vault, vaultInbox.recipient, { settings: [] } as never, T0), code('vault'))
+    await assert.rejects(vaultRecord(vault, vaultInbox.sealTo, { settings: [] } as never, T0), code('vault'))
   })
 
   test('a full restore: a new device with only the seed and one host gets every profile, note and setting back', async () => {
@@ -69,8 +69,8 @@ describe('the vault', () => {
       const seller = await mainKey(SEED, 'tutoring/seller')
       const buyer = await mainKey(SEED, 'tutoring/buyer')
       const sellerInbox = await inboxKey(seller.secret)
-      const sellerCard = { ...profileBody('maths'), inboxKey: sellerInbox.recipient, inbox: { senders: 'anyone' } }
-      await publish([a.url], [hostsRecord(seller, [a.url], T0), ownerRecord(seller, 'profile', sellerCard, T0), ownerRecord(seller, 'offer/maths', offerBody('30'), T0)])
+      const sellerProfile = { ...profileBody('maths'), inboxKey: sellerInbox.sealTo, inbox: { senders: 'anyone' } }
+      await publish([a.url], [hostsRecord(seller, [a.url], T0), ownerRecord(seller, 'profile', sellerProfile, T0), ownerRecord(seller, 'offer/maths', offerBody('30'), T0)])
       await publish([b.url], [hostsRecord(buyer, [b.url], T0), ownerRecord(buyer, 'profile', { ...profileBody('maths'), role: 'buyer' }, T0)])
 
       // The first device keeps the rest in the vault, on a third host.
@@ -80,7 +80,7 @@ describe('the vault', () => {
         bookmarks: [{ url: 'https://shop.example', since: T0 }],
         settings: { indexes: ['https://index.example'], theme: 'dark' },
       }
-      await publish([c.url], [hostsRecord(vault, [c.url], T0), await vaultRecord(vault, vaultInbox.recipient, kept, T0)])
+      await publish([c.url], [hostsRecord(vault, [c.url], T0), await vaultRecord(vault, vaultInbox.sealTo, kept, T0)])
       const disk = c.dump().join('\n')
       for (const secret of ['tutoring/seller', 'issuer-a.example', 'index.example', note.noteNumber]) assert.ok(!disk.includes(secret), `the host holds no ${secret}`)
 
@@ -101,7 +101,7 @@ describe('the vault', () => {
 
       // A later write, from either device, after the one read: the newer vault counts.
       const later = { ...found.vault, settings: { ...found.vault.settings, theme: 'light' } }
-      await publish([c.url], [await vaultRecord(v2, vaultInbox.recipient, later, Math.max(now(), found.time + 1))])
+      await publish([c.url], [await vaultRecord(v2, vaultInbox.sealTo, later, Math.max(now(), found.time + 1))])
       assert.deepEqual((await readVault([c.url], { address: v2.address, identity: vaultInbox.identity }, now()))?.vault.settings, { indexes: ['https://index.example'], theme: 'light' })
 
       // A host with no vault: nothing found.
@@ -118,7 +118,7 @@ describe('the vault', () => {
     try {
       const reader = { address: vault.address, identity: vaultInbox.identity }
       await assert.rejects(readVault([up.url, down.url], reader, now()), code('host'))
-      await publish([up.url], [hostsRecord(vault, [up.url], T0), await vaultRecord(vault, vaultInbox.recipient, { settings: { theme: 'dark' } }, T0)])
+      await publish([up.url], [hostsRecord(vault, [up.url], T0), await vaultRecord(vault, vaultInbox.sealTo, { settings: { theme: 'dark' } }, T0)])
       const found = await readVault([up.url, down.url], reader, now())
       assert.deepEqual(found?.vault.settings, { theme: 'dark' })
       assert.deepEqual(found?.failed.map((f) => f.host), [down.url])

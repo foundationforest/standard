@@ -2,7 +2,7 @@
   "name": "@forest/records",
   "version": "0.0.0",
   "private": true,
-  "description": "Forest records: signed records on open hosts. The core library, a reference host, private records, a fetch that reaches only public addresses, the record schemas, tests and vectors. Nothing is shipped.",
+  "description": "Forest records: signed records on open hosts. The core library, a reference host, private records, a fetch that reaches only public addresses, the profile record's schema, tests and vectors.",
   "license": "Apache-2.0",
   "type": "module",
   "engines": {

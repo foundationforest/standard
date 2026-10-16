@@ -1,7 +1,7 @@
 // The vault key: the main key of the person's vault, a folder of its own on a host that holds what
 // a new device needs and the seed alone cannot give back (records/README.md, The vault). It is
-// mixed from the seed, so a new device finds the vault with nothing but the seed: its address is
-// the folder's name. It signs as a profile's main key does, on Baby Jubjub. Its inbox key, mixed
+// mixed from the seed, so a new device finds the vault with the seed and one host's address: its
+// address is the folder's name. It signs as a profile's main key does, on Baby Jubjub. Its inbox key, mixed
 // from the vault's secret as a profile's is from its own (inboxKey), opens what the vault holds.
 // Its Poseidon mix has its own tag and no label, so no profile's key is ever the vault's.
 

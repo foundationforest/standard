@@ -2,9 +2,6 @@
 
 Part of Forest's standard: [the top README](../../README.md). Up: [proofs](../README.md).
 
-On devnet only: the reputation circuit's setup was made by one party; a public setup ceremony
-comes before mainnet. Nothing is on mainnet.
-
 ## What it is
 
 The reputation proof lets a person carry a score from their profiles (their identities, one for
@@ -23,7 +20,7 @@ it on the device from their seed scalar ([keys](../../keys/README.md#the-seed-sc
 seed never leaves the device, and any reader checks it, off chain. It is built with
 circom 2.2.3, Groth16 on BN254, and the Poseidon and Merkle pieces Semaphore uses.
 
-- `circuit/`: the circuit, its devnet setup, and the tests that make proofs.
+- `circuit/`: the circuit, its setup, and the tests that make proofs.
 - `client/`: the tree an index builds, the proof an app makes, and the check any reader makes.
 
 ## How it works
@@ -39,16 +36,14 @@ that root holds.
 
 - **A leaf** is `Poseidon(stamp, scope, value, weight)`, circomlib's Poseidon with four inputs (the
   circuit and the client name the last two `score` and `count`):
-  - `stamp`: the profile's stamp at an issuer ([keys](../../keys/README.md#stamps)), as its human
-    proof shows it ([human](../human/README.md#the-note-and-the-human-proof)). The human proof shows
-    an issuer checked the person, with a note, an issuer's signed word that it checked them.
+  - `stamp`: the profile's stamp at an issuer ([keys](../../keys/README.md#stamps)), as its note
+    proof shows it ([note](../note/README.md#the-note-and-the-note-proof)): an issuer signed a note
+    to the seed behind the profile.
   - `scope`: the profile's label as a number, exactly as `keys/` makes it
     ([keys](../../keys/README.md#the-recipe)).
-  - `value` and `weight`: two whole numbers from 0 to 2^32 - 1, and both the index's. Forest's
-    index puts the rating times ten and how many reviews it comes from
-    ([services/index](https://github.com/foundationforest/services/tree/main/index#the-reputation-tree)),
-    but any two numbers work. The circuit outputs the values' average, each weighted by its
-    weight; any other aggregate is a new circuit.
+  - `value` and `weight`: each a whole number below 2^32 whose meaning is the index's. The
+    circuit outputs the values' average, each weighted by its weight; any other aggregate is a new
+    circuit.
 - **One leaf per stamp.**
 - **The tree** is Semaphore's lean incremental Merkle tree over Poseidon of pairs, with the leaves
   in the index's order: it hashes the leaves in pairs, level by level, up to one number, the root,
@@ -67,7 +62,8 @@ that root holds.
 
 [`circuit/reputation.circom`](circuit/reputation.circom), `Reputation(8, 20)`: eight slots,
 each one profile, a leaf and its path to the root. The person fills the ones they want and leaves
-the rest blank.
+the rest blank. Eight slots and a depth of 20 are parameters of this circuit: others are a new
+circuit and a new setup.
 
 | | Signals |
 |---|---|
@@ -75,8 +71,8 @@ the rest blank.
 | Public, in this order | `score`, the output, the weighted average; `root`; `profileX`, `profileY`, the key of the profile the proof is shown on; `scope`, the label shown, or 0 |
 
 `profileX` and `profileY` are the key of the profile the proof is shown on, worked out inside the
-proof from the same seed scalar as every counted profile's stamp, the way the human proof works it
-out ([human](../human/README.md#the-note-and-the-human-proof)). So the proof holds only on a
+proof from the same seed scalar as every counted profile's stamp, the way the note proof works it
+out ([note](../note/README.md#the-note-and-the-note-proof)). So the proof holds only on a
 profile of the person whose seed is behind the counted profiles: it cannot be lent to anyone else,
 nor copied to another profile.
 
@@ -98,18 +94,17 @@ Inside the proof:
 Which leaves, and how many, stays hidden. A path's position is one number: the Merkle piece,
 zk-kit's `binary-merkle-root` 2.0.0, splits it into bits itself.
 
-### The devnet setup
+### The setup
 
 A Groth16 proof needs a setup, made once for its circuit: whoever knows all of the setup's secret
 randomness could make false proofs, so it is made in public by many people, and one honest one is
 enough.
 
 - **Phase 1** is public: PSE's Perpetual Powers of Tau, `ppot_0080_16.ptau`, pinned by SHA-256.
-- **Phase 2** is one contribution, made once by `circuit/devnet/setup.sh`: one party. Whoever
-  made it could make false proofs, so it is for devnet only. A public setup ceremony, with many
-  people contributing to phase 2 on the same phase 1, comes before mainnet.
+- **Phase 2** is one contribution, made once by `circuit/setup/setup.sh`
+  ([proofs](../README.md#limits)).
 - **What is committed:** `verification-key.json`, and
-  [`setup.json`](circuit/devnet/setup.json), which records the toolchain, phase 1, the
+  [`setup.json`](circuit/setup/setup.json), which records the toolchain, phase 1, the
   contribution's hash, and every file's size and SHA-256.
 - **What is not:** the proving key and the witness generator, used only to make a proof. They are
   in the GitHub release `reputation`, and `npm run fetch` refuses anything whose hash does not
@@ -148,8 +143,8 @@ const r = await proveReputation({
   leaves,                      // the index's published leaves, in its order
   profileLabel: 'tutoring/new', // the profile the proof is shown on
   artifacts: {
-    wasm: 'proofs/reputation/circuit/devnet/reputation.wasm',
-    zkey: 'proofs/reputation/circuit/devnet/reputation.zkey',
+    wasm: 'proofs/reputation/circuit/setup/reputation.wasm',
+    zkey: 'proofs/reputation/circuit/setup/reputation.zkey',
   },
 })
 
@@ -167,14 +162,14 @@ SHA-256 `setup.json` records; and, from `package-lock.json`, snarkjs 0.7.5, circ
 
 ```
 cd keys && npm ci                         # the stamp, the scope and the profile's key
-cd proofs/human/client && npm ci          # the proof's 256 bytes
+cd proofs/note/client && npm ci           # the proof's 256 bytes
 cd proofs/reputation/client && npm ci
 npm run check && npm test                 # the tree, what an index signs, what the client refuses
 cd proofs/reputation/circuit && npm ci    # after proofs/reputation/client
 npm run fetch                             # the release's files, hash-checked
 npm run compile                           # circom 2.2.3 on PATH or in CIRCOM; checks setup.json
 npm run check && npm test                 # proofs, and every way one must fail
-devnet/setup.sh                           # a new setup: new files, every hash new, a new release
+setup/setup.sh                            # a new setup: new files, every hash new, a new release
 ```
 
 The client's tests check the tree, the bytes an index signs, the inputs the client refuses, and that
@@ -182,7 +177,7 @@ the proof names `keys/`'s main key. The circuit's tests build a tree of made-up 
 `keys/`'s test person, prove with one profile and with three from two issuers, shown on another
 profile of the person's own. A wrong seed scalar, a slot with the wrong issuer, a leaf not in the
 tree, a profile counted twice (also as two issuers' leaves), a label shown with two profiles, and a
-profile key that is not the prover's for its label are refused; a changed output, root or time
+main key that is not the prover's for its label are refused; a changed output, root or time
 fails to verify, and so does a proof shown on someone else's profile or on another of the
 person's own.
 
@@ -212,38 +207,28 @@ Measured in Node 22 on a 4-core machine, with 8 slots at depth 20:
 
 ## Limits
 
-- **Devnet setup only, made by one party.** Whoever ran `circuit/devnet/setup.sh` could make false
-  reputation proofs. A public setup ceremony comes before mainnet.
-- **The person picks which profiles count.** Up to eight. A proof says "these profiles of mine",
-  never "all of them": a low-scored profile can be left out, and nothing public can tell which
-  profiles are all of one person's.
-- **One seed per proof.** A person with two seeds, checked by two issuers, cannot count one seed's
-  profiles on the other's.
-- **The profile it lands on need not be checked.** The proof shows that profile is the person's
-  own, not that an issuer checked it; a reader that wants both reads its human proofs too
-  ([human](../human/README.md)).
-- **A label and an exact score can point to one leaf.** The tree is public. In a market with few
-  profiles, the leaves with that label and that value may be just one, and that names the profile.
-  A hidden label narrows it too, when few leaves have that value. The app should say so before a
-  proof is shown.
+- **In a small tree, the exact score, and the label when shown, can point at one leaf.** The tree
+  is public: when few leaves have that score, and that label, the one left names the profile. The
+  app should say so before a proof is shown.
+- **One seed per proof.** A person with two seeds cannot count one seed's profiles on the other's.
+- **The profile it lands on need not hold a note.** The proof shows that profile is the person's
+  own, not that an issuer signed its seed a note; a reader that wants both reads its note proofs too
+  ([note](../note/README.md)).
 - **Building the tree takes time.** About twelve minutes for a million leaves at the speed above. An
   app that asks the index for its path instead tells the index which profiles are its.
-- **A score is only as good as its index.** The proof shows what the index's tree says. A reader
-  decides which indexes it trusts and how old a time it accepts.
-- **It trusts** circom 2.2.3, snarkjs 0.7.5, circomlib's Poseidon and zk-kit's Merkle circuit
-  2.0.0, used unchanged.
 - **Not audited.**
 
 ## Who decides what
 
 - **The standard:** the leaf, the tree, what an index signs, and the circuit and its public
   signals.
-- **An index:** chooses each leaf's value and weight, and what they mean; which reviews count and
-  how much; and when and where it publishes its tree.
-- **A reader (an app, an index or a service):** chooses which indexes it trusts, how old a time it
-  accepts, and what a score means to it.
-- **An app, with the person:** whether to show a proof, which profiles count, and whether to show
-  the label.
+- **An index:** each leaf's value and weight, and what they mean; which reviews count and how much;
+  and when and where it publishes its tree.
+- **A reader (an app, an index or a service):** which indexes it trusts, since a score is only as
+  good as its index; how old a signed root may be; and what a score means to it.
+- **The person, with their app:** whether to show a proof; which profiles count, up to eight: a
+  proof says "these profiles of mine", never "all of them", so a low-scored one can be left out;
+  and whether to show the label.
 
 ## FAQ
 
@@ -251,18 +236,18 @@ Measured in Node 22 on a 4-core machine, with 8 slots at depth 20:
 Poseidon hashes. Eight covers two roles in each of four markets and keeps a proof to a few
 seconds. More is a new circuit and a new setup.
 
-**Why a depth of 20?** A million leaves per index tree is enough for now. A deeper tree is a new
-circuit and a new setup.
+**Why a depth of 20?** A million leaves per index tree. A deeper tree is a new circuit and a new
+setup.
 
 **Why does the proof not say the weights?** An index that wants the number of reviews behind a
 profile to count puts it in the value. The weights only weigh one profile against another inside
 the proof, and a second output would say more about the person than the average does.
 
-**Why does each slot name its own issuer, and the proof none?** A person's profiles may be
-checked by different issuers, and one seed is behind them all, so the proof counts them together.
-Which issuers' stamps a tree holds is the index's choice, made when it read each profile's human
-proofs, so a reader trusts the index for it; naming the issuers would tell a reader more about the
+**Why does each slot name its own issuer, and the proof none?** A person's profiles may hold notes
+from different issuers, and one seed is behind them all, so the proof counts them together. Which
+issuers' stamps a tree holds is the index's choice, made when it read each profile's note proofs,
+so a reader trusts the index for it; naming the issuers would tell a reader more about the
 person than the score does.
 
-**Why is it checked off chain?** Nothing on chain needs a reputation, and a sealed program could
-not take a better circuit later. Whoever is shown a proof checks it.
+**Why is it checked off chain?** Nothing on chain needs a reputation, and a program that cannot
+change could not take a better circuit. Whoever is shown a proof checks it.

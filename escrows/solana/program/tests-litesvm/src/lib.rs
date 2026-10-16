@@ -2,7 +2,7 @@
 //!
 //! Nothing here imports the program crate. The instruction bytes, the account layout, the event
 //! layouts and the discriminators are written by hand, the way an outside client has to write
-//! them, so a test passing means the sealed format really is what `src/lib.rs` and
+//! them, so a test passing means the fixed format really is what `src/lib.rs` and
 //! `escrows/solana/client` both say it is. A drift on either side fails a test instead of passing
 //! quietly.
 //!

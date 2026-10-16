@@ -4,13 +4,13 @@ Part of Forest's standard: [the top README](../README.md).
 
 ## What it is
 
-On-chain lockboxes for payment, one folder for each blockchain. An escrow holds a deal's money
+On-chain lockboxes for payment, one directory for each blockchain. An escrow holds a deal's money
 between two keys, a payer and a recipient, under a schedule set when it opens: what each side may
 do alone, until when, and what happens at the end. One program runs every schedule, so a new kind
 of deal is new parameters, never new code. An escrow that held the money leaves a receipt saying
 how the deal ended.
 
-- [`solana/`](solana/README.md): the escrow on Solana, on devnet today.
+- [`solana/`](solana/README.md): the escrow on Solana, on devnet.
 
 ## How it works
 
@@ -71,7 +71,7 @@ never stopped: everything goes back to the payer, and no receipt is kept. So whi
 default favours marks any payment it sees before the end time, and an app that pays marks in the
 same transaction.
 
-### Each chain's folder
+### Each chain's directory
 
 - `program/`: the code that runs on that chain and holds the money, with its tests.
 - `client/`: the library that builds its transactions and reads its accounts.
@@ -96,7 +96,8 @@ Each escrow's promises are in its own README: [solana](solana/README.md#promises
 
 - **The standard:** the schedule's format and the moves.
 - **Whoever opens an escrow** writes its schedule and names its arbiter; **the other side** reads
-  both before working or paying, and its app shows every one it did not set.
+  both before working or paying, and the client lists every option it did not set, for the app to
+  show.
 - **A market** may suggest an offer field that carries a schedule
   ([markets](https://github.com/foundationforest/markets)).
 - The rest is each escrow's README: [solana](solana/README.md#who-decides-what).
@@ -116,7 +117,3 @@ from it on, only the default can run. A side that wants to dispute does it insid
 A payment made and given in the same transaction needs none, and a deal with no default should not
 have one invented for it. Without a schedule, the money leaves by a side giving, both agreeing, or
 the arbiter.
-
-**Why one folder for each chain?**
-An escrow is a program, and a program runs on one chain. Another chain's escrow is its own program,
-client and deploy, in a folder of its own beside `solana/`, running the same schedule.

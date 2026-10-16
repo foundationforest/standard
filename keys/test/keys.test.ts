@@ -84,7 +84,7 @@ const big = (p: string[]): Point => [BigInt(p[0]), BigInt(p[1])]
 test('the info strings and the tags are exactly the standard', () => {
   assert.equal(INFO.seed, 'forest/v1/seed')
   assert.equal(INFO.profile('tutoring/seller'), 'forest/v1/profile/tutoring/seller')
-  assert.equal(INFO.read, 'forest/v1/read')
+  assert.equal(INFO.read, 'forest/v1/inbox')
   assert.equal(INFO.pay('tutoring/seller'), 'forest/v1/pay/solana/tutoring/seller')
   assert.equal(INFO.vault, 'forest/v1/vault')
   assert.equal(INFO.seed, vectors.seedScalar.info)
@@ -173,7 +173,7 @@ test('each label gives the pinned main key, and gives it again', async () => {
 
 test('the main key, recomputed without the library: keccak, Poseidon, the low 250 bits, Baby Jubjub, the packing', () => {
   for (const expected of vectors.mainKeys) {
-    const scope = field('forest.foundation/label/v1/' + expected.label)
+    const scope = field('forest/v1/label/' + expected.label)
     assert.equal(scope.toString(), expected.scope)
     const raw = poseidon3([TAG.profile, S, scope])
     assert.equal(raw.toString(), expected.raw)
@@ -320,17 +320,17 @@ test("the inbox key, recomputed without the library: HKDF twice, ML-KEM-768 with
   const privateKey = mix(mix(seed, seller.info), INFO.read)
   assert.equal(hex.encode(privateKey), seller.inbox.privateKey)
   assert.equal(bech32.encodeFromBytes('AGE-SECRET-KEY-PQ-', privateKey).toUpperCase(), seller.inbox.identity)
-  // The recipient is the hybrid public key the 32 bytes expand to, in bech32 under age1pq, with
+  // What others seal to is the hybrid public key the 32 bytes expand to, in bech32 under age1pq, with
   // no length limit: it is about 1,960 characters.
   const publicKey = MLKEM768X25519.getPublicKey(privateKey)
-  assert.equal(bech32.encode('age1pq', bech32.toWords(publicKey), false), seller.inbox.recipient)
+  assert.equal(bech32.encode('age1pq', bech32.toWords(publicKey), false), seller.inbox.sealTo)
   assert.match(seller.inbox.identity, /^AGE-SECRET-KEY-PQ-1[0-9A-Z]+$/)
-  assert.match(seller.inbox.recipient, /^age1pq1[0-9a-z]+$/)
+  assert.match(seller.inbox.sealTo, /^age1pq1[0-9a-z]+$/)
 })
 
-test('age encrypts to the inbox key, and only that profile opens it', async () => {
+test('age seals to the inbox key, and only that profile opens it', async () => {
   const encrypter = new Encrypter()
-  encrypter.addRecipient(seller.inbox.recipient)
+  encrypter.addRecipient(seller.inbox.sealTo)
   const encrypted = await encrypter.encrypt('only for the seller profile')
   const opener = new Decrypter()
   opener.addIdentity(seller.inbox.identity)
@@ -416,8 +416,8 @@ test('the issuer secret, the note number and a stamp, recomputed without the lib
     assert.equal(issuerScalarOf(S, expected.name), scalar)
     assert.equal(poseidon1([scalar]).toString(), expected.noteNumber)
     for (const [label, stamp] of Object.entries(expected.stamps)) {
-      assert.equal(poseidon2([field('forest.foundation/label/v1/' + label), scalar]).toString(), stamp)
-      assert.equal(scopeOf(label), field('forest.foundation/label/v1/' + label))
+      assert.equal(poseidon2([field('forest/v1/label/' + label), scalar]).toString(), stamp)
+      assert.equal(scopeOf(label), field('forest/v1/label/' + label))
     }
   }
 })
@@ -456,9 +456,9 @@ test("an access key's 32 bytes are a zk-kit EdDSA-Poseidon private key: the pinn
   const r = await readKey(hex.decode(v.read.secret))
   assert.equal(r.address, v.read.address)
   assert.equal(r.identity, v.read.identity)
-  assert.equal(r.recipient, v.read.recipient)
+  assert.equal(r.sealTo, v.read.sealTo)
   // The read key's identity is mixed as an inbox key is, from the same 32 bytes: no public number gives it.
-  assert.deepEqual(await inboxKey(hex.decode(v.read.secret)), { identity: v.read.identity, recipient: v.read.recipient })
+  assert.deepEqual(await inboxKey(hex.decode(v.read.secret)), { identity: v.read.identity, sealTo: v.read.sealTo })
   assert.equal(hex.encode(mix(hex.decode(v.read.secret), INFO.read)), hex.encode(await hkdf(hex.decode(v.read.secret), INFO.read)))
   // zk-kit signs with the same bytes; the signature holds under the access key.
   const m = 777n

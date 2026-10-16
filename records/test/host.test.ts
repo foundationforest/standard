@@ -53,7 +53,7 @@ describe('two hosts, readers', () => {
   test('an update and a delete reach readers from either host; what they replaced goes after keep days', async () => {
     clock.advance(MINUTE)
     const known = await readProfile([h1.url], alice.address, clock.t)
-    // Only host 2 gets the update; only host 1 gets the delete of the profile card.
+    // Only host 2 gets the update; only host 1 gets the delete of the profile record.
     await publish([h2.url], [ownerRecord(alice, 'offer/maths', offerBody('35'), nextTime(clock.t, known, 'offer/maths'))])
     await publish([h1.url], [ownerRecord(alice, 'profile', null, nextTime(clock.t, known, 'profile'))])
     const v = await readProfile([h1.url, h2.url], alice.address, clock.t)
@@ -65,7 +65,7 @@ describe('two hosts, readers', () => {
     assert.equal(await h2.prune(clock.t + 29 * DAY), 0)
     assert.equal(await h2.prune(clock.t + 31 * DAY), 1)
     assert.equal(h2.count(alice.address), was - 1)
-    // A delete is current: it is never pruned, so the card stays deleted.
+    // A delete is current: it is never pruned, so the profile record stays deleted.
     await h1.prune(clock.t + 31 * DAY)
     assert.ok((await readAll(h1.url, { profile: alice.address })).records.some((c) => c.record.path === 'profile' && c.record.body === null))
   })
@@ -214,7 +214,7 @@ describe('access keys, checked as they arrive', () => {
     }
   })
 
-  test('revoking a write key: the host keeps what it wrote, and refuses what it sends from then on, however it is dated', async () => {
+  test('revoking a write key: the host keeps what it wrote, takes what it dates before the permissions record, and refuses what it dates at its time or after', async () => {
     const clock = new Clock(T0)
     const h = await startHost({ now: clock.now })
     try {
@@ -222,12 +222,68 @@ describe('access keys, checked as they arrive', () => {
       clock.advance(MINUTE)
       await publish([h.url], [permissionsRecord(alice, [pastKey(accessKey, ['offer'])], clock.t)])
       assert.equal((await readProfile([h.url], alice.address, clock.t + 30 * DAY)).current.get('offer/w')!.record.by, accessKey.address, 'what it wrote stays')
-      const refused = (await publish([h.url], [accessRecord(accessKey, alice.address, 'offer/again', offerBody('1'), T0 + 1)]))[0]!.results[0]!
-      assert.deepEqual([refused.error, refused.message], ['permission', 'this access key is past'], 'nor anything backdated')
+      const backdated = accessRecord(accessKey, alice.address, 'offer/again', offerBody('1'), T0 + 1)
+      const at = accessRecord(accessKey, alice.address, 'offer/at', offerBody('1'), clock.t)
+      const after = accessRecord(accessKey, alice.address, 'offer/after', offerBody('1'), clock.t + 1)
+      const results = (await publish([h.url], [backdated, at, after]))[0]!.results
+      assert.deepEqual(results.map((r) => r.error ?? 'ok'), ['ok', 'permission', 'permission'])
+      assert.equal(results[2]!.message, 'the permissions record does not allow this access key here')
+      const read = await readProfile([h.url], alice.address, clock.t + 30 * DAY)
+      assert.deepEqual([read.current.has('offer/again'), read.current.has('offer/at'), read.current.has('offer/after')], [true, false, false], 'readers count what the host took, and nothing else')
       await h.prune(clock.t + 31 * DAY)
-      assert.deepEqual((await readAll(h.url)).records.map((c) => c.record.path).sort(), ['offer/w', 'permissions'])
+      assert.deepEqual((await readAll(h.url)).records.map((c) => c.record.path).sort(), ['offer/again', 'offer/w', 'permissions'])
     } finally {
       await h.close()
+    }
+  })
+
+  test('a write key made past after its record passed recordChoice is refused at the commit', async () => {
+    const clock = new Clock(T0)
+    let release: () => void = () => {}
+    const waiting = new Promise<void>((resolve) => (release = resolve))
+    let asked: () => void = () => {}
+    const choosing = new Promise<void>((resolve) => (asked = resolve))
+    const h = await startHost({ now: clock.now, recordChoice: async () => (asked(), await waiting, null) })
+    try {
+      await publish([h.url], [permissionsRecord(alice, [allow(accessKey, ['offer'])], T0)])
+      clock.advance(MINUTE)
+      const pending = h.accept([encodeRecord(accessRecord(accessKey, alice.address, 'offer/late', offerBody('1'), clock.t))])
+      await choosing
+      // While the host's own choice waits, the owner makes the key past.
+      assert.deepEqual((await h.accept([encodeRecord(permissionsRecord(alice, [pastKey(accessKey, ['offer'])], clock.t))])).map((r) => r.error ?? 'ok'), ['ok'])
+      release()
+      const [result] = await pending
+      assert.deepEqual([result!.error, result!.message], ['permission', 'the permissions record does not allow this access key here'])
+      assert.equal(h.view(alice.address).current.has('offer/late'), false)
+    } finally {
+      await h.close()
+    }
+  })
+
+  test('a folder with a past key copies whole to a fresh host, hosts record, permissions record, then every record, and reads the same there', async () => {
+    const clock = new Clock(T0)
+    const old = await startHost({ now: clock.now })
+    const fresh = await startHost({ now: clock.now })
+    try {
+      await publish([old.url], [hostsRecord(alice, [old.url, fresh.url], T0), permissionsRecord(alice, [allow(accessKey, ['offer'])], T0), ownerRecord(alice, 'profile', profileBody('maths'), T0)])
+      await publish([old.url], [accessRecord(accessKey, alice.address, 'offer/w', offerBody('9'), T0 + 1), accessRecord(accessKey, alice.address, 'offer/x', offerBody('3'), T0 + 2)])
+      clock.advance(MINUTE)
+      await publish([old.url], [permissionsRecord(alice, [pastKey(accessKey, ['offer'])], clock.t)])
+      clock.advance(DAY)
+      const there = await readProfile([old.url], alice.address, clock.t)
+      const folder = [...there.current.values()].map((c) => c.record)
+      for (const part of [folder.filter((r) => r.path === 'hosts'), folder.filter((r) => r.path === 'permissions'), folder.filter((r) => r.path !== 'hosts' && r.path !== 'permissions')]) {
+        const [outcome] = await publish([fresh.url], part)
+        assert.ok(outcome!.results.every((r) => r.ok), JSON.stringify(outcome!.results))
+      }
+      const here = await readProfile([fresh.url], alice.address, clock.t)
+      const ids = (v: typeof here) => [...v.current.values()].map((c) => c.id).sort()
+      assert.deepEqual(ids(here), ids(there))
+      assert.deepEqual([...here.current.keys()].sort(), ['hosts', 'offer/w', 'offer/x', 'permissions', 'profile'])
+      assert.equal(here.current.get('offer/w')!.record.by, accessKey.address, 'the past key’s records, taken by the fresh host')
+    } finally {
+      await old.close()
+      await fresh.close()
     }
   })
 
@@ -479,6 +535,61 @@ describe('limits: each host’s own size, batch and page; each reader’s own si
     }
   })
 
+  test('a read ends with an error on a cursor that is not a whole number or does not move forward, and the whole read is bounded', async () => {
+    const line = encodeRecord(ownerRecord(alice, 'offer/a', offerBody('1'), T0)) + '\n'
+    let cursor = 'x'
+    let forward = 0
+    const odd = createServer((req, res) => {
+      const at = req.url!.includes('forward') ? String(++forward) : cursor
+      res.writeHead(200, { 'content-type': 'application/x-ndjson', 'forest-cursor': at }).end(line)
+    })
+    await new Promise<void>((resolve) => odd.listen(0, '127.0.0.1', resolve))
+    const url = `http://127.0.0.1:${(odd.address() as { port: number }).port}`
+    try {
+      for (const c of ['x', '', '-1', '1.5', '01', '1e3', String(2 ** 53)]) {
+        cursor = c
+        await assert.rejects(readAll(url), /not a whole number/, JSON.stringify(c))
+      }
+      cursor = '0'
+      await assert.rejects(readAll(url), /does not move forward/, 'a page of lines that leaves the cursor where it was')
+      // A host whose cursor moves forward forever: the whole read, every page of it, ends at its timeout.
+      await assert.rejects(readAll(url, { profile: 'forward', timeout: 300 }), { name: 'TimeoutError' })
+      assert.ok(forward > 1, 'more than one page was read')
+    } finally {
+      odd.closeAllConnections()
+      await new Promise((resolve) => odd.close(resolve))
+    }
+  })
+
+  test('a publish reads the status first: a 413 splits the batch whatever its body, and no other status is parsed', async () => {
+    const h = await startHost({ now: () => T0 })
+    const asked: number[] = []
+    const front = createServer(async (req, res) => {
+      const chunks: Buffer[] = []
+      for await (const chunk of req) chunks.push(chunk as Buffer)
+      const body = Buffer.concat(chunks).toString()
+      const lines = body.split('\n').filter((l) => l)
+      asked.push(lines.length)
+      if (req.url === '/broken/v1/records') return void res.writeHead(502, { 'content-type': 'text/html' }).end('<html>bad gateway</html>')
+      if (lines.length > 1) return void res.writeHead(413, { 'content-type': 'text/html' }).end('<html>too large</html>')
+      const out = await fetch(`${h.url}/v1/records`, { method: 'POST', body })
+      res.writeHead(out.status, { 'content-type': 'application/x-ndjson' }).end(await out.text())
+    })
+    await new Promise<void>((resolve) => front.listen(0, '127.0.0.1', resolve))
+    const url = `http://127.0.0.1:${(front.address() as { port: number }).port}`
+    try {
+      const records = ['offer/a', 'offer/b', 'offer/c'].map((path) => ownerRecord(alice, path, offerBody('1'), T0))
+      const [outcome] = await publish([url], records)
+      assert.deepEqual(outcome!.results.map((r) => [r.i, r.ok]), [[0, true], [1, true], [2, true]])
+      assert.deepEqual(asked, [3, 2, 1, 1, 1], 'in halves, down to one line')
+      const [broken] = await publish([`${url}/broken`], records.slice(0, 1))
+      assert.deepEqual([broken!.status, broken!.results, broken!.error], [502, [], undefined])
+    } finally {
+      await new Promise((resolve) => front.close(resolve))
+      await h.close()
+    }
+  })
+
   test('a reader reads through the fetch it is given, and may refuse redirects', async () => {
     const h = await startHost({ now: () => T0 })
     const away = createServer((req, res) => res.writeHead(302, { location: `${h.url}${req.url}` }).end())
@@ -514,7 +625,7 @@ describe('limits: each host’s own size, batch and page; each reader’s own si
     const away = createServer((req, res) => res.writeHead(307, { location: `${h.url}${req.url}` }).end())
     await new Promise<void>((resolve) => away.listen(0, '127.0.0.1', resolve))
     const url = `http://127.0.0.1:${(away.address() as { port: number }).port}`
-    const card = ownerRecord(alice, 'profile', profileBody('maths'), T0)
+    const profile = ownerRecord(alice, 'profile', profileBody('maths'), T0)
     const note = signMessage(bob, alice.address, { private: 'YWdl' }, T0)
     try {
       const asked: string[] = []
@@ -522,15 +633,15 @@ describe('limits: each host’s own size, batch and page; each reader’s own si
         asked.push(String(input))
         return fetch(input, init)
       }
-      await publish([h.url], [card], { fetch: counting })
+      await publish([h.url], [profile], { fetch: counting })
       await deliver([h.url], [note], { fetch: counting })
       await pull(h.url, pullRequest(alice, 0, T0), { fetch: counting })
       assert.deepEqual(asked.map((u) => new URL(u).pathname), ['/v1/records', '/v1/inbox', '/v1/inbox/pull'])
 
-      assert.equal((await publish([url], [card], { redirect: 'error' }))[0]!.status, 0, 'a host that redirects takes nothing')
+      assert.equal((await publish([url], [profile], { redirect: 'error' }))[0]!.status, 0, 'a host that redirects takes nothing')
       assert.equal((await deliver([url], [note], { redirect: 'error' }))[0]!.status, 0)
       await assert.rejects(pull(url, pullRequest(alice, 0, T0), { redirect: 'error' }))
-      assert.equal((await publish([url], [card]))[0]!.status, 200, 'followed unless told')
+      assert.equal((await publish([url], [profile]))[0]!.status, 200, 'followed unless told')
     } finally {
       away.closeAllConnections()
       await new Promise((resolve) => away.close(resolve))

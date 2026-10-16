@@ -35,18 +35,18 @@ Two mixers, each a standard one-way mix:
   tag, so no mix can give another's number.
 
 Text enters Poseidon as a number: `keccak256` of its UTF-8 bytes, shifted right one byte so it fits
-the proofs' numbers. A label's number is its **scope**, `keccak256("forest.foundation/label/v1/" ‖
-label) >> 8`; an issuer's name's is its **name hash**, `keccak256("forest/v1/issuer/" ‖ name) >>
-8`; the three tags are `keccak256` of `forest/v1/issuer`, `forest/v1/profile` and `forest/v1/vault`,
-`>> 8`.
+the proofs' numbers. A label's number is its **scope**,
+`keccak256("forest/v1/label/" ‖ label) >> 8`; an issuer's name's is its **name hash**,
+`keccak256("forest/v1/issuer/" ‖ name) >> 8`; the three tags are `keccak256` of
+`forest/v1/issuer`, `forest/v1/profile` and `forest/v1/vault`, `>> 8`.
 
 The table uses words from the rest of the standard:
 
 - **profile:** one of the person's identities, one for each label, a free text saying what the
   profile is for;
-- **note:** what an issuer, anyone who checks people, signs for a person after checking them;
-- **stamp:** the number an index's tree knows a profile by, one for each issuer that checked the
-  person;
+- **note:** what an issuer, anyone who signs notes, signs to a person's seed;
+- **stamp:** the number an index's tree knows a profile by, one for each issuer that signed the
+  person a note;
 - **vault:** a folder of the person's own on a host, which a new device restores from. A folder is
   the signed records kept under one key, and a host is a server that keeps folders.
 
@@ -55,7 +55,7 @@ The table uses words from the rest of the standard:
 | the seed | HKDF, `forest/v1/seed` | the seed scalar, the one number the proofs take |
 | the seed scalar | Poseidon, the profile tag and the label's scope | a main key: one profile's name and signature |
 | the seed | HKDF, `forest/v1/profile/<label>` | that profile's secret, which its inbox key comes from |
-| a profile's secret | HKDF, `forest/v1/read` | that profile's inbox key, which opens what is encrypted to it |
+| a profile's secret | HKDF, `forest/v1/inbox` | that profile's inbox key, which opens what is sealed to it |
 | the seed | HKDF, `forest/v1/pay/solana/<label>` | that profile's payment key, its Solana address |
 | the seed scalar | Poseidon, the issuer tag and the issuer's name hash | the person's secret for one issuer, which their note number and stamps come from |
 | the seed scalar | Poseidon, the vault tag | the vault key: the main key of the person's vault |
@@ -93,14 +93,14 @@ them.
 A main key is one profile: it signs the profile's records (the signed statements in its folder),
 and its address is the profile's name.
 
-- There is one per label. The recipe takes a label as text, used exactly as given, as UTF-8, so
-  `Tutoring/Seller` and `tutoring/seller` are two profiles. A label is `<market>/<role>`, such as
-  `tutoring/seller`; the market defines its roles in
-  [foundationforest/markets](https://github.com/foundationforest/markets).
+- There is one per label. A label is any text, taken exactly as given, as UTF-8, so
+  `Tutoring/Seller` and `tutoring/seller` are two profiles. Markets set the convention,
+  `<market>/<role>`, such as `tutoring/seller`
+  ([foundationforest/markets](https://github.com/foundationforest/markets)).
 - Its scalar is the lowest 250 bits of `Poseidon(profile tag, seed scalar, scope)`. Baby Jubjub's
-  subgroup order `l` is above 2^250, so every 250-bit number is already a scalar, and the human
+  subgroup order `l` is above 2^250, so every 250-bit number is already a scalar, and the note
   proof derives the same key from the same seed scalar with nothing to reduce
-  ([proofs/human](../proofs/human/README.md)).
+  ([proofs/note](../proofs/note/README.md)).
 - Its public key is the scalar times Baby Jubjub's `Base8`, the point circomlib and zk-kit use.
 - Its address is the public key packed into 32 bytes (y little-endian, with x's sign in the top
   bit, as circomlib and zk-kit pack it), in base58 (the Bitcoin alphabet): 43 or 44 characters. An
@@ -129,22 +129,19 @@ inside a proof, made from the scalar itself.
 
 ### Inbox keys
 
-A profile's inbox key opens what others encrypt to it: the messages in its inbox and its private
+A profile's inbox key opens what others seal to it: the messages in its inbox and its private
 records ([records](../records/README.md)).
 
-- It is mixed from the profile's secret, `hkdf(seed, "forest/v1/profile/<label>")`, not from the
-  main key's scalar. A large quantum computer could work a scalar out of a public address; it
-  could not work the secret out of anything public. An inbox key gives no other profile, and no
-  inbox key gives the seed.
+- It is mixed from the profile's secret, `hkdf(seed, "forest/v1/profile/<label>")`, by
+  `forest/v1/inbox`, not from the main key's scalar, so no public number gives it. An inbox key
+  gives no other profile, and no inbox key gives the seed.
 - Its 32 bytes are used unchanged as an identity for age, a widely used encryption format, of
   age's post-quantum hybrid kind, `mlkem768x25519`: two keys at once, ML-KEM-768 and X25519, so
-  what is encrypted to it stays closed unless both are broken. It is written
-  `AGE-SECRET-KEY-PQ-1`, then bech32 of the bytes, in upper case; age expands it into the two
-  private keys.
-- Others encrypt to its public half, the recipient `age1pq1…`, which age computes from the
-  identity. It is about 1,960 characters long. The profile publishes it; the address does not give
-  it.
-- The main key cannot do this job: EdDSA only signs, so nothing is ever encrypted to a main key.
+  what is sealed to it stays closed unless both are broken. It is written `AGE-SECRET-KEY-PQ-1`,
+  then bech32 of the bytes, in upper case; age expands it into the two private keys.
+- Others seal to its public half, `sealTo`, `age1pq1…`, which age computes from the identity. It
+  is about 1,960 characters long. The profile publishes it; the address does not give it.
+- The main key cannot do this job: EdDSA only signs, so nothing is ever sealed to a main key.
 
 ### Payment keys
 
@@ -158,9 +155,9 @@ Solana account, so each profile has one of each.
 
 ### The issuer secret
 
-An issuer is anyone who signs notes for people, such as one that checks a person's face once and
-signs them a note ([proofs/human](../proofs/human/README.md#the-note-and-the-human-proof)). For each
-issuer, a person has one secret: `Poseidon(issuer tag, seed scalar, name hash)`.
+An issuer is anyone who signs notes to people's seeds
+([proofs/note](../proofs/note/README.md#the-note-and-the-note-proof)). For each issuer, a person
+has one secret: `Poseidon(issuer tag, seed scalar, name hash)`.
 
 - The name is the text the issuer publishes as its own, such as a domain, used exactly as given,
   as UTF-8. The secret comes from the name, not the issuer's key, so an issuer that changes its key
@@ -176,7 +173,7 @@ secret, nor the seed scalar behind it.
 ### Stamps
 
 A stamp is the number an index's tree knows one profile by, at one issuer:
-`Poseidon(scope, issuer secret)`. The human proof shows it, and the reputation proof counts the
+`Poseidon(scope, issuer secret)`. The note proof shows it, and the reputation proof counts the
 profiles whose stamps are the person's ([proofs](../proofs/README.md)).
 
 - The same person, issuer and label always give the same stamp, and nobody without the secret can
@@ -185,16 +182,16 @@ profiles whose stamps are the person's ([proofs](../proofs/README.md)).
 
 ### The vault key
 
-The vault is one folder on a host, encrypted to the vault's own inbox key, holding what the seed
-cannot recompute: which `<market>/<role>` profiles exist, issuer notes, and settings
+The vault is one folder on a host, sealed to the vault's own inbox key, holding what the seed
+cannot recompute: which profiles exist, issuer notes, and settings
 ([records](../records/README.md#the-vault)). Its keys are mixed from the seed, so a new device
-finds the vault with the seed alone.
+finds the vault with the seed and one host's address.
 
 - It is a main key with no label: its scalar is the lowest 250 bits of `Poseidon(vault tag, seed
   scalar)`, its address is the vault folder's name, and it signs the vault's records as a main key
   does. Its mix has its own tag and no scope, so no label gives it.
 - Its inbox key is mixed from the vault's secret, `hkdf(seed, "forest/v1/vault")`, by
-  `forest/v1/read` as a profile's is, and opens what the vault holds.
+  `forest/v1/inbox` as a profile's is, and opens what the vault holds.
 - Its address ties to no profile: one profile's keys say nothing about the vault's, and the vault's
   say nothing about any profile's.
 
@@ -211,13 +208,11 @@ profile.
     where a record sits in the folder, such as `offer/maths`); the profile's messages when its
     paths cover `inbox`; and requests to put and delete the folder's blobs, whatever its paths;
   - **read key:** signs pulls of the profile's inbox when its paths cover `inbox`, and opens what
-    is encrypted to it. Its 32 bytes also give an age identity, mixed by `forest/v1/read` as an
-    inbox key is from a profile's secret; others encrypt to its recipient.
-- A quantum computer that breaks a read key's address gets its scalar, not its 32 bytes, so not
-  its identity: what is encrypted to it stays closed.
+    is sealed to it. Its 32 bytes also give an age identity, mixed by `forest/v1/inbox` as an
+    inbox key is from a profile's secret; others seal to its `sealTo`.
 
 The profile's permissions record, a record in its folder that only the main key writes, lists
-which access keys may act, a read key with its recipient
+which access keys may act, a read key with its `sealTo`
 ([records](../records/README.md#permissions)).
 
 ### Rules for apps that hold keys
@@ -246,12 +241,12 @@ mixes from the seed scalar is not.
 | `seedScalar(seed)` | The seed scalar |
 | `mainKey(seed, label)` | The main key: `label`, `scope`, `scalar`, `publicKey`, `address`, and the profile's `secret` |
 | `profileScalarOf(seedScalar, label)` | A main key's scalar, from the seed scalar |
-| `inboxKey(secret)` | The inbox key, from a profile's `secret` or the vault's: age's `identity`, and the `recipient` others encrypt to |
+| `inboxKey(secret)` | The inbox key, from a profile's `secret` or the vault's: age's `identity`, and `sealTo`, what others seal to |
 | `payKey(seed, label)` | The payment key: `label`, `privateKey`, `publicKey`, `address` |
 | `issuerSecret(seed, name)` | The issuer's `name`, its `nameHash`, the person's `scalar` for it, and the `noteNumber` |
 | `issuerScalarOf(seedScalar, name)`, `stampOf(issuerScalar, label)` | The issuer secret from the seed scalar, and a stamp |
 | `vaultKey(seed)`, `vaultScalarOf(seedScalar)` | The vault key: `scalar`, `publicKey`, `address`, `secret`; and its scalar |
-| `accessKey(secret)`, `readKey(secret)` | An access key from its 32 random bytes: `secret`, `scalar`, `publicKey`, `address`; a read key adds age's `identity` and `recipient` |
+| `accessKey(secret)`, `readKey(secret)` | An access key from its 32 random bytes: `secret`, `scalar`, `publicKey`, `address`; a read key adds age's `identity` and `sealTo` |
 | `signWithScalar(scalar, message)`, `verifyWithPublicKey(key or address, message, signature)` | A signature `{ R8, S }` on a field element, and its check |
 | `signBytes(scalar, bytes)`, `verifyBytes(key or address, bytes, signature)`, `bytesMessage(bytes)` | A signature over bytes, its check, and the field element it signs |
 | `packSignature(signature)`, `unpackSignature(bytes)` | A signature's 64 bytes, and the signature back, or null |
@@ -277,14 +272,13 @@ tags; the main keys for `tutoring/seller` and `tutoring/buyer`, each with its se
 and their payment keys; for two issuers, `issuer-a.example` and `issuer-b.example`, the name hash,
 the person's secret, the note number and a stamp for each label; the vault key, with its secret and
 inbox key; one signature by the `tutoring/seller` main key; and a write key and a read key, from
-32 bytes of `0x2a` and of `0x2b`, the read key with its identity and recipient. `npm test` checks
+32 bytes of `0x2a` and of `0x2b`, the read key with its identity and `sealTo`. `npm test` checks
 each value and recomputes it without the library: HKDF and keccak from `@noble/hashes`, the seed
 scalar step by step without zk-kit, Baby Jubjub's points and signatures from zk-kit
 (`@zk-kit/baby-jubjub`, `@zk-kit/eddsa-poseidon`), the address packed by hand, the signature's
-equation, ed25519 from `@noble/curves`, the hybrid recipient from
-`@noble/post-quantum`, age's bech32 by hand, and an encryption and an opening through age. The
-human proof's tests check the circuit derives the same main key and stamp
-([proofs/human](../proofs/human/README.md)).
+equation, ed25519 from `@noble/curves`, the hybrid key others seal to from `@noble/post-quantum`,
+age's bech32 by hand, and an envelope sealed and opened through age. The note proof's tests check
+the circuit derives the same main key and stamp ([proofs/note](../proofs/note/README.md)).
 
 ## Promises
 
@@ -314,8 +308,7 @@ human proof's tests check the circuit derives the same main key and stamp
 - **No rotation.** A profile's name is its key, so a leaked main key loses that profile for good
   (see the FAQ).
 - **One profile per label per seed.** The same seed and label always give the same key.
-- **Only the inbox key and read keys are post-quantum.** Baby Jubjub, ed25519 and the proofs'
-  curves fall to a large quantum computer (see the FAQ).
+- **Signatures are not post-quantum; envelopes are.**
 - **No wiping of memory.** JavaScript cannot promise that bytes are erased; an app closes the
   page, the library cannot.
 - **Tested in Node only,** though the library is written to run in a browser too.
@@ -334,7 +327,7 @@ Then that app has everything the seed opens, and nothing takes it back:
 - every profile: a main key is mixed from the seed and a label, and labels are public, so it can
   mix the main key of every profile and sign as it, and every payment key and move its money;
 - every inbox key, so it can open the person's private records and messages;
-- the seed scalar, so it can make human proofs for the person's profiles with their notes, and
+- the seed scalar, so it can make note proofs for the person's profiles with their notes, and
   reputation proofs from their scores;
 - the vault, with their issuers' notes.
 
@@ -342,7 +335,7 @@ There is no rotation, so the only way out is a new seed and new profiles, moving
 there is still time. Give the seed only to an app that follows the rules above.
 
 **Why is a main key on Baby Jubjub, with a payment key beside it?**
-So a proof can derive it. The human proof shows that a profile's key comes from the same seed as
+So a proof can derive it. The note proof shows that a profile's key comes from the same seed as
 a note an issuer signed, and the reputation proof that a profile's key comes from the same seed as
 the profiles it counts: both work the key out from the seed scalar inside the proof. Baby Jubjub
 is the curve a proof does that on cheaply; ed25519 inside a proof costs far more. Solana's accounts
@@ -363,34 +356,6 @@ costs far more than Poseidon. So what a proof must work out (the issuer secret, 
 stamp, a main key) is Poseidon of the seed scalar, and what no proof needs (the profiles' secrets,
 the payment keys, the vault's secret) is HKDF of the seed. Neither is ours; both are used
 unchanged.
-
-**Why is the inbox key not mixed from the main key?**
-Because the main key's scalar is not secret from a quantum computer. With ed25519, a main key's
-32 private bytes were hashed before they became its scalar, so breaking the address gave the
-scalar and not the bytes. A Baby Jubjub main key's scalar is the number a proof derives, and
-breaking its address gives exactly that. An inbox key mixed from it would fall with it, and so
-would every private record copied today. A profile's secret is HKDF of the seed, which no public
-number gives.
-
-**What about quantum computers?**
-Private records sit in public for years, so what they are encrypted to is post-quantum: a copy
-taken today stays closed once quantum computers come. Signing does not need that yet, since a
-signature can only be forged once such a computer exists. So only the inbox key and read keys are
-post-quantum. A large enough quantum computer could:
-- work out from a profile's address its main key's scalar, then sign as the profile; and from its
-  payment address its payment key, then move its money;
-- forge human proofs (the proof that a profile's key comes from a seed an issuer checked) and
-  reputation proofs (the proof that carries a score from a person's profiles to another of
-  theirs), and issuers' notes, whose curves it breaks too.
-
-It could not open private records, even ones copied today to open later:
-- the inbox key is age's hybrid, so its recipient gives nothing away unless ML-KEM-768 breaks
-  too;
-- the inbox key comes from the profile's secret, which no public number gives.
-
-Nor could it undo the mixes: HKDF-SHA256 and Poseidon, and so the seed and the seed scalar, hold.
-Quantum-safe main keys would be a new version with new tags, and since a name is a key, every
-profile would get a new name.
 
 **What if a main key leaks?**
 Whoever has it can sign records as the profile. It cannot reach the seed, the seed scalar, another

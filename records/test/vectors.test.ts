@@ -16,7 +16,7 @@ import { KEYS } from './fixtures.ts'
 import { vectors } from './vectors.ts'
 
 const pinned = JSON.parse(readFileSync(new URL('./vectors.json', import.meta.url), 'utf8'))
-const RECORDS = ['hosts', 'profileCard', 'offer', 'permissions', 'written', 'deleted', 'past'] as const
+const RECORDS = ['hosts', 'profileRecord', 'offer', 'permissions', 'written', 'deleted', 'past'] as const
 
 /** A packed point's 32 bytes, little-endian, as the number zk-kit takes. */
 const littleEndian = (bytes: Uint8Array) => bytes.reduceRight((n, b) => (n << 8n) | BigInt(b), 0n)
@@ -35,7 +35,7 @@ test('the vectors are what this implementation computes', async () => {
 
 test("the keys are keys/'s pinned ones; the write key and the read key, recomputed with zk-kit from their 32 bytes", () => {
   assert.equal(pinned.profile, KEYS.mainKeys[0].address)
-  assert.equal(decodeRecord(pinned.profileCard.wire).record.body!.inboxKey, KEYS.mainKeys[0].inbox.recipient)
+  assert.equal(decodeRecord(pinned.profileRecord.wire).record.body!.inboxKey, KEYS.mainKeys[0].inbox.sealTo)
   const address = (byte: number) => {
     let n = packPublicKey(derivePublicKey(new Uint8Array(32).fill(byte)))
     const bytes = new Uint8Array(32)
@@ -47,7 +47,7 @@ test("the keys are keys/'s pinned ones; the write key and the read key, recomput
   assert.deepEqual(decodeRecord(pinned.permissions.wire).record.body, {
     access: [
       { key: pinned.writeKey, scope: 'write', paths: ['offer', 'inbox'] },
-      { key: pinned.readKey, recipient: KEYS.accessKeys.read.recipient, scope: 'read', paths: ['inbox'] },
+      { key: pinned.readKey, sealTo: KEYS.accessKeys.read.sealTo, scope: 'read', paths: ['inbox'] },
     ],
   })
 })
@@ -55,7 +55,7 @@ test("the keys are keys/'s pinned ones; the write key and the read key, recomput
 test('the past permissions record keeps the write key, now past, and the read key as it was', () => {
   assert.deepEqual(decodeRecord(pinned.past.wire).record.body!.access, [
     { key: pinned.writeKey, was: 'write', paths: ['offer', 'inbox'] },
-    { key: pinned.readKey, recipient: KEYS.accessKeys.read.recipient, scope: 'read', paths: ['inbox'] },
+    { key: pinned.readKey, sealTo: KEYS.accessKeys.read.sealTo, scope: 'read', paths: ['inbox'] },
   ])
 })
 

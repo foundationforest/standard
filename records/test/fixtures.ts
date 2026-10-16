@@ -19,7 +19,7 @@ export const aliceBuyer = await mainKey(SEED, 'tutoring/buyer') // the same pers
 export const bob = await mainKey(OTHER_SEED, 'tutoring/buyer') // someone else
 /** A write key an app made: never the main key. With `inbox` among its paths, or no paths, it also sends messages. */
 export const accessKey = makeAccessKey(new Uint8Array(32).fill(42))
-/** A read key an app made: it pulls the inbox and opens what is encrypted to it. */
+/** A read key an app made: it pulls the inbox and opens what is sealed to it. */
 export const reader = await readKey(new Uint8Array(32).fill(43))
 export const stranger = makeAccessKey(new Uint8Array(32).fill(99))
 
@@ -27,7 +27,7 @@ export const T0 = Date.UTC(2026, 9, 2, 12, 0, 0)
 export const MINUTE = 60_000
 export const DAY = 86_400_000
 
-/** A card. `subjects`, a field a market adds, tells one version from another. */
+/** A profile record's body. `subjects`, a field a market adds, tells one version from another. */
 export const profileBody = (subject: string): Body => ({
   market: 'tutoring',
   role: 'seller',
@@ -39,9 +39,9 @@ export const profileBody = (subject: string): Body => ({
 export const offerBody = (about: string): Body => ({ about })
 export const reviewBody = (about: string): Body => ({ about })
 
-/** One entry in a permissions record: a write key, under these paths if given; a read key with its recipient. */
+/** One entry in a permissions record: a write key, under these paths if given; a read key with what others seal to. */
 export const allow = (key: Key | ReadKey, paths?: string[], scope: 'write' | 'read' = 'write'): AccessKey => {
-  const entry: AccessKey = scope === 'read' ? { key: key.address, recipient: (key as ReadKey).recipient, scope } : { key: key.address, scope }
+  const entry: AccessKey = scope === 'read' ? { key: key.address, sealTo: (key as ReadKey).sealTo, scope } : { key: key.address, scope }
   return paths === undefined ? entry : { ...entry, paths }
 }
 /** A past write key's entry: `was: "write"` in place of `scope`, and the paths it had. */

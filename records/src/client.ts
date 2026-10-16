@@ -33,7 +33,7 @@ export async function publish(hosts: string[], records: SignedRecord[], how: Rea
   return post(hosts, '/v1/records', records.map(encodeRecord), how)
 }
 
-/** Deliver messages to each host: each of the recipient's hosts, as its hosts record names them. */
+/** Deliver messages to each host: each of the hosts the hosts record of the profile they are to names. */
 export async function deliver(hosts: string[], messages: SignedMessage[], how: Reach = {}): Promise<PublishOutcome[]> {
   return post(hosts, '/v1/inbox', messages.map(encodeMessage), how)
 }
@@ -50,13 +50,21 @@ async function post(hosts: string[], path: string, lines: string[], how: Reach):
   )
 }
 
-/** One request; if the host finds it too big (413, or one `batch` refusal), each half again, down to one line. */
+/**
+ * One request; if the host finds it too big (413, whatever its body, or one `batch` refusal), each
+ * half again, down to one line. The status is read first: a body is parsed only from a 200.
+ */
 async function postLines(url: string, lines: string[], how: Reach): Promise<{ status: number; results: Result[] }> {
   const res = await (how.fetch ?? fetch)(url, { method: 'POST', headers: { 'content-type': 'application/x-ndjson' }, body: lines.map((l) => l + '\n').join(''), ...(how.redirect && { redirect: how.redirect }) })
-  const results = (await res.text())
-    .split('\n')
-    .filter((l) => l)
-    .map((l) => JSON.parse(l) as Result)
+  let results: Result[] = []
+  if (res.status === 200) {
+    results = (await res.text())
+      .split('\n')
+      .filter((l) => l)
+      .map((l) => JSON.parse(l) as Result)
+  } else {
+    await res.body?.cancel()
+  }
   const tooBig = res.status === 413 || (results.length === 1 && results[0]!.error === 'batch')
   if (!tooBig || lines.length < 2) return { status: res.status, results }
   const half = Math.ceil(lines.length / 2)
@@ -70,7 +78,8 @@ export type Page = { records: Checked[]; cursor: number; refused: Array<{ line: 
 /**
  * How to read: `post` puts the profile and the cursor in the body (POST /v1/records/read) rather
  * than the URL, for reading your own profiles; `maxBytes` is the longest line taken (MAX_LINE_READ
- * when omitted); `timeout` is in ms (READ_TIMEOUT_MS when omitted). `fetch` is the caller's own
+ * when omitted); `timeout` is in ms for the whole read, every page of it (READ_TIMEOUT_MS when
+ * omitted). `fetch` is the caller's own
  * (one that refuses private addresses, say), and `redirect` goes to it as fetch takes it: `error`
  * refuses a host that redirects. The global fetch, following redirects, when omitted.
  */
@@ -79,17 +88,17 @@ export type ReadHow = { post?: boolean; maxBytes?: number; timeout?: number; fet
 /**
  * One page of what a host stores, after a cursor, in the order it took them, each record checked.
  * A page may be any length; a line longer than `maxBytes` is refused unread. It throws on a page
- * not read within `timeout` ms.
+ * not read within `timeout` ms, and on a cursor that is not a whole number from 0.
  */
-export async function readPage(host: string, options: ReadOptions & ReadHow = {}): Promise<Page> {
-  const how = { signal: AbortSignal.timeout(options.timeout ?? READ_TIMEOUT_MS), ...(options.redirect && { redirect: options.redirect }) }
+export async function readPage(host: string, options: ReadOptions & ReadHow & { signal?: AbortSignal } = {}): Promise<Page> {
+  const how = { signal: options.signal ?? AbortSignal.timeout(options.timeout ?? READ_TIMEOUT_MS), ...(options.redirect && { redirect: options.redirect }) }
   const get = options.fetch ?? fetch
   const asked = { ...(options.profile !== undefined && { profile: options.profile }), ...(options.after !== undefined && { after: options.after }) }
   const res = options.post
     ? await get(`${host}/v1/records/read`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(asked), ...how })
     : await get(`${host}/v1/records?${new URLSearchParams(Object.entries(asked).map(([k, v]) => [k, String(v)]))}`, how)
   if (!res.ok) throw new Error(`${host} answered ${res.status}`)
-  const cursor = Number.parseInt(res.headers.get('forest-cursor') ?? '0', 10)
+  const cursor = cursorOf(res, host)
   const records: Checked[] = []
   const refused: Page['refused'] = []
   for await (const line of readLines(res, options.maxBytes ?? MAX_LINE_READ)) {
@@ -147,14 +156,32 @@ async function* readLines(res: Response, max: number): AsyncGenerator<string | n
   if (last !== undefined) yield last
 }
 
-/** Everything a host stores (for one profile, if asked), page by page. */
+/**
+ * A page's `forest-cursor`: a whole number from 0, in its one decimal spelling. Anything else ends
+ * the read with an error.
+ */
+function cursorOf(res: Response, host: string): number {
+  const text = res.headers.get('forest-cursor') ?? '0'
+  const cursor = Number(text)
+  if (!/^(0|[1-9][0-9]*)$/.test(text) || !Number.isSafeInteger(cursor)) throw new Error(`${host} gave a cursor that is not a whole number: ${JSON.stringify(text)}`)
+  return cursor
+}
+
+/**
+ * Everything a host stores (for one profile, if asked), page by page, all within `timeout` ms. A
+ * page that holds lines must move the cursor forward, and an empty one ends the read; a host whose
+ * cursor stands still or goes back ends it with an error.
+ */
 export async function readAll(host: string, options: Omit<ReadOptions, 'after'> & ReadHow = {}): Promise<Page> {
+  const signal = AbortSignal.timeout(options.timeout ?? READ_TIMEOUT_MS)
   const out: Page = { records: [], cursor: 0, refused: [] }
   for (;;) {
-    const page = await readPage(host, { ...options, after: out.cursor })
+    const page = await readPage(host, { ...options, after: out.cursor, signal })
     out.records.push(...page.records)
     out.refused.push(...page.refused)
-    if (page.cursor === out.cursor) return out
+    const lines = page.records.length + page.refused.length
+    if (!lines && page.cursor === out.cursor) return out
+    if (page.cursor <= out.cursor) throw new Error(`${host} gave a cursor that does not move forward: ${page.cursor} after ${out.cursor}`)
     out.cursor = page.cursor
   }
 }
@@ -197,7 +224,7 @@ export async function pull(host: string, request: SignedPull, options: { maxByte
     const why = (await res.json().catch(() => ({}))) as { error?: string; message?: string }
     throw new RecordError(why.error ?? 'host', `${host} answered ${res.status}${why.message ? `: ${why.message}` : ''}`)
   }
-  const cursor = Number.parseInt(res.headers.get('forest-cursor') ?? '0', 10)
+  const cursor = cursorOf(res, host)
   const messages: CheckedMessage[] = []
   const refused: MessagePage['refused'] = []
   for await (const line of readLines(res, options.maxBytes ?? MAX_LINE_READ)) {

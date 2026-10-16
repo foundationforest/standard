@@ -117,11 +117,6 @@ const FOLDER_SCHEMA = `
   -- the inbox says so, so who wrote to whom is not kept past the messages for other inboxes. Kept
   -- for as long as the folder is: this host never deletes a current record.
   CREATE TABLE once (sender TEXT PRIMARY KEY) WITHOUT ROWID;
-`
-
-// Version 2 adds the blobs a folder holds. A folder file from version 1 holds none: bytes a record
-// once named there are held by no folder, and go at the next prune, until its keys put them again.
-const FOLDER_BLOBS = `
   -- The bytes this folder holds, by hash: put by its main key (by is null) or by a write key (by
   -- is its address), and kept until a key that may deletes them.
   CREATE TABLE blobs (
@@ -131,7 +126,7 @@ const FOLDER_BLOBS = `
     by TEXT,
     arrived INTEGER NOT NULL   -- this host's clock
   ) WITHOUT ROWID;
-  PRAGMA user_version = 2;
+  PRAGMA user_version = 1;
 `
 
 const HOST_SCHEMA = `
@@ -143,7 +138,6 @@ const HOST_SCHEMA = `
     arrived INTEGER NOT NULL   -- this host's clock
   );
   CREATE INDEX IF NOT EXISTS log_by_folder ON log (folder);
-  DROP TABLE IF EXISTS names;   -- from when records named blobs
   CREATE TABLE IF NOT EXISTS owners (   -- which folders hold which bytes, as their files say
     sha256 TEXT NOT NULL,
     folder TEXT NOT NULL,
@@ -184,11 +178,11 @@ function nextNumber(db: Db, table: string, now: number): number {
   return Math.max(last + 1, now * 1000)
 }
 
+/** A folder's file, its tables made the first time it opens. */
 function openFolder(file: string): Db {
   const folder = new Db(file)
   const version = (folder.db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version
-  if (version === 0) folder.db.exec(FOLDER_SCHEMA + FOLDER_BLOBS)
-  else if (version === 1) folder.db.exec(FOLDER_BLOBS)
+  if (version === 0) folder.db.exec(FOLDER_SCHEMA)
   return folder
 }
 
@@ -389,16 +383,21 @@ export class Storage {
   }
 
   /**
-   * Delete bytes from a folder; once no folder holds them, from the store. The folder's file first,
-   * then the index, then the store: a crash in between leaves bytes the next prune deletes.
+   * Delete bytes from a folder, if `may` allows it for who put them, asked in the same step that
+   * deletes them; once no folder holds them, from the store. The folder's file first, then the
+   * index, then the store: a crash in between leaves bytes the next prune deletes.
    */
-  async deleteBlob(folder: string, sha256: string): Promise<void> {
-    await this.oneAtATime(sha256, async () => {
-      this.folder(folder)?.q('DELETE FROM blobs WHERE sha256 = ?').run(sha256)
+  deleteBlob(folder: string, sha256: string, may: (held: { by: string | null }) => boolean): Promise<'deleted' | 'not here' | 'refused'> {
+    return this.oneAtATime(sha256, async () => {
+      const held = this.blobOf(folder, sha256)
+      if (!held) return 'not here'
+      if (!may(held)) return 'refused'
+      this.folder(folder)!.q('DELETE FROM blobs WHERE sha256 = ?').run(sha256)
       this.host.q('DELETE FROM owners WHERE sha256 = ? AND folder = ?').run(sha256, folder)
-      if (this.host.q('SELECT 1 FROM owners WHERE sha256 = ?').get(sha256) !== undefined) return
+      if (this.host.q('SELECT 1 FROM owners WHERE sha256 = ?').get(sha256) !== undefined) return 'deleted'
       this.host.q('DELETE FROM blobs WHERE sha256 = ?').run(sha256)
       await this.blobs.delete(sha256)
+      return 'deleted'
     })
   }
 

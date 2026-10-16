@@ -2,8 +2,8 @@
 // issuer is anyone who signs notes for people, such as one that checks faces.
 //
 // The name, not the issuer's key: an issuer that changes its key changes no one's note number or
-// stamps. One secret per issuer, not per person: two issuers comparing what they hold find
-// nothing in common, because the same person's note numbers for them are unrelated.
+// stamps. A different secret at each issuer, so no two issuers share a number for one person: two
+// issuers comparing what they hold find nothing in common.
 
 import { poseidon1 } from 'poseidon-lite/poseidon1'
 import { poseidon2 } from 'poseidon-lite/poseidon2'
@@ -22,7 +22,7 @@ export type IssuerSecret = {
   noteNumber: bigint
 }
 
-/** The person's secret for an issuer, from the seed scalar. The human circuit computes the same. */
+/** The person's secret for an issuer, from the seed scalar. The note circuit computes the same. */
 export function issuerScalarOf(seed: bigint, name: string): bigint {
   if (!isFieldElement(seed)) throw new RangeError('a seed scalar is a field element')
   return poseidon3([TAG.issuer, seed, nameHashOf(name)])

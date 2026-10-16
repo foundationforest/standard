@@ -10,7 +10,7 @@ export const INFO = {
   /** A profile's secret, which its inbox key is mixed from. The label is used exactly as given. */
   profile: (label: string) => `forest/v1/profile/${label}`,
   /** An inbox key, mixed from a profile's secret or the vault's. */
-  read: 'forest/v1/read',
+  read: 'forest/v1/inbox',
   /** A profile's payment key on Solana, mixed from the seed. The label is used exactly as given. */
   pay: (label: string) => `forest/v1/pay/solana/${label}`,
   /** The vault's secret, which its inbox key is mixed from. */

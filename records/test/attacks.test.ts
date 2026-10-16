@@ -90,17 +90,17 @@ describe('a stolen access key', () => {
 
   test('cannot rewrite or delete what the owner wrote, cannot touch hosts or permissions, cannot write outside its paths', () => {
     const overwrite = accessRecord(accessKey, alice.address, 'offer/maths', offerBody('1'), T0 + DAY)
-    const card = accessRecord(accessKey, alice.address, 'profile', profileBody('forgery'), T0 + DAY)
-    const v = view(permissions, mine, overwrite, card)
+    const forgery = accessRecord(accessKey, alice.address, 'profile', profileBody('forgery'), T0 + DAY)
+    const v = view(permissions, mine, overwrite, forgery)
     assert.equal(v.current.get('offer/maths')!.id, checkRecord(mine).id)
     assert.equal(v.current.has('profile'), false)
     assert.throws(() => accessRecord(accessKey, alice.address, 'hosts', { urls: ['https://evil.example'] }, T0 + DAY), /only the owner/)
   })
 
-  test('with no paths, it still cannot write the card', () => {
+  test('with no paths, it still cannot write the profile record', () => {
     const anywhere = permissionsRecord(alice, [allow(accessKey)], T0)
-    const card = accessRecord(accessKey, alice.address, 'profile', profileBody('forgery'), T0 + DAY)
-    const v = view(anywhere, card)
+    const forgery = accessRecord(accessKey, alice.address, 'profile', profileBody('forgery'), T0 + DAY)
+    const v = view(anywhere, forgery)
     assert.equal(v.current.has('profile'), false)
   })
 
@@ -112,14 +112,16 @@ describe('a stolen access key', () => {
     assert.deepEqual([v.current.has('offer/before'), v.current.has('offer/after')], [false, false])
   })
 
-  test('FINDING: once past, a stolen key can still write to a host that skips the check, and that host’s readers count it', () => {
-    // An honest host refuses it (host.test.ts). A reader counts every record a past key wrote,
-    // since it is still listed and no date is checked, so whoever holds a host that takes one can
-    // show it. The owner's record wins at that path, so the owner deletes it there.
+  test('FINDING: once past, a stolen key can still add a record dated before its removal, and readers count it; the owner deletes it there', () => {
+    // Hosts and readers follow one rule (host.test.ts, view.test.ts): a past key's record counts
+    // only if dated before the current permissions record. One dated after counts nowhere; one
+    // backdated counts, and the owner's record wins at that path, so the owner deletes it there.
     const past = permissionsRecord(alice, [pastKey(accessKey, ['offer'])], T0 + MINUTE)
-    const sneaked = accessRecord(accessKey, alice.address, 'offer/new', offerBody('1'), T0 + 2 * MINUTE)
+    const now = accessRecord(accessKey, alice.address, 'offer/now', offerBody('1'), T0 + 2 * MINUTE)
+    const sneaked = accessRecord(accessKey, alice.address, 'offer/new', offerBody('1'), T0 + MINUTE - 1)
     const later = T0 + 365 * DAY
-    assert.equal(viewProfile(alice.address, [past, sneaked].map((r) => checkRecord(r)), later).current.has('offer/new'), true)
+    const v = viewProfile(alice.address, [past, now, sneaked].map((r) => checkRecord(r)), later)
+    assert.deepEqual([v.current.has('offer/now'), v.current.has('offer/new')], [false, true])
     const deleted = ownerRecord(alice, 'offer/new', null, T0 + 3 * MINUTE)
     assert.equal(viewProfile(alice.address, [past, sneaked, deleted].map((r) => checkRecord(r)), later).current.get('offer/new')!.record.body, null)
   })
@@ -136,9 +138,9 @@ describe('a stolen write key that sends', () => {
       await publish([home.url], [hostsRecord(alice, [home.url], T0), listed, permissionsRecord(alice, [pastKey(accessKey, ['inbox'])], T0 + 1)])
       await publish([thief.url], [hostsRecord(alice, [home.url], T0), listed])
       const bobInbox = await inboxKey(bob.secret)
-      const bobCard = { ...profileBody('chemistry'), inboxKey: bobInbox.recipient, inbox: { senders: 'anyone' } }
-      await publish([inbox.url], [ownerRecord(bob, 'profile', bobCard, T0)])
-      const send = (host: string) => message({ key: accessKey, from: alice.address, host }, bob.address, { text: 'Send me the money.' }, T0 + 2, bobCard)
+      const bobProfile = { ...profileBody('chemistry'), inboxKey: bobInbox.sealTo, inbox: { senders: 'anyone' } }
+      await publish([inbox.url], [ownerRecord(bob, 'profile', bobProfile, T0)])
+      const send = (host: string) => message({ key: accessKey, from: alice.address, host }, bob.address, { text: 'Send me the money.' }, T0 + 2, bobProfile)
       const results = async (host: string) => (await deliver([inbox.url], [await send(host)]))[0]!.results[0]!.error
       assert.equal(await results(thief.url), 'permission', 'the old record, from a host she does not name')
       assert.equal(await results(home.url), 'permission', 'her current record says past')
@@ -201,12 +203,12 @@ describe('linking two profiles of one person', () => {
     const accessFor = (n: number) => ({ key: makeAccessKey(sha256(utf8(`access ${n}`))).address, scope: 'write' as const, paths: ['offer'] })
     const one = [
       hostsRecord(alice, ['https://big-host.example'], T0),
-      ownerRecord(alice, 'profile', { ...profileBody('statistics'), inboxKey: inbox0.recipient }, T0),
+      ownerRecord(alice, 'profile', { ...profileBody('statistics'), inboxKey: inbox0.sealTo }, T0),
       permissionsRecord(alice, [accessFor(1)], T0),
     ]
     const two = [
       hostsRecord(aliceBuyer, ['https://big-host.example'], T0),
-      ownerRecord(aliceBuyer, 'profile', { ...profileBody('geometry'), role: 'buyer', inboxKey: inbox1.recipient }, T0),
+      ownerRecord(aliceBuyer, 'profile', { ...profileBody('geometry'), role: 'buyer', inboxKey: inbox1.sealTo }, T0),
       permissionsRecord(aliceBuyer, [accessFor(2)], T0),
     ]
     const tokens = (records: object[]) => {

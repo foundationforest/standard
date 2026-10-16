@@ -114,7 +114,7 @@ test("the circuit's constants are keys/'s: the issuer and profile tags, and Base
 })
 
 test("the verification key is the circuit setup's, value for value", () => {
-  const committed = JSON.parse(readFileSync(join(here, '../../circuit/devnet/verification-key.json'), 'utf8'))
+  const committed = JSON.parse(readFileSync(join(here, '../../circuit/setup/verification-key.json'), 'utf8'))
   assert.deepEqual(REPUTATION_KEY, committed)
   assert.equal(REPUTATION_KEY.nPublic, 5)
 })

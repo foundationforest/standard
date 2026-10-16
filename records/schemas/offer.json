@@ -1,7 +1,0 @@
-{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "offer",
-  "description": "An offer, at the path `offer/<id>`. Its body is the market's: defined by the market the profile lives in (foundationforest/markets). The standard names none of its fields.",
-  "type": "object",
-  "additionalProperties": true
-}

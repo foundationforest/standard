@@ -2,7 +2,7 @@
   "name": "@forest/reputation-circuit",
   "version": "0.0.0",
   "private": true,
-  "description": "The reputation proof's circuit: a count-weighted score from up to eight of a person's own profiles in an index's tree, shown on another profile the same seed gives, naming none of them. The circuit, its devnet setup, and its tests through the reputation client.",
+  "description": "The reputation proof's circuit: a count-weighted score from up to eight of a person's own profiles in an index's tree, shown on another profile the same seed gives, naming none of them. The circuit, its setup, and its tests through the reputation client.",
   "license": "Apache-2.0",
   "type": "module",
   "engines": {
