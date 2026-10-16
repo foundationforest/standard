@@ -1,20 +1,9 @@
 {
+  "extends": "../tsconfig.base.json",
   "compilerOptions": {
     "target": "ES2023",
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
     "lib": ["ES2024", "DOM", "DOM.Iterable"],
-    "types": ["node"],
-    "strict": true,
-    "noUncheckedIndexedAccess": true,
-    "exactOptionalPropertyTypes": false,
-    "allowImportingTsExtensions": true,
-    "rewriteRelativeImportExtensions": false,
-    "verbatimModuleSyntax": true,
-    "erasableSyntaxOnly": true,
-    "noEmit": true,
-    "skipLibCheck": true,
-    "resolveJsonModule": true
+    "noUncheckedIndexedAccess": true
   },
-  "include": ["src/**/*.ts", "test/**/*.ts", "bench/**/*.ts", "scripts/**/*.ts", "../proofs/note/client/types/snarkjs.d.ts"]
+  "include": ["src/**/*.ts", "test/**/*.ts", "bench/**/*.ts", "scripts/**/*.ts"]
 }

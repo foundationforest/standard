@@ -7,9 +7,11 @@
 // inbox and opens what is sealed to it. Every key signs with EdDSA-Poseidon on Baby Jubjub, by
 // keys/'s signBytes, and every address is a packed point in base58.
 
-import { type Point, addressOf, pointOf, publicKeyOf } from '../../keys/src/curve.ts'
+// keys/'s curve alone, not all of keys/, whose inbox keys load age: the core holds no encryption
+// library (README.md, Run it).
+import { type Point, addressOf, pointOf, publicKeyOf } from '@foundationforest/keys/curve'
 
-export type { Point } from '../../keys/src/curve.ts'
+export type { Point } from '@foundationforest/keys/curve'
 
 /** Anything that signs: keys/'s main key, vault key or access key. Held in memory only. */
 export type Key = {

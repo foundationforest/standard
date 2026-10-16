@@ -4,7 +4,7 @@
 
 import { cpus } from 'node:os'
 import { verifySignature as zkVerify } from '@zk-kit/eddsa-poseidon'
-import { accessKey, bytesMessage, unpackSignature } from '../../keys/src/index.ts'
+import { accessKey, bytesMessage, unpackSignature } from '@foundationforest/keys'
 import { b64u } from '../src/bytes.ts'
 import { canonical } from '../src/canonical.ts'
 import { Host } from '../src/host.ts'

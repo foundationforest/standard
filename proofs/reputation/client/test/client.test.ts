@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url'
 import { Group } from '@semaphore-protocol/group'
 import { poseidon4 } from 'poseidon-lite/poseidon4'
 
-import { BN254_R, TAG, accessKey, issuerSecret, mainKey, nameHashOf, packSignature, publicKeyOf, scopeOf, seedScalar, signBytes, stampOf, verifyBytes } from '../../../../keys/src/index.ts'
+import { BN254_R, TAG, accessKey, issuerSecret, mainKey, nameHashOf, packSignature, publicKeyOf, scopeOf, seedScalar, signBytes, stampOf, verifyBytes } from '@foundationforest/keys'
 import { BOUND, DEPTH, SIGNED_PREFIX, buildTree, circuitInput, leafHash, signedBytes, type Leaf } from '../src/index.ts'
 import { REPUTATION_KEY } from '../src/reputation-key.ts'
 

@@ -2,7 +2,7 @@
 
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
-import { BN254_R, accessKey as makeAccessKey, packPoint, packSignature, signBytes } from '../../keys/src/index.ts'
+import { BN254_R, accessKey as makeAccessKey, packPoint, packSignature, signBytes } from '@foundationforest/keys'
 import { b64u, base58 } from '../src/bytes.ts'
 import { canonical, parseCanonical } from '../src/canonical.ts'
 import { keyFromScalar, publicKeyFromAddress } from '../src/keys.ts'

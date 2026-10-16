@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict'
 import { randomBytes } from 'node:crypto'
 import { describe, test } from 'node:test'
-import { inboxKey, readKey } from '../../keys/src/index.ts'
+import { inboxKey, readKey } from '@foundationforest/keys'
 import { canonical } from '../src/canonical.ts'
 import { publish, readAll, readProfile } from '../src/client.ts'
 import { DAY, DEFAULT_MAX_LINE_BYTES } from '../src/host.ts'

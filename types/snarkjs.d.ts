@@ -1,4 +1,4 @@
-// snarkjs ships no types. Only the two calls the client makes are declared.
+// snarkjs ships no types. Only the two calls the proofs' code makes are declared.
 declare module 'snarkjs' {
   export const groth16: {
     fullProve(

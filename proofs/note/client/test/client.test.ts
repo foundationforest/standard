@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url'
 
 import { keccak_256 } from '@noble/hashes/sha3.js'
 
-import { TAG, publicKeyOf } from '../../../../keys/src/index.ts'
+import { TAG, publicKeyOf } from '@foundationforest/keys'
 import {
   BN254_P,
   BN254_R,

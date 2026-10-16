@@ -11,7 +11,8 @@
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { mkdirSync, readFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { createRequire } from 'node:module'
+import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const CIRCOM_VERSION = '2.2.3'
@@ -19,6 +20,9 @@ const CIRCOM_VERSION = '2.2.3'
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const circom = process.env.CIRCOM ?? 'circom'
 const sha256 = (path: string) => createHash('sha256').update(readFileSync(path)).digest('hex')
+// A circuit library's directory, from this circuit's: npm installs it at the workspace's root.
+const lib = (name: string, dir: string) =>
+  relative(root, join(dirname(createRequire(import.meta.url).resolve(`${name}/package.json`)), dir))
 
 const version = execFileSync(circom, ['--version'], { encoding: 'utf8' }).trim()
 if (version !== `circom compiler ${CIRCOM_VERSION}`) {
@@ -35,9 +39,9 @@ execFileSync(
     '--r1cs',
     '--wasm',
     '-l',
-    'node_modules/circomlib/circuits',
+    lib('circomlib', 'circuits'),
     '-l',
-    'node_modules/@zk-kit/binary-merkle-root.circom/src',
+    lib('@zk-kit/binary-merkle-root.circom', 'src'),
     '-o',
     'build',
   ],

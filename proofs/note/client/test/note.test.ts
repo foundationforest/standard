@@ -12,7 +12,7 @@ import { signMessage } from '@zk-kit/eddsa-poseidon'
 import { poseidon2 } from 'poseidon-lite/poseidon2'
 import { poseidon3 } from 'poseidon-lite/poseidon3'
 
-import { issuerSecret, mainKey, pointOf, seedScalar, stampOf } from '../../../../keys/src/index.ts'
+import { issuerSecret, mainKey, pointOf, seedScalar, stampOf } from '@foundationforest/keys'
 import {
   BN254_R,
   NOTE_TAG,

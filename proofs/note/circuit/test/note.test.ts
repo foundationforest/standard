@@ -14,7 +14,7 @@ import { signMessage } from '@zk-kit/eddsa-poseidon'
 import { poseidon2 } from 'poseidon-lite/poseidon2'
 import { groth16 } from 'snarkjs'
 
-import { addressOf, keyScalar, mainKey, pointOf, publicKeyOf, seedScalar, signWithScalar, stampOf, issuerSecret } from '../../../../keys/src/index.ts'
+import { addressOf, keyScalar, mainKey, pointOf, publicKeyOf, seedScalar, signWithScalar, stampOf, issuerSecret } from '@foundationforest/keys'
 import {
   BN254_R,
   fieldHash,
@@ -28,7 +28,7 @@ import {
   toBytes32,
   verifyNote,
   type SignedNote,
-} from '../../client/src/index.ts'
+} from '@foundationforest/note'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const artifacts = { wasm: join(here, '../setup/note.wasm'), zkey: join(here, '../setup/note.zkey') }

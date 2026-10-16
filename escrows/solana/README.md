@@ -275,7 +275,7 @@ cd escrows/solana/program && cargo build-sbf --arch v3             # Solana CLI 
 cd escrows/solana/program/tests-litesvm && cargo test              # classic and Token-2022 mints
 cd escrows/solana/program && cargo build-sbf --arch v0 && cd trident-tests \
   && TRIDENT_WITH_EXIT_CODE=1 cargo run --release --bin fuzz_escrow   # 99: an invariant broke
-cd escrows/solana/client && npm ci && npm run check && npm test    # no chain needed
+npm ci && cd escrows/solana/client && npm run check && npm test    # no chain needed
 FOREST_DEVNET_SEED=<phrase> escrows/solana/devnet/deploy.sh        # devnet: deploy, or upgrade in place
 cd escrows/solana/client && FOREST_DEVNET_KEYS=<dir> node scripts/devnet.ts
 ```

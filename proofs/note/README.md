@@ -127,8 +127,8 @@ unchanged.
 | `noteInput({...})` | The circuit's input, for a caller that drives snarkjs itself |
 
 ```ts
-import { mainKey, seedScalar } from '@forest/keys'
-import { proveNote, verifyNote } from '@forest/note'
+import { mainKey, seedScalar } from '@foundationforest/keys'
+import { proveNote, verifyNote } from '@foundationforest/note'
 
 // On the device:
 const r = await proveNote({
@@ -151,12 +151,12 @@ const ok = await verifyNote({ proof, issuer, issuerName, label, profile: address
 ### Run it
 
 ```
-cd keys && npm ci                         # the client and the circuit's tests read keys/
+npm ci && npm run build                   # at the root: every package; keys/ and the client to dist/
 
-cd proofs/note/client && npm ci
+cd proofs/note/client
 npm run check && npm test                 # the note, the input, the bytes, a proof with no Buffer
 
-cd proofs/note/circuit && npm ci          # after proofs/note/client
+cd proofs/note/circuit
 npm run fetch                             # the committed setup files, hash-checked
 npm run compile                           # circom 2.2.3 on PATH or in CIRCOM; checks setup.json
 npm run check && npm test                 # a proof, and every way one must fail

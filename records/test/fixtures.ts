@@ -2,7 +2,7 @@
 // key: the main keys and access keys come from keys/, as an app gets them.
 
 import { readFileSync } from 'node:fs'
-import { type ReadKey, accessKey as makeAccessKey, mainKey, readKey } from '../../keys/src/index.ts'
+import { type ReadKey, accessKey as makeAccessKey, mainKey, readKey } from '@foundationforest/keys'
 import { hex } from '../src/bytes.ts'
 import { canonical } from '../src/canonical.ts'
 import type { Key } from '../src/keys.ts'

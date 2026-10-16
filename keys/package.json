@@ -1,12 +1,24 @@
 {
-  "name": "@forest/keys",
+  "name": "@foundationforest/keys",
   "version": "0.0.0",
   "private": true,
   "description": "Forest keys: a seed of 24 words, and the keys mixed from it: the seed scalar the circuits take, one main key per label on Baby Jubjub (its name and signature), one Solana payment key per label, each profile's inbox key, the person's secret and note number for each issuer, and the vault key; access keys from their random bytes; and EdDSA-Poseidon signatures.",
   "license": "Apache-2.0",
   "type": "module",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./curve": {
+      "types": "./dist/curve.d.ts",
+      "default": "./dist/curve.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "test": "node --test test/*.test.ts",
     "check": "tsc --noEmit",
@@ -23,8 +35,6 @@
   },
   "devDependencies": {
     "@noble/post-quantum": "0.5.4",
-    "@types/node": "22.20.2",
-    "@zk-kit/baby-jubjub": "1.0.3",
-    "typescript": "5.9.3"
+    "@zk-kit/baby-jubjub": "1.0.3"
   }
 }

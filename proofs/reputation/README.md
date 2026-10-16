@@ -130,8 +130,8 @@ The stamp, the scope and the profile's key come from `keys/`, unchanged.
 | `circuitInput({...})` | The circuit's input, for a caller that drives snarkjs itself |
 
 ```ts
-import { seedScalar } from '@forest/keys'
-import { proveReputation, verifyReputation } from '@forest/reputation'
+import { seedScalar } from '@foundationforest/keys'
+import { proveReputation, verifyReputation } from '@foundationforest/reputation'
 
 // On the device: three profiles' score, from two issuers, shown on a new profile of the same seed.
 const r = await proveReputation({
@@ -158,15 +158,14 @@ const ok = await verifyReputation({ proof: r.proof, root: r.root, score: r.score
 ### Run it
 
 The toolchain: Node 22.18 or later; circom 2.2.3, the Linux binary from its GitHub release, whose
-SHA-256 `setup.json` records; and, from `package-lock.json`, snarkjs 0.7.5, circomlib 2.0.5 and
-`@zk-kit/binary-merkle-root.circom` 2.0.0.
+SHA-256 `setup.json` records; and, from the root's `package-lock.json`, snarkjs 0.7.5, circomlib
+2.0.5 and `@zk-kit/binary-merkle-root.circom` 2.0.0.
 
 ```
-cd keys && npm ci                         # the stamp, the scope and the profile's key
-cd proofs/note/client && npm ci           # the proof's 256 bytes
-cd proofs/reputation/client && npm ci
+npm ci && npm run build                   # at the root: every package; keys/ and both clients to dist/
+cd proofs/reputation/client
 npm run check && npm test                 # the tree, what an index signs, what the client refuses
-cd proofs/reputation/circuit && npm ci    # after proofs/reputation/client
+cd proofs/reputation/circuit
 npm run fetch                             # the release's files, hash-checked
 npm run compile                           # circom 2.2.3 on PATH or in CIRCOM; checks setup.json
 npm run check && npm test                 # proofs, and every way one must fail

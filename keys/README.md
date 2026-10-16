@@ -256,11 +256,10 @@ mixes from the seed scalar is not.
 | `hkdf(ikm, info)`, `INFO` | The mixer and its info strings |
 
 ```
+npm ci && npm run build   # at the root: every package; keys/ to dist/, for the packages that import it
 cd keys
-npm ci
 npm test        # the pinned vectors, and each value recomputed without the library
 npm run check   # type-check
-npm run build   # dist/ for other packages
 ```
 
 Node 22.18 or later runs the TypeScript directly.

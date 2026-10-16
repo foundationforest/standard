@@ -13,7 +13,7 @@ const buffer = globalThis.Buffer
 Object.defineProperty(globalThis, 'Buffer', { configurable: true, get: () => (/\(node:|at node:|\/node_modules\//.test(new Error().stack?.split('\n')[2] ?? '') ? buffer : undefined) })
 const { hexToBytes } = await import('@noble/hashes/utils.js')
 const { sha256 } = await import('@noble/hashes/sha2.js')
-const { mainKey, seedScalar } = await import('../../../../keys/src/index.ts')
+const { mainKey, seedScalar } = await import('@foundationforest/keys')
 const { fieldHash, noteNumberOf, proofBytes, proveNote, signNote, verifyNote } = await import('../src/index.ts')
 
 const here = dirname(fileURLToPath(import.meta.url))
