@@ -2,5 +2,5 @@
 enabled = true
 
 [[fuzz.programs]]
-address = "FoRE2EscrowV2objectsTimerFundedAtPayer222222"
+address = "FoRE3EscrowV3scheduLeWindowsPayRefund3333333"
 program = "../target/deploy/forest_escrow.so"
