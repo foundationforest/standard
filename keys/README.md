@@ -218,8 +218,8 @@ which access keys may act, a read key with its `sealTo`
 ### Rules for apps that hold keys
 
 1. The seed never leaves the device, and is held only while mixing keys for one action.
-2. The app asks for the person's device unlock when acting with the main key; access keys act
-   within their permissions without it.
+2. The app asks for the person's device unlock whenever it uses the seed: to sign with a main key
+   or the vault key, or to make a proof. Access keys act within their permissions without it.
 3. Nothing leaves the device but access keys and signatures.
 4. Each app, server or AI the person lets act for them gets its own access key for each folder.
 5. Proofs are made in the app, never delegated.

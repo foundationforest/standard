@@ -436,7 +436,7 @@ describe('write keys', () => {
       assert.deepEqual(await errors(other, [await toBob(viaKey(home.url))]), ['rule_unsupported'], 'a host without readSender')
 
       // Past: the next request reads her permissions record again.
-      await publish([home.url], [permissionsRecord(alice, [pastKey(accessKey, ['inbox'])], T0 + 1)])
+      await publish([home.url], [permissionsRecord(alice, [pastKey(accessKey, T0 + 1, ['inbox'])], T0 + 1)])
       assert.deepEqual(await errors(inbox, [await toBob(viaKey(home.url), 'after revoking')]), ['permission'])
     } finally {
       await close()

@@ -214,22 +214,26 @@ describe('access keys, checked as they arrive', () => {
     }
   })
 
-  test('revoking a write key: the host keeps what it wrote, takes what it dates before the permissions record, and refuses what it dates at its time or after', async () => {
+  test('revoking a write key: the host keeps what it wrote, takes what it dates before its until, and refuses what it dates at its until or after, also once another key is added', async () => {
     const clock = new Clock(T0)
     const h = await startHost({ now: clock.now })
     try {
       await publish([h.url], [permissionsRecord(alice, [allow(accessKey, ['offer'])], T0), accessRecord(accessKey, alice.address, 'offer/w', offerBody('9'), T0)])
-      clock.advance(MINUTE)
-      await publish([h.url], [permissionsRecord(alice, [pastKey(accessKey, ['offer'])], clock.t)])
+      const removed = clock.advance(MINUTE)
+      await publish([h.url], [permissionsRecord(alice, [pastKey(accessKey, removed, ['offer'])], removed)])
       assert.equal((await readProfile([h.url], alice.address, clock.t + 30 * DAY)).current.get('offer/w')!.record.by, accessKey.address, 'what it wrote stays')
       const backdated = accessRecord(accessKey, alice.address, 'offer/again', offerBody('1'), T0 + 1)
-      const at = accessRecord(accessKey, alice.address, 'offer/at', offerBody('1'), clock.t)
-      const after = accessRecord(accessKey, alice.address, 'offer/after', offerBody('1'), clock.t + 1)
+      const at = accessRecord(accessKey, alice.address, 'offer/at', offerBody('1'), removed)
+      const after = accessRecord(accessKey, alice.address, 'offer/after', offerBody('1'), removed + 1)
       const results = (await publish([h.url], [backdated, at, after]))[0]!.results
       assert.deepEqual(results.map((r) => r.error ?? 'ok'), ['ok', 'permission', 'permission'])
       assert.equal(results[2]!.message, 'the permissions record does not allow this access key here')
+      // Another key added later keeps the past key's entry as it is: what it dates after its until stays refused.
+      clock.advance(MINUTE)
+      await publish([h.url], [permissionsRecord(alice, [pastKey(accessKey, removed, ['offer']), allow(stranger, ['review'])], clock.t)])
+      assert.deepEqual(await errors(h, [accessRecord(accessKey, alice.address, 'offer/between', offerBody('1'), removed + 2)]), ['permission'])
       const read = await readProfile([h.url], alice.address, clock.t + 30 * DAY)
-      assert.deepEqual([read.current.has('offer/again'), read.current.has('offer/at'), read.current.has('offer/after')], [true, false, false], 'readers count what the host took, and nothing else')
+      assert.deepEqual(['offer/again', 'offer/at', 'offer/after', 'offer/between'].map((p) => read.current.has(p)), [true, false, false, false], 'readers count what the host took, and nothing else')
       await h.prune(clock.t + 31 * DAY)
       assert.deepEqual((await readAll(h.url)).records.map((c) => c.record.path).sort(), ['offer/again', 'offer/w', 'permissions'])
     } finally {
@@ -250,7 +254,7 @@ describe('access keys, checked as they arrive', () => {
       const pending = h.accept([encodeRecord(accessRecord(accessKey, alice.address, 'offer/late', offerBody('1'), clock.t))])
       await choosing
       // While the host's own choice waits, the owner makes the key past.
-      assert.deepEqual((await h.accept([encodeRecord(permissionsRecord(alice, [pastKey(accessKey, ['offer'])], clock.t))])).map((r) => r.error ?? 'ok'), ['ok'])
+      assert.deepEqual((await h.accept([encodeRecord(permissionsRecord(alice, [pastKey(accessKey, clock.t, ['offer'])], clock.t))])).map((r) => r.error ?? 'ok'), ['ok'])
       release()
       const [result] = await pending
       assert.deepEqual([result!.error, result!.message], ['permission', 'the permissions record does not allow this access key here'])
@@ -267,8 +271,8 @@ describe('access keys, checked as they arrive', () => {
     try {
       await publish([old.url], [hostsRecord(alice, [old.url, fresh.url], T0), permissionsRecord(alice, [allow(accessKey, ['offer'])], T0), ownerRecord(alice, 'profile', profileBody('maths'), T0)])
       await publish([old.url], [accessRecord(accessKey, alice.address, 'offer/w', offerBody('9'), T0 + 1), accessRecord(accessKey, alice.address, 'offer/x', offerBody('3'), T0 + 2)])
-      clock.advance(MINUTE)
-      await publish([old.url], [permissionsRecord(alice, [pastKey(accessKey, ['offer'])], clock.t)])
+      const removed = clock.advance(MINUTE)
+      await publish([old.url], [permissionsRecord(alice, [pastKey(accessKey, removed, ['offer'])], removed)])
       clock.advance(DAY)
       const there = await readProfile([old.url], alice.address, clock.t)
       const folder = [...there.current.values()].map((c) => c.record)
@@ -281,6 +285,7 @@ describe('access keys, checked as they arrive', () => {
       assert.deepEqual(ids(here), ids(there))
       assert.deepEqual([...here.current.keys()].sort(), ['hosts', 'offer/w', 'offer/x', 'permissions', 'profile'])
       assert.equal(here.current.get('offer/w')!.record.by, accessKey.address, 'the past key’s records, taken by the fresh host')
+      assert.equal(here.access[0]!.until, removed, 'dated before its until, which the copy carries')
     } finally {
       await old.close()
       await fresh.close()
@@ -493,12 +498,13 @@ describe('limits: each host’s own size, batch and page; each reader’s own si
     try {
       assert.deepEqual(await errors(h, [atCap, over]), ['ok', 'size'])
       assert.deepEqual(await errors(roomy, [over]), ['ok'])
-      // Size is the one reason a host refuses a permissions record by, and one that only removes a
-      // key is never larger: a past key's entry is shorter than a write key's, a deleted one gone.
+      // Size is the one reason a host refuses a permissions record by, and one that only deletes a
+      // key's entry is never larger. Making a key past adds its until, less the two bytes was saves.
       const sized = (access: AccessKey[]) => Buffer.byteLength(encodeRecord(permissionsRecord(alice, access, T0)))
       const listed = sized([allow(accessKey, ['offer']), allow(reader, undefined, 'read')])
-      assert.ok(sized([pastKey(accessKey, ['offer']), allow(reader, undefined, 'read')]) < listed, 'a write key made past')
       assert.ok(sized([allow(accessKey, ['offer'])]) < listed, 'a read key deleted')
+      assert.ok(sized([allow(reader, undefined, 'read')]) < listed, 'a write key deleted')
+      assert.equal(sized([pastKey(accessKey, T0, ['offer']), allow(reader, undefined, 'read')]) - listed, `"until":${T0},`.length - 2, 'a write key made past')
     } finally {
       await h.close()
       await roomy.close()

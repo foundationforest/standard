@@ -109,8 +109,8 @@ and its clock `now`:
    by the access rule (Permissions). A key not on the list counts for nothing.
 5. A current record with a `null` body means the path is deleted.
 
-Beyond step 1, readers check no clock: the access rule compares a record's time with the
-permissions record's, both signed. An app sets `time = max(now, newest known at that path + 1)`
+Beyond step 1, readers check no clock: the access rule compares a record's time with its key's
+`until`, both signed. An app sets `time = max(now, newest known at that path + 1)`
 (`nextTime`), so a slow clock never makes an edit lose to what it replaces.
 
 ### Permissions
@@ -134,7 +134,8 @@ scope, and hands its 32 bytes to whoever it is for.
 - `sealTo`, on a read key and only there, is what others seal to for it, an age post-quantum
   hybrid key (`age1pq1…`). A key or a `sealTo` listed twice makes the record invalid.
 - `was`, in place of `scope`, marks a past key: `"was": "write"`, a write key the owner removed
-  (Removing a key).
+  (Removing a key). `until`, on a past key and only there, is the time of the permissions record
+  that made it past.
 - `paths`: at most 16 content-path prefixes; a past key keeps the paths it had. With `paths`, the
   key works only under them: where a write key writes, which private records the owner's devices
   seal to a read key, and, when one covers `inbox`, the inbox. Without, it works at every
@@ -147,19 +148,21 @@ reader counts it, only if the current permissions record allows it.
 
 - A key listed with scope `write`, its paths covering the record's path, is allowed.
 - A past key, listed with `was` `write`, its paths covering the record's path, is allowed only for
-  a record dated before the current permissions record.
+  a record dated before its `until`.
 - A read key writes nothing.
 - The owner's record wins over an access key's at the same path, so the owner can always delete
   an access key's record.
 
 **Removing a key.** To remove a write key, the owner replaces its `scope` with `was`, the scope it
-had, and keeps its entry and its paths: it can no longer send, pull, or put or delete blobs, and a
-record of its counts only if dated before the permissions record. What it wrote counts, at its
-paths, only because the permissions record, signed by the main key, still lists it, so a host
-cannot slip in a key never allowed. Deleting the entry instead disowns what the key wrote: none of
-it counts any more. To keep one of a past key's records
-as the owner's own, the owner publishes it again with the main key. A read key is removed by
-deleting its entry: nothing it did needs to count.
+had, adds `until`, the time of the permissions record that does it, and keeps its entry and its
+paths: it can no longer send, pull, or put or delete blobs, and a record of its counts only if
+dated before `until`. Every later permissions record keeps that entry as it is, so adding another
+key later never lets the past key add more. What it wrote counts, at its paths, only because the
+permissions record, signed by the main key, still lists it, so a host cannot slip in a key never
+allowed. Deleting the entry instead disowns what the key wrote: none of it counts any more. If the
+owner deletes a key's entry and wants to keep one of its records, the owner publishes that record
+again with the main key. A read key is removed by deleting its entry: nothing it did needs to
+count.
 
 ### Private records
 
@@ -350,18 +353,17 @@ A blob is bytes a folder holds, such as a photo or a video. It is the folder's, 
 record needs to name it, and none keeps it on a host. Where a record points at a blob, and under
 what field, is the market's.
 
+```
+{ "v": 1, "action": "put", "profile": <address>, "sha256": <hex>, "mimeType": <type>,
+  "size": <bytes>, "time": <ms since 1970>, "key"?: <address>, "sig": <base64url> }
+```
+
 - **Its name** is what a stranger needs to fetch it and check it: `sha256`, the SHA-256 of the
   bytes in lowercase hex; `mimeType`, their media type, `type/subtype` in lower case, at most 255
   characters; and `size`, how many bytes.
 - **Put.** The folder's main key, or a write key its permissions record lists, whatever the key's
-  paths, signs a put and sends it with the bytes to each of the folder's hosts
+  paths, signs a put, above, and sends it with the bytes to each of the folder's hosts
   (`PUT /v1/blobs/<sha256>`). The main key putting bytes a write key put makes them its own.
-
-  ```
-  { "v": 1, "action": "put", "profile": <address>, "sha256": <hex>, "mimeType": <type>,
-    "size": <bytes>, "time": <ms since 1970>, "key"?: <address>, "sig": <base64url> }
-  ```
-
 - **Delete.** `{ "v": 1, "action": "delete", "profile", "sha256", "time", "key"?, "sig" }`, to each
   host (`DELETE /v1/blobs/<sha256>`). A key deletes only blobs it put; the owner deletes any.
 - `key` is there when a write key signed. `sig` is EdDSA-Poseidon by `key` if present, else by
@@ -424,7 +426,8 @@ records from the sender's host.
    (Permissions) [`permission`]. The host checks it again just before it stores the record.
 5. A host MAY refuse a content record by its own choice [`refused`]. It MUST NOT refuse a hosts or
    permissions record by its own choice but for its size, so a person can always move and always
-   remove an access key: a record that only removes one is never larger than the one before.
+   remove an access key: a record that only deletes a key's entry is never larger than the one
+   before.
 
 **Taking a message in**, in this order, error code in brackets:
 
@@ -461,7 +464,7 @@ A message whose `from` is its `to` skips steps 6 to 8: an inbox's rules are for 
    [`shape`], its time within 600,000 ms of the host's clock [`stale`], and its signature, by `key`
    if it names one, else by the profile's main key [`signature`].
 2. A write key: the current permissions record on this host lists `key` with scope `write`
-   [`permission`].
+   [`permission`]. The host checks it again just before the folder holds the bytes.
 3. The bytes are the type (`content-type`) and the size the put names [`shape`], and their SHA-256
    is the name in the path [`hash`].
 4. Bytes the folder holds already are `already here`.
@@ -472,8 +475,8 @@ A message whose `from` is its `to` skips steps 6 to 8: an inbox's rules are for 
 
 1. The signed delete, as step 1 and step 2 of taking a blob in.
 2. Bytes the folder does not hold are `not here`.
-3. A write key deletes only bytes it put; the main key deletes any [`permission`]. Who put them is
-   read in the same step that deletes them.
+3. A write key deletes only bytes it put; the main key deletes any [`permission`]. Whether the write
+   key is still listed, and who put them, are read in the same step that deletes them.
 4. Once no folder holds the bytes, the host deletes them.
 
 A busy host SHOULD verify in native code, with these same strict rules: another library may skip
@@ -660,8 +663,9 @@ access keys are pinned in `keys/test/vectors.json`, and checked there. It also h
 keys/'s `tutoring/buyer` profile to `tutoring/seller`, and a message from `tutoring/seller` signed
 by its write key, naming `https://host-a.example`, to `tutoring/buyer`, each with its wire text,
 signing input and id; a pull request by `tutoring/seller`, and the same pull signed by its read
-key; `past`, a later permissions record in which the write key is past and the read key still
-listed; and two blob requests, each with its wire text and signing input: `blobPut`, the main key
+key; `past`, a later permissions record in which the write key is past, until that record's time,
+and the read key still listed; and two blob requests, each with its wire text and signing input:
+`blobPut`, the main key
 putting the 26 letters `a` to `z` as `text/plain`, and `blobDelete`, the write key deleting them.
 Each message's body is sealed to the inbox key of the profile it is to; age's sealing is random, so
 the sealed bodies are pinned as they were made. `test/vectors.test.ts` recomputes the records, the
@@ -686,11 +690,11 @@ checks both with their verifiers.
 - **The owner wins.** An access key never replaces or deletes what the main key wrote, and never
   writes the hosts or permissions record.
 - **Nobody writes for a profile unless its permissions record says so.** Removing an access key
-  ends what it can add dated after your current permissions record, at any host that follows the
-  standard; what it wrote before still counts.
+  ends what it can add dated after its removal, at any host that follows the standard; what it
+  wrote before still counts.
 - **A person can always move.** A profile's name is its key, not a host's address. A host never
   refuses a newer hosts or permissions record by its own choice but for its size, and one that
-  only removes an access key is never larger than the one before.
+  only deletes an access key's entry is never larger than the one before.
 - **A host holds nothing secret of the people it serves.** No keys, no accounts, no login, and it
   cannot open a private record.
 - **Only a profile's main key, or a read key its permissions record lists for the inbox, can pull
@@ -706,7 +710,7 @@ checks both with their verifiers.
   (Hosts).
 - **A host keeps only the newest record at each path,** and what it replaced for its keep days.
   Older history is in the app's copies, or nowhere.
-- **A removed key can still write a record dated before you removed it.** A newer record at that
+- **A removed key can still write a record dated before its removal time.** A newer record at that
   path wins, and you can delete it.
 - **A message a write key sent proves only that the key signed it.** The host that took it checked
   the key was allowed at the time; the message itself does not carry that.
@@ -757,15 +761,17 @@ checks both with their verifiers.
 
 ## FAQ
 
-**Why does the permissions record carry no dates or names?**
+**Why does the permissions record carry no names, and no date but a past key's `until`?**
 It is public. A date would tell anyone when you met someone or began using an app, and a name
 would say who. Who a key is for, and since when, is the app's to remember, on the person's devices
-or in the vault, which only the person opens. A past key's line is the time of the permissions
-record that lists it, so readers check no clock, and agree whatever theirs say.
+or in the vault, which only the person opens. A past key's `until` is the one date it keeps: the
+time of the permissions record that removed the key, which anyone could read while that record was
+current. It stays so that a later permissions record never reopens what the key can add, and so
+anyone can read when each past key was removed. Readers still check no clock, and agree whatever
+theirs say.
 
 **Why does a past key have `was` in place of `scope`?**
-So nothing that checks a key's scope lets a removed key act, and removing a key never makes the
-permissions record larger: `"was":"write"` is shorter than `"scope":"write"`.
+So nothing that checks a key's scope lets a removed key act.
 
 **Why does the owner win?**
 An access key lives somewhere less safe than the main key: on a server, or with another app. If

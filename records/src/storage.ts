@@ -178,12 +178,40 @@ function nextNumber(db: Db, table: string, now: number): number {
   return Math.max(last + 1, now * 1000)
 }
 
-/** A folder's file, its tables made the first time it opens. */
+/**
+ * A SQLite file's layout: its version, each table's columns and each index's name. Not the text
+ * that made them, so a comment changed in FOLDER_SCHEMA changes no layout.
+ */
+function layoutOf(db: DatabaseSync): string {
+  const { user_version } = db.prepare('PRAGMA user_version').get() as { user_version: number }
+  const columns = db.prepare(`SELECT m.name AS tbl, p.name, p.type, p."notnull", p.pk FROM sqlite_master m JOIN pragma_table_info(m.name) p WHERE m.type = 'table' ORDER BY m.name, p.cid`).all()
+  const indexes = db.prepare(`SELECT name, tbl_name FROM sqlite_master WHERE type = 'index' ORDER BY name`).all()
+  return JSON.stringify({ user_version, columns, indexes })
+}
+
+/** The layout of a new file, and of a folder file as FOLDER_SCHEMA makes it. */
+const [NEW_LAYOUT, FOLDER_LAYOUT] = ['', FOLDER_SCHEMA].map((schema) => {
+  const db = new DatabaseSync(':memory:')
+  try {
+    db.exec(schema)
+    return layoutOf(db)
+  } finally {
+    db.close()
+  }
+})
+
+/** A folder's file, its tables made the first time it opens. A file in any other layout is refused, never migrated. */
 function openFolder(file: string): Db {
   const folder = new Db(file)
-  const version = (folder.db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version
-  if (version === 0) folder.db.exec(FOLDER_SCHEMA)
-  return folder
+  try {
+    const layout = layoutOf(folder.db)
+    if (layout === NEW_LAYOUT) folder.db.exec(FOLDER_SCHEMA)
+    else if (layout !== FOLDER_LAYOUT) throw new Error(`${file} is not a folder file in this host's layout`)
+    return folder
+  } catch (err) {
+    folder.close()
+    throw err
+  }
 }
 
 /** The addresses with a folder file in `dir`. */
@@ -365,33 +393,47 @@ export class Storage {
 
   /**
    * Put bytes in a folder, `by` the write key that signed, or null for the main key, which takes over
-   * bytes a write key put. The bytes are stored once, whichever folders hold them. host.sqlite's
-   * index first: a crash in between keeps bytes until the next prune puts the index right, and never
-   * deletes bytes a folder holds.
+   * bytes a write key put, unless `refuse` gives a reason, asked in the same step right before the
+   * folder holds them. The bytes are stored once, whichever folders hold them. host.sqlite's index
+   * first: a crash in between keeps bytes until the next prune puts the index right, and never
+   * deletes bytes a folder holds. Returns the reason, or null once the folder holds them.
    */
-  async putBlob(folder: string, sha256: string, type: string, size: number, by: string | null, bytes: Uint8Array, now: number): Promise<void> {
-    await this.oneAtATime(sha256, async () => {
-      if (this.host.q('SELECT 1 FROM blobs WHERE sha256 = ?').get(sha256) === undefined) {
+  putBlob(folder: string, sha256: string, type: string, size: number, by: string | null, bytes: Uint8Array, now: number, refuse: () => string | null): Promise<string | null> {
+    return this.oneAtATime(sha256, async () => {
+      const stored = this.host.q('SELECT 1 FROM blobs WHERE sha256 = ?').get(sha256) !== undefined
+      if (!stored) {
         await this.blobs.put(sha256, type, bytes)
         this.host.q('INSERT OR IGNORE INTO blobs (sha256, type) VALUES (?, ?)').run(sha256, type)
+      }
+      const refused = refuse()
+      if (refused) {
+        // Bytes this put stored, that no folder holds, go now rather than at the next prune: until
+        // then the host would serve them.
+        if (!stored && this.host.q('SELECT 1 FROM owners WHERE sha256 = ?').get(sha256) === undefined) {
+          this.host.q('DELETE FROM blobs WHERE sha256 = ?').run(sha256)
+          await this.blobs.delete(sha256)
+        }
+        return refused
       }
       this.host.q('INSERT OR IGNORE INTO owners (sha256, folder) VALUES (?, ?)').run(sha256, folder)
       this.folder(folder, true)!
         .q('INSERT INTO blobs (sha256, type, size, by, arrived) VALUES (?, ?, ?, ?, ?) ON CONFLICT (sha256) DO UPDATE SET by = NULL WHERE excluded.by IS NULL')
         .run(sha256, type, size, by, now)
+      return null
     })
   }
 
   /**
-   * Delete bytes from a folder, if `may` allows it for who put them, asked in the same step that
-   * deletes them; once no folder holds them, from the store. The folder's file first, then the
-   * index, then the store: a crash in between leaves bytes the next prune deletes.
+   * Delete bytes from a folder, unless `refuse` gives a reason, asked with who put them in the same
+   * step that deletes them; once no folder holds them, from the store. The folder's file first,
+   * then the index, then the store: a crash in between leaves bytes the next prune deletes.
    */
-  deleteBlob(folder: string, sha256: string, may: (held: { by: string | null }) => boolean): Promise<'deleted' | 'not here' | 'refused'> {
+  deleteBlob(folder: string, sha256: string, refuse: (held: { by: string | null }) => string | null): Promise<'deleted' | 'not here' | { refused: string }> {
     return this.oneAtATime(sha256, async () => {
       const held = this.blobOf(folder, sha256)
       if (!held) return 'not here'
-      if (!may(held)) return 'refused'
+      const refused = refuse(held)
+      if (refused) return { refused }
       this.folder(folder)!.q('DELETE FROM blobs WHERE sha256 = ?').run(sha256)
       this.host.q('DELETE FROM owners WHERE sha256 = ? AND folder = ?').run(sha256, folder)
       if (this.host.q('SELECT 1 FROM owners WHERE sha256 = ?').get(sha256) !== undefined) return 'deleted'

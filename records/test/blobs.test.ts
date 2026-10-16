@@ -12,6 +12,7 @@ import { deleteBlob, getBlob, publish, putBlob, readProfile } from '../src/clien
 import type { Host } from '../src/host.ts'
 import type { Key } from '../src/keys.ts'
 import { type SignedBlobRequest, blobNameOf, blobRequest } from '../src/message.ts'
+import { encodeRecord } from '../src/record.ts'
 import { hostsRecord, ownerRecord, permissionsRecord } from '../src/write.ts'
 import { DAY, MINUTE, T0, accessKey, alice, allow, bob, offerBody, pastKey, reader, stranger } from './fixtures.ts'
 import { Clock, startHost } from './helpers.ts'
@@ -114,6 +115,22 @@ describe('blobs', () => {
     }
   })
 
+  test('a write key made past while its delete waited its turn is refused in the step that deletes, and the bytes stay', async () => {
+    const h = await startHost({ now: () => T0 })
+    try {
+      await publish([h.url], [permissionsRecord(alice, [allow(accessKey, ['inbox'])], T0)])
+      assert.equal(await put(h, as(accessKey), photo), 'ok')
+      // The delete passes its first check and waits its turn; the owner makes the key past before it comes.
+      const deleting = h.deleteBlob(nameOf(photo), canonical(deleteOf(as(accessKey), photo)))
+      await h.accept([encodeRecord(permissionsRecord(alice, [pastKey(accessKey, T0 + 1, ['inbox'])], T0 + 1))])
+      const done = await deleting
+      assert.deepEqual([done.error, done.message], ['permission', 'the profile’s permissions record here does not list key as a write key'])
+      assert.ok(await h.getBlob(nameOf(photo)), 'still held')
+    } finally {
+      await h.close()
+    }
+  })
+
   test('bytes two folders hold are stored once, and stay until the last of them deletes them', async () => {
     const h = await startHost({ now: () => T0 })
     try {
@@ -132,7 +149,7 @@ describe('blobs', () => {
     const h = await startHost({ now: () => T0 })
     try {
       const past = stranger
-      await publish([h.url], [permissionsRecord(alice, [allow(accessKey, ['offer']), pastKey(past, ['offer']), allow(reader, ['inbox'], 'read')], T0)])
+      await publish([h.url], [permissionsRecord(alice, [allow(accessKey, ['offer']), pastKey(past, T0, ['offer']), allow(reader, ['inbox'], 'read')], T0)])
       assert.equal(await put(h, as(bob), photo), 'permission', 'a key the folder does not list')
       assert.equal(await put(h, as(past), photo), 'permission', 'a past write key')
       assert.equal(await put(h, as(reader), photo), 'permission', 'a read key')

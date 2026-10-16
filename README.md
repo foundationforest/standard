@@ -1,6 +1,6 @@
 # standard
 
-Part of [Forest](https://github.com/foundationforest), open software for people to offer, pay and review each other through profiles they own. A person holds one secret seed on their device and gets one profile for each label they use, such as `tennis/seller`. One seed gives one profile per label; an issuer decides how many notes each human gets; how many issuers count is each index's.
+Part of [Forest](https://github.com/foundationforest), open software for people to offer, pay and review each other through profiles they own. A person holds one secret seed on their device and gets one profile for each label they use, such as `tennis/seller`.
 
 The standard is the only part of Forest everyone shares: the rules and math every app, host, index and issuer must agree on, along with the libraries, circuits and escrow program that implement them.
 
@@ -8,6 +8,8 @@ The standard is the only part of Forest everyone shares: the rules and math ever
 - A **host** stores a profile's folder of signed records and its sealed inbox.
 - An **index** reads hosts and payment receipts, checks proofs, and scores profiles and offers.
 - An **app** (or an AI acting through scoped access keys) creates records and reads the network for the person.
+
+One seed gives one profile per label; an issuer decides how many notes each human gets; how many issuers count is each index's.
 
 Everything outside these rules lives in [markets](https://github.com/foundationforest/markets), [services](https://github.com/foundationforest/services) and [app](https://github.com/foundationforest/app), where anyone can run or propose their own copy.
 
@@ -26,7 +28,7 @@ A **label** is any text; markets set the convention, `<market>/<role>`, such as 
 |---|---|---|---|
 | [`keys/`](keys/README.md) | The recipe that mixes every main key, payment address, inbox key and issuer secret from the person's seed | a library | on the person's device |
 | [`proofs/`](proofs/README.md) | The zero-knowledge proofs a device makes and anyone can check: [`note/`](proofs/note/README.md) (proving a profile's key and stamp come from a seed an issuer signed a note to) and [`reputation/`](proofs/reputation/README.md) (proving a score across hidden profiles from an index's tree) | circuits and client libraries | made on the device; checked by anyone in milliseconds |
-| [`records/`](records/README.md) | How a profile speaks: versioned folder entries (`profile`, `hosts`, `permissions`, `offer`, `review`, `private`), scoped `write` and `read` access keys for AI and apps, the sealed `inbox`, the `vault`, the blobs a folder holds (photos and videos its keys put and delete), and the reference host | a library and reference host | wherever an app, AI, host or index runs |
+| [`records/`](records/README.md) | How a profile speaks: versioned folder entries (`profile`, `hosts`, `permissions`, `offer/<id>`, `review/<id>`, and private records), scoped `write` and `read` access keys for AI and apps, the sealed `inbox`, the `vault`, the blobs a folder holds (photos and videos its keys put and delete), and the reference host | a library and reference host | wherever an app, AI, host or index runs |
 | [`escrows/`](escrows/README.md) | On-chain lockboxes that release money when a side gives it to the other, both sides agree, a chosen arbiter decides, or the schedule set at the start says so (one directory per chain; only [`solana/`](escrows/solana/README.md) has one) | an on-chain program and client library | on chain when a deal uses escrow |
 
 ## Who decides what
@@ -35,7 +37,7 @@ A **label** is any text; markets set the convention, `<market>/<role>`, such as 
 - **A market** (in [markets](https://github.com/foundationforest/markets)) defines its roles, its offers' fields and its reviews' fields, and may suggest an offer field that carries an escrow's terms.
 - **A service** (issuer, host, index, fee payer) sets its own prices and rules. An index decides which issuers it trusts, how many count, and how it weights evidence.
 - **An app** chooses how it holds the seed and which services it uses by default, together with the person.
-- **The person** decides which markets to enter, which AI or app gets scoped access keys, and when to link reputation across profiles.
+- **The person** decides which markets to enter, which AI or app gets scoped access keys, and when to carry a score across profiles.
 
 ## For builders
 
@@ -62,14 +64,15 @@ What others can still see:
 
 - **Nothing in the standard needs the seed or a main key to leave the device.** `keys/` mixes every key from the seed on the device; everything else takes only what it mixes. What an app does with the seed is the app's (`keys/`, Rules for apps).
 - **One seed, one profile per label.** The note circuit derives the main key inside the proof, making a second main key for the same seed and label mathematically invalid (`proofs/note/`).
-- **Updates and deletes are just writes.** Every record is versioned by ID; a record with a null body is a delete (`records/`).
+- **Updates and deletes are just writes.** Every path holds its newest signed record; a record with a null body deletes the path (`records/`).
 - **Nothing in the standard charges a fee.** There is no coin and no cut on deals.
-- **Escrows have no admin key.** Once money enters an escrow, only a side giving it to the other, both sides together, the named arbiter, or the schedule set at the start can move it (`escrows/`).
+- **Escrows have no admin key.** Once the program is on Solana's mainnet and can no longer change, nothing moves the money but a side giving, both agreeing, the arbiter, or the schedule; on its devnet we can still upgrade it (`escrows/`).
 
 ## Limits
 
 - **The escrow runs on Solana's devnet,** so no real money moves through it (`escrows/`).
 - **Both circuits' setups were made by one party** (`proofs/`).
+- **No seed recovery.** Lose the seed and the profiles made from it are gone; nothing can give them back (`keys/`).
 
 ## What it is built from
 

@@ -186,8 +186,9 @@ export const SCOPES: readonly Scope[] = ['write', 'read']
 
 /**
  * A listed key: one that acts, with its `scope`; or a past key, a write key the owner removed,
- * with `was: "write"` in place of `scope`. A past key can no longer act: nothing that checks a
- * scope finds one. What a past write key wrote still counts, at its paths.
+ * with `was: "write"` in place of `scope`, and `until`. A past key can no longer act: nothing that
+ * checks a scope finds one. What a past write key wrote dated before its `until` still counts, at
+ * its paths.
  */
 export type AccessKey = {
   /** Its signing key's address. */
@@ -198,6 +199,11 @@ export type AccessKey = {
   scope?: Scope
   /** The scope a past key had; on a past key, and only there. */
   was?: 'write'
+  /**
+   * The time of the permissions record that made it past, kept as it is in every later one: its
+   * records count only when dated before it. On a past key, and only there.
+   */
+  until?: number
   /**
    * Path prefixes it works under, segment by segment: where a write key writes, and which private
    * records the owner's devices seal to a read key; `inbox` among them lets a write key send
@@ -240,11 +246,12 @@ export function checkControlBody(path: string, body: Body): void {
   const listed = new Set<unknown>()
   for (const k of access as unknown[]) {
     if (k === null || typeof k !== 'object' || Array.isArray(k)) fail('permissions', 'an access entry is an object')
-    only(k, ['key', 'sealTo', 'scope', 'was', 'paths'], 'permissions', 'access')
-    const { key, sealTo, scope, was, paths } = k as { [key: string]: unknown }
+    only(k, ['key', 'sealTo', 'scope', 'was', 'until', 'paths'], 'permissions', 'access')
+    const { key, sealTo, scope, was, until, paths } = k as { [key: string]: unknown }
     if ('was' in (k as object) ? 'scope' in (k as object) || was !== 'write' : !SCOPES.includes(scope as Scope)) {
       fail('permissions', `scope is one of ${SCOPES.join(', ')}; a past key has was, write, in its place`)
     }
+    if ('was' in (k as object) ? !Number.isSafeInteger(until) : 'until' in (k as object)) fail('permissions', 'a past key gives until, the time it was removed, and only a past key does')
     if (!publicKeyFromAddress(key)) fail('permissions', 'an access key is a usable address')
     if (scope === 'read') {
       if (typeof sealTo !== 'string' || !SEAL_TO.test(sealTo)) fail('permissions', 'a read key gives sealTo, an age post-quantum hybrid key, age1pq1…')
