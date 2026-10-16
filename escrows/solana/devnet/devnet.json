@@ -1,5 +1,5 @@
 {
-  "note": "The devnet deploy of the escrow. Public keys, addresses and signatures only. Every key comes from the devnet phrase by the recipe in escrow/devnet/deploy.sh, which writes the keypairs outside the repo and checks them against `keys`; the program id's label is escrow-v2-program-2. Written by escrow/devnet/deploy.sh and escrow/client/scripts/devnet.ts. `earlier` keeps the records of the escrow's earlier programs on devnet, as they were: the first deploy of this program (closed) and escrow v1 (still deployed, to be closed). `beforeTermsInTheAddress` keeps, as they were, the deals made before the upgrade that made each escrow's address from its terms.",
+  "note": "The devnet deploy of the escrow. Public keys, addresses and signatures only. Every key comes from the devnet phrase by the recipe in escrow/devnet/deploy.sh, which writes the keypairs outside the repo and checks them against `keys`; the program id's label is escrow-v2-program-2. Written by escrow/devnet/deploy.sh and escrow/client/scripts/devnet.ts. `earlier` keeps the records of the escrow's earlier programs on devnet, as they were: the first deploy of this program (closed) and escrow v1 (still deployed, to be closed). `beforeTermsInTheAddress` keeps, as they were, the deals made before the upgrade that made each escrow's address from its terms, and `beforeSchedules` those made on version 2, before the upgrade to version 3's schedules.",
   "cluster": "devnet",
   "rpc": "https://api.devnet.solana.com",
   "keys": {
@@ -12,9 +12,9 @@
     "programId": "FA6ZodkyhMDj9yjzY27dk8JDCtcHnJx8mr45Mx9TfKg8",
     "programData": "5eR7zdTkR1RVRzjJjy8ZLnheBShwfUhgwz24JwYz1scH",
     "upgradeAuthority": "2mz33wBK7FKRXoAi7LptGGTwVQJDbrSyrVwbYRCqwP3A",
-    "lastDeploySlot": 508274931,
-    "soSha256": "95268ecf0c0fcbd997390259fb8dbe88ac7fe490ad2a7e9674ba7d1983cb4874",
-    "soBytes": 318784,
+    "lastDeploySlot": 511566755,
+    "soSha256": "ce34e0f3c1223fe355b53f117a4fbe216014b742defaf40db7c441a0f8181df8",
+    "soBytes": 334816,
     "sbpfVersion": "v3",
     "deploySignature": "5eNZjWGMBZagsLRtaqiY2RuJPin7p57pq8ACLqVWjU5RaU5r6otgss8u6W8tMexK1ZxUaHA957EQzSfr4hSGeGzj",
     "deployCost": {
@@ -94,6 +94,28 @@
           "spent": 1590000
         },
         "what": "the same address, upgraded in place: each escrow's address made from its terms, the arbiter never a party, every rent to the payer"
+      },
+      {
+        "slot": 511566755,
+        "signature": "o5T81Hy5HWfxpCVzc4MYkBSryzvqHNsDzRrYMUYPVLrT6tzZ68jMHgQTCrmnF3enFukEYwpAWu4XFri5pc54HQy",
+        "soSha256": "ce34e0f3c1223fe355b53f117a4fbe216014b742defaf40db7c441a0f8181df8",
+        "soBytes": 334816,
+        "cost": {
+          "bytes": 334816,
+          "previousBytes": 324576,
+          "extendBytes": 10240,
+          "bufferRent": 1701703480,
+          "extendRent": 52019200,
+          "writes": 331,
+          "fees": 1670000,
+          "total": 1755392680,
+          "spend": 53689200,
+          "balanceBefore": 4100622160,
+          "balanceAfter": 4046932960,
+          "spent": 53689200
+        },
+        "what": "the same address, upgraded in place to v3: a schedule of windows instead of the timer, one move per ending (pay, refund, take_back, agree, decide, end), a stop instead of the objection, the payer and the recipient, every rent to the sponsor",
+        "programDataBytes": 334816
       }
     ]
   },
@@ -299,6 +321,106 @@
       "program": "escrow-v2",
       "what": "one tap: the deposit address made first, then the buyer pays 1.00 Open USD-shaped dollar into it and releases it to the seller, in one transaction",
       "signature": "5bApmTQKBggR7Cnd7p3bs65bPxuoapK9CfB8mMr1ymxFVKgKieGAKKgspXzc7zBqrwRX2e1jKAkJspP59jpYsA1Z"
+    },
+    {
+      "program": "escrow-v3",
+      "what": "upgrade in place: the escrow, now 334816 bytes (sha256 ce34e0f3c1223fe3…), same address",
+      "signature": "o5T81Hy5HWfxpCVzc4MYkBSryzvqHNsDzRrYMUYPVLrT6tzZ68jMHgQTCrmnF3enFukEYwpAWu4XFri5pc54HQy"
+    },
+    {
+      "program": "escrow-v3",
+      "what": "top-up: the recipient key sends back 4.4 test dollar to the payer key for the v3 deals",
+      "signature": "5goLSDyUqcSMHfXyWrXRWA8Z1JRWZZtui9CrUka6uzB4iSuTu71nhTnu6R1hJ52iyoUVqz6D29x6ZuWTDuLX3D2F"
+    },
+    {
+      "program": "escrow-v3",
+      "what": "invoice: the recipient opens an escrow naming the payer, 1.00 test dollar, no options, the sponsor fronting the rent",
+      "signature": "2Uo3nhdkmKsk6JzJF4oVZm6pgu8J8aMkJEWVrkCNDHB4zG3NWcZLW5tkMR6npGiZjRMVM18HCLUwpqY3wvF9vY4p"
+    },
+    {
+      "program": "escrow-v3",
+      "what": "one tap: the deposit address made first, then the payer pays 1.00 test dollar into it and pays it out to the recipient, in one transaction",
+      "signature": "3e1AQu5ordYqDRbYEZ76J3sb1HCMGAMMxhoLXsffZA5rYFRsUR2qCxvLjcqADmX1xFAN6HsbmDt4pA7N5Zu5aNn2"
+    },
+    {
+      "program": "escrow-v3",
+      "what": "create and fund: the deposit address made first, the payer opens 2.00 test dollar, half back until a day from now, then paid, pays it in and marks it, in one transaction",
+      "signature": "4AP2NyhQCjxxdQEuyMP8FPhAzPnbNdwPc9fm9F6scB2eJbQ4qLAkkvsUFGcjwkWSKaw9mzhB7DWYdga3AML6f4gY"
+    },
+    {
+      "program": "escrow-v3",
+      "what": "take_back: the payer takes back the window's half, 1.00 test dollar; the other 1.00 to the recipient",
+      "signature": "5w5JbGgQGqQrcn5AbeEu9jHfh7W2d1DU5781RvHMVDpL27ywybWH8DUcuWVTMmjCcxGu11o7Mb29juUtU6WhYWtp"
+    },
+    {
+      "program": "escrow-v3",
+      "what": "create and fund: the deposit address made first, the payer opens 2.00 test dollar, paid in a day unless stopped, pays it in and marks it, in one transaction",
+      "signature": "3sun1GXksf3HN8cVxaAnmUyA9o3zzD166gnnRjsSTmMR8fCahUQEbE8BSuqNB3r99UnJL8kGD1mKJqqkNmZWVL1"
+    },
+    {
+      "program": "escrow-v3",
+      "what": "stop: the payer stops it before the end time; the schedule is off",
+      "signature": "6qrxn53m4grM8PWxsE2Z5EZNGDpVSbMjcw2pJrQ6QEVofBEgMEitdjTHkdLtUodH19ot1iWSkvR4zzuWZ5XtdAG"
+    },
+    {
+      "program": "escrow-v3",
+      "what": "agree: payer and recipient both sign 60/40; 1.20 test dollar to the recipient, 0.80 back to the payer",
+      "signature": "jzQugSKCzEpcKBFVfsGMgAhYTKufs5wGwLouKD62smXNFNPP2TjdHV2BkgvykTvL3TpoWsvGvG9De5VE81e8BJQ"
+    },
+    {
+      "program": "escrow-v3",
+      "what": "create and fund: the deposit address made first, the payer opens 1.00 test dollar, paid in a minute and a half unless stopped, pays it in and marks it, in one transaction",
+      "signature": "24PUS7raspww9GnQvNT42Fjzb9PaBmSq1aAkKnrihBjnuVp5CUJVczpTu81dD8usqo9QfsJHtTbP5EpaVQcR4Ps3"
+    },
+    {
+      "program": "escrow-v3",
+      "what": "create: the payer opens 1.00 test dollar, paid in a minute and a half unless stopped, and pays nothing in",
+      "signature": "5zAT2WS3f9JBwz89b2pRo8WMogE3Jpadf9j6AwRg58VJW1BGf2sqrPd7DSsRhHGQQTyYYYv4FSsjXAjySreRfQo9"
+    },
+    {
+      "program": "escrow-v3",
+      "what": "end: from the end time, the sponsor's key, neither party, sends the default; 1.00 test dollar to the recipient",
+      "signature": "3U4hmxfgKogQSyFhX65k2AnKLUUmP5Kh2diwnrH75NstDgCqz6iPy4L13bCe3msL9izogpnpvzNGF3reLrhs8tbm"
+    },
+    {
+      "program": "escrow-v3",
+      "what": "late transfer: after the end time, the payer sends 1.00 test dollar to the deposit address by a plain transfer, without a mark",
+      "signature": "2FjtZsJ5e1bXbMxSsbMJmYakCqjXThhPk4bkRN3odtSZrUZQpoZFHinnDdRgx4zBuFNk2vsUZnfGsa9mezeDJaU5"
+    },
+    {
+      "program": "escrow-v3",
+      "what": "close_unfunded: from the end time, never marked and never stopped, the payer closes it; 1.00 test dollar back to the payer, both rents to the sponsor, no receipt",
+      "signature": "4BnH1brEWfXz4VSmyCprUFfBchPrMACV3Zk3BQRuu3NnPWvJvziQALqyXeeyoZyTNmCtQFyVeuD1LAnxMErb39Rc"
+    },
+    {
+      "program": "escrow-v3",
+      "what": "top-up: the issuer mints 2.4 Open USD-shaped dollar to the payer key for the v3 deals",
+      "signature": "5PkNwsCHYqs5VYExC7eB4AgnYpWtJsbWi9eeUgVhb1stWPq5vDPkoCfR6kxHUUk1PPsdfdCZq7YFuRfHFyafSZH3"
+    },
+    {
+      "program": "escrow-v3",
+      "what": "invoice: the recipient opens an escrow naming the payer, 1.00 Open USD-shaped dollar, no options, the sponsor fronting the rent",
+      "signature": "4FwTT8J9uiTkttpVAvuEinAmyF8JoTF43oWkStvFz6XB6RXJDX2voeRHQC5oSpx92FS9x9M5LrEA4oJgRBMtMybb"
+    },
+    {
+      "program": "escrow-v3",
+      "what": "one tap: the deposit address made first, then the payer pays 1.00 Open USD-shaped dollar into it and pays it out to the recipient, in one transaction",
+      "signature": "4FkP8A4cABdiFgA2qa9xRZsVPUVZTteu82KuhbAGL8xBhWpt4x4KrWg62US8UicrgGJxL6n5YmZsA6m8trAyC361"
+    },
+    {
+      "program": "escrow-v3",
+      "what": "create and fund: the deposit address made first, the payer opens 2.00 Open USD-shaped dollar, paid in a day unless stopped, pays it in and marks it, in one transaction",
+      "signature": "64GQReBxzJrWTR4XrF8hHXNdJKTYFKa2J4nZidQnSsXXyPdfMDPHcgreSiz7yzJiU5Urnz9weDqQpt12BBh83SnM"
+    },
+    {
+      "program": "escrow-v3",
+      "what": "stop: the payer stops it before the end time; the schedule is off",
+      "signature": "24fAaPrtZjaseBygw6GkL75qJcGWUpW2oEUDpo3zRGf9vURtJwHDRhsAUtARYGiGJuz8JL34CJPpZd1FqvJwkkEF"
+    },
+    {
+      "program": "escrow-v3",
+      "what": "agree: payer and recipient both sign 60/40; 1.20 Open USD-shaped dollar to the recipient, 0.80 back to the payer",
+      "signature": "4C5WxPEjfMzH8LJkWf2p7i1Ptn8tiKZuGKqDKKuNuE3CjXyuSEpPvUgLRFG5uksTjGxPYM5DtUXaynwTUJAr99Yj"
     }
   ],
   "openUsdShaped": {
@@ -716,154 +838,427 @@
       }
     }
   },
-  "deals": {
-    "invoice": {
-      "what": "the seller invoices 1.00 test dollar; the buyer checks it, then, in one transaction, the deposit address made first, pays and releases; nobody marks it",
-      "id": "5976049000807800010",
-      "signatures": {
-        "invoice": "2mq61zvNNs1nErULDnYv7hyXkvZQauyifxdKUFxuNpLBD7hCut9FN77p4EL6qN2NzeSERz12pkWDh9tgxcgrneAB",
-        "one tap": "jzCCKJeuV3nXhFTPnimZQDB4XgwHaDNCkCWkDvQHAHdrBp7t23KGY6mkQcrYdqHu9sFgQHmnHq22RSiHsfHr2Nu"
+  "beforeSchedules": {
+    "what": "The deals made on version 2 of this program, before the upgrade in slot 511566755 to version 3. Their receipts stay at their addresses as they were, version 2, 297 bytes after the discriminator. Version 3 reads only its own 304, so it refuses every instruction on them (a sweep_rent simulated on each after the upgrade failed with AccountDidNotDeserialize), and late money sent to one could not be recovered.",
+    "deals": {
+      "invoice": {
+        "what": "the seller invoices 1.00 test dollar; the buyer checks it, then, in one transaction, the deposit address made first, pays and releases; nobody marks it",
+        "id": "5976049000807800010",
+        "signatures": {
+          "invoice": "2mq61zvNNs1nErULDnYv7hyXkvZQauyifxdKUFxuNpLBD7hCut9FN77p4EL6qN2NzeSERz12pkWDh9tgxcgrneAB",
+          "one tap": "jzCCKJeuV3nXhFTPnimZQDB4XgwHaDNCkCWkDvQHAHdrBp7t23KGY6mkQcrYdqHu9sFgQHmnHq22RSiHsfHr2Nu"
+        },
+        "escrow": "XpYtVXfKzQUFeuVYwGdu8w4ouwfR7dtLwLuWQ8JB7dG",
+        "mint": "J2QBACfPPb1ys2UyGx3ecXHgCr4hWuHFT3C2Nr6TSVSa",
+        "receipt": {
+          "status": "ended",
+          "outcome": "releasedToSeller",
+          "amount": "1000000",
+          "toSeller": "1000000",
+          "toBuyer": "0",
+          "creator": "seller",
+          "createdAt": "1791333264",
+          "fundedAt": "1791333266",
+          "endedAt": "1791333266",
+          "objection": null,
+          "objectedAt": null,
+          "rentRecipient": "9CKUm2s7nwT7HrCpjtaffNH3PnUUVyQr2gELjHrWYBUd",
+          "payer": "9CKUm2s7nwT7HrCpjtaffNH3PnUUVyQr2gELjHrWYBUd"
+        }
       },
-      "escrow": "XpYtVXfKzQUFeuVYwGdu8w4ouwfR7dtLwLuWQ8JB7dG",
-      "mint": "J2QBACfPPb1ys2UyGx3ecXHgCr4hWuHFT3C2Nr6TSVSa",
-      "receipt": {
-        "status": "ended",
-        "outcome": "releasedToSeller",
-        "amount": "1000000",
-        "toSeller": "1000000",
-        "toBuyer": "0",
-        "creator": "seller",
-        "createdAt": "1791333264",
-        "fundedAt": "1791333266",
-        "endedAt": "1791333266",
-        "objection": null,
-        "objectedAt": null,
-        "rentRecipient": "9CKUm2s7nwT7HrCpjtaffNH3PnUUVyQr2gELjHrWYBUd",
-        "payer": "9CKUm2s7nwT7HrCpjtaffNH3PnUUVyQr2gELjHrWYBUd"
+      "objection": {
+        "what": "the buyer opens 2.00 test dollar with a one-day timer to the seller and funds it at once; anyone marks it; the buyer objects before the timer is due; both sign a 60/40 split",
+        "id": "9668541204022361567",
+        "signatures": {
+          "create and fund": "49muaH9NdD8PD596EVg3Th5f8FijbCnyHbMrxNRBxJeoEAYcJAmVKZDzgXjyYVW8HGGfGH2Mrzgqzp6fj8RkFCbc",
+          "mark_funded": "2HzkoKfvPBqfP1siUGiuSkngzfBD4ungSzsEPEFzSzfC8q4jBwUDhdn2jKRhqNKgNQuoAySbrYXMzQscnMviU2Bq",
+          "object": "4MmcfL58rWznqcHT7bTbqH2xSPHtCtSqaAa659EWf5SaM2Ytu3b1wH35Y1HUqyXpWnhtSPqnNz9oqTNHkbqk7ceK",
+          "split": "5reRGU1AyYgvXgcrak6evQpJGz1p244PXtq49GHRC1sfgXFTLKGaQ7ojacoz3rKjE924SwV99ysWKPhMRvgkJSef"
+        },
+        "escrow": "pykMCazmf8yRLJbREwuDK6rPha2BW1qjGkYcWh5DCyx",
+        "mint": "J2QBACfPPb1ys2UyGx3ecXHgCr4hWuHFT3C2Nr6TSVSa",
+        "receipt": {
+          "status": "ended",
+          "outcome": "split",
+          "amount": "2000000",
+          "toSeller": "1200000",
+          "toBuyer": "800000",
+          "creator": "buyer",
+          "createdAt": "1791333267",
+          "fundedAt": "1791333270",
+          "endedAt": "1791333281",
+          "objection": "buyer",
+          "objectedAt": "1791333278",
+          "rentRecipient": "9CKUm2s7nwT7HrCpjtaffNH3PnUUVyQr2gELjHrWYBUd",
+          "payer": "9CKUm2s7nwT7HrCpjtaffNH3PnUUVyQr2gELjHrWYBUd"
+        }
+      },
+      "invoice, Token-2022": {
+        "what": "the seller invoices 1.00 Open USD-shaped dollar; the buyer checks it, then, in one transaction, the deposit address made first, pays and releases; nobody marks it",
+        "id": "14699086372476683169",
+        "signatures": {
+          "invoice": "EcrE6FxP8nQabUcaUrhx3v24Pzk5DfeTaaBym3jpqAFqJMmYfbEWLzYPMuppjYf3HJZD8nZxaLjFVdroYYz7M89",
+          "one tap": "3GqsEwd7MxXv5aqTWW6FRDLbZ4cdmjj7xuBKGvPGfTjb4sNqAKG892BHpMULgWXGkbaRgwE4mauDoJDekbQ6835D"
+        },
+        "escrow": "9c5aWFoM4qVzLnBksXH3LtJdyyDTeVX2r7hH5fXYzUfD",
+        "mint": "g55mjY4swDAFt16TZds3tsmoK55qkdhDLn4kb32RGZz",
+        "receipt": {
+          "status": "ended",
+          "outcome": "releasedToSeller",
+          "amount": "1000000",
+          "toSeller": "1000000",
+          "toBuyer": "0",
+          "creator": "seller",
+          "createdAt": "1791333282",
+          "fundedAt": "1791333288",
+          "endedAt": "1791333288",
+          "objection": null,
+          "objectedAt": null,
+          "rentRecipient": "9CKUm2s7nwT7HrCpjtaffNH3PnUUVyQr2gELjHrWYBUd",
+          "payer": "9CKUm2s7nwT7HrCpjtaffNH3PnUUVyQr2gELjHrWYBUd"
+        }
+      },
+      "objection, Token-2022": {
+        "what": "the buyer opens 2.00 Open USD-shaped dollar with a one-day timer to the seller and funds it at once; anyone marks it; the buyer objects before the timer is due; both sign a 60/40 split",
+        "id": "4626181147483300742",
+        "signatures": {
+          "create and fund": "5WYYhrb2ASfb1A76914ZJMXjZGwjm9qKjA3qpSPxiB6ML1dyRHz7HxgiQTwsNankUu77s4wqyDMAbFKX9mNFzBax",
+          "mark_funded": "27EsBdKYjoN4hWpQcw49ttDtX2oTgyh69VAy7o8MLCSwy5Fase3BSqfpS9q9Q4LJB7v8S8fMa4WreWFVigGt4Fpa",
+          "object": "4xTjeLYJwWyjQLt3KcihbMFN3KFMRA6EHTer7abGZ5BW1ZoR9QdT649AUTvyYHSsq7C72jxWnkr9zgspsDTEfFJq",
+          "split": "5N9THgFUwZpCXc2aJ4xFKrzL6wCq5bgeJcDDRRi2J7oFLXKXgettFhKdoKqSNexb8G4stYBxvdVJwPoXzCJP4cFx"
+        },
+        "escrow": "DpPzdAVejMUaLjxXFWHqbbF4yv563iWd9juNduZTSqPi",
+        "mint": "g55mjY4swDAFt16TZds3tsmoK55qkdhDLn4kb32RGZz",
+        "receipt": {
+          "status": "ended",
+          "outcome": "split",
+          "amount": "2000000",
+          "toSeller": "1200000",
+          "toBuyer": "800000",
+          "creator": "buyer",
+          "createdAt": "1791333292",
+          "fundedAt": "1791333296",
+          "endedAt": "1791333305",
+          "objection": "buyer",
+          "objectedAt": "1791333301",
+          "rentRecipient": "9CKUm2s7nwT7HrCpjtaffNH3PnUUVyQr2gELjHrWYBUd",
+          "payer": "9CKUm2s7nwT7HrCpjtaffNH3PnUUVyQr2gELjHrWYBUd"
+        }
+      },
+      "invoice, Token-2022, after the upgrade": {
+        "what": "the seller invoices 1.00 Open USD-shaped dollar; the buyer checks it, then, in one transaction, the deposit address made first, pays and releases; nobody marks it",
+        "id": "399803192599505852",
+        "signatures": {
+          "invoice": "2bBJcSF6fBvCbT3ew3czGrhJigcKMzgKWXgW4i9K6taFuSnjCx9aQWeA6HU33H1RqmpNohAKmgkDAdr4VtA2rDYw",
+          "one tap": "5bApmTQKBggR7Cnd7p3bs65bPxuoapK9CfB8mMr1ymxFVKgKieGAKKgspXzc7zBqrwRX2e1jKAkJspP59jpYsA1Z"
+        },
+        "escrow": "62BD2M15drAu9bociCYDeej2j2KsfrTZcQUJt4yYWeJa",
+        "mint": "g55mjY4swDAFt16TZds3tsmoK55qkdhDLn4kb32RGZz",
+        "receipt": {
+          "status": "ended",
+          "outcome": "releasedToSeller",
+          "amount": "1000000",
+          "toSeller": "1000000",
+          "toBuyer": "0",
+          "creator": "seller",
+          "createdAt": "1791333309",
+          "fundedAt": "1791333313",
+          "endedAt": "1791333313",
+          "objection": null,
+          "objectedAt": null,
+          "rentRecipient": "9CKUm2s7nwT7HrCpjtaffNH3PnUUVyQr2gELjHrWYBUd",
+          "payer": "9CKUm2s7nwT7HrCpjtaffNH3PnUUVyQr2gELjHrWYBUd"
+        }
       }
     },
-    "objection": {
-      "what": "the buyer opens 2.00 test dollar with a one-day timer to the seller and funds it at once; anyone marks it; the buyer objects before the timer is due; both sign a 60/40 split",
-      "id": "9668541204022361567",
+    "upgradeChecks": {
+      "what": "after the upgrade in slot 508274931: deal 1 again in the Open USD-shaped dollar, and a non-transferable mint's create simulated",
       "signatures": {
-        "create and fund": "49muaH9NdD8PD596EVg3Th5f8FijbCnyHbMrxNRBxJeoEAYcJAmVKZDzgXjyYVW8HGGfGH2Mrzgqzp6fj8RkFCbc",
-        "mark_funded": "2HzkoKfvPBqfP1siUGiuSkngzfBD4ungSzsEPEFzSzfC8q4jBwUDhdn2jKRhqNKgNQuoAySbrYXMzQscnMviU2Bq",
-        "object": "4MmcfL58rWznqcHT7bTbqH2xSPHtCtSqaAa659EWf5SaM2Ytu3b1wH35Y1HUqyXpWnhtSPqnNz9oqTNHkbqk7ceK",
-        "split": "5reRGU1AyYgvXgcrak6evQpJGz1p244PXtq49GHRC1sfgXFTLKGaQ7ojacoz3rKjE924SwV99ysWKPhMRvgkJSef"
+        "a non-transferable mint": "4vJ4oQ3YXZGzvp5KdwvwdPmj6HMgY6HLECCGvsE3ktQXLASm7LguL1Rct9NcyS4dQm8xxBSxMX43M6fprQDW3Jjz"
       },
-      "escrow": "pykMCazmf8yRLJbREwuDK6rPha2BW1qjGkYcWh5DCyx",
-      "mint": "J2QBACfPPb1ys2UyGx3ecXHgCr4hWuHFT3C2Nr6TSVSa",
-      "receipt": {
-        "status": "ended",
-        "outcome": "split",
-        "amount": "2000000",
-        "toSeller": "1200000",
-        "toBuyer": "800000",
-        "creator": "buyer",
-        "createdAt": "1791333267",
-        "fundedAt": "1791333270",
-        "endedAt": "1791333281",
-        "objection": "buyer",
-        "objectedAt": "1791333278",
-        "rentRecipient": "9CKUm2s7nwT7HrCpjtaffNH3PnUUVyQr2gELjHrWYBUd",
-        "payer": "9CKUm2s7nwT7HrCpjtaffNH3PnUUVyQr2gELjHrWYBUd"
-      }
-    },
-    "invoice, Token-2022": {
-      "what": "the seller invoices 1.00 Open USD-shaped dollar; the buyer checks it, then, in one transaction, the deposit address made first, pays and releases; nobody marks it",
-      "id": "14699086372476683169",
-      "signatures": {
-        "invoice": "EcrE6FxP8nQabUcaUrhx3v24Pzk5DfeTaaBym3jpqAFqJMmYfbEWLzYPMuppjYf3HJZD8nZxaLjFVdroYYz7M89",
-        "one tap": "3GqsEwd7MxXv5aqTWW6FRDLbZ4cdmjj7xuBKGvPGfTjb4sNqAKG892BHpMULgWXGkbaRgwE4mauDoJDekbQ6835D"
-      },
-      "escrow": "9c5aWFoM4qVzLnBksXH3LtJdyyDTeVX2r7hH5fXYzUfD",
-      "mint": "g55mjY4swDAFt16TZds3tsmoK55qkdhDLn4kb32RGZz",
-      "receipt": {
-        "status": "ended",
-        "outcome": "releasedToSeller",
-        "amount": "1000000",
-        "toSeller": "1000000",
-        "toBuyer": "0",
-        "creator": "seller",
-        "createdAt": "1791333282",
-        "fundedAt": "1791333288",
-        "endedAt": "1791333288",
-        "objection": null,
-        "objectedAt": null,
-        "rentRecipient": "9CKUm2s7nwT7HrCpjtaffNH3PnUUVyQr2gELjHrWYBUd",
-        "payer": "9CKUm2s7nwT7HrCpjtaffNH3PnUUVyQr2gELjHrWYBUd"
-      }
-    },
-    "objection, Token-2022": {
-      "what": "the buyer opens 2.00 Open USD-shaped dollar with a one-day timer to the seller and funds it at once; anyone marks it; the buyer objects before the timer is due; both sign a 60/40 split",
-      "id": "4626181147483300742",
-      "signatures": {
-        "create and fund": "5WYYhrb2ASfb1A76914ZJMXjZGwjm9qKjA3qpSPxiB6ML1dyRHz7HxgiQTwsNankUu77s4wqyDMAbFKX9mNFzBax",
-        "mark_funded": "27EsBdKYjoN4hWpQcw49ttDtX2oTgyh69VAy7o8MLCSwy5Fase3BSqfpS9q9Q4LJB7v8S8fMa4WreWFVigGt4Fpa",
-        "object": "4xTjeLYJwWyjQLt3KcihbMFN3KFMRA6EHTer7abGZ5BW1ZoR9QdT649AUTvyYHSsq7C72jxWnkr9zgspsDTEfFJq",
-        "split": "5N9THgFUwZpCXc2aJ4xFKrzL6wCq5bgeJcDDRRi2J7oFLXKXgettFhKdoKqSNexb8G4stYBxvdVJwPoXzCJP4cFx"
-      },
-      "escrow": "DpPzdAVejMUaLjxXFWHqbbF4yv563iWd9juNduZTSqPi",
-      "mint": "g55mjY4swDAFt16TZds3tsmoK55qkdhDLn4kb32RGZz",
-      "receipt": {
-        "status": "ended",
-        "outcome": "split",
-        "amount": "2000000",
-        "toSeller": "1200000",
-        "toBuyer": "800000",
-        "creator": "buyer",
-        "createdAt": "1791333292",
-        "fundedAt": "1791333296",
-        "endedAt": "1791333305",
-        "objection": "buyer",
-        "objectedAt": "1791333301",
-        "rentRecipient": "9CKUm2s7nwT7HrCpjtaffNH3PnUUVyQr2gELjHrWYBUd",
-        "payer": "9CKUm2s7nwT7HrCpjtaffNH3PnUUVyQr2gELjHrWYBUd"
-      }
-    },
-    "invoice, Token-2022, after the upgrade": {
-      "what": "the seller invoices 1.00 Open USD-shaped dollar; the buyer checks it, then, in one transaction, the deposit address made first, pays and releases; nobody marks it",
-      "id": "399803192599505852",
-      "signatures": {
-        "invoice": "2bBJcSF6fBvCbT3ew3czGrhJigcKMzgKWXgW4i9K6taFuSnjCx9aQWeA6HU33H1RqmpNohAKmgkDAdr4VtA2rDYw",
-        "one tap": "5bApmTQKBggR7Cnd7p3bs65bPxuoapK9CfB8mMr1ymxFVKgKieGAKKgspXzc7zBqrwRX2e1jKAkJspP59jpYsA1Z"
-      },
-      "escrow": "62BD2M15drAu9bociCYDeej2j2KsfrTZcQUJt4yYWeJa",
-      "mint": "g55mjY4swDAFt16TZds3tsmoK55qkdhDLn4kb32RGZz",
-      "receipt": {
-        "status": "ended",
-        "outcome": "releasedToSeller",
-        "amount": "1000000",
-        "toSeller": "1000000",
-        "toBuyer": "0",
-        "creator": "seller",
-        "createdAt": "1791333309",
-        "fundedAt": "1791333313",
-        "endedAt": "1791333313",
-        "objection": null,
-        "objectedAt": null,
-        "rentRecipient": "9CKUm2s7nwT7HrCpjtaffNH3PnUUVyQr2gELjHrWYBUd",
-        "payer": "9CKUm2s7nwT7HrCpjtaffNH3PnUUVyQr2gELjHrWYBUd"
+      "nonTransferableMint": "5wSPSBjZLk5wzLZwM2mN3zSCgmYgm9rbyYrcepQYwunT",
+      "nonTransferableCreate": {
+        "simulated": true,
+        "err": {
+          "InstructionError": [
+            0,
+            {
+              "Custom": 6030
+            }
+          ]
+        },
+        "log": "AnchorError thrown in src/lib.rs:502. Error Code: NonTransferable. Error Number: 6030. Error Message: a token that cannot be transferred is not accepted: nothing could be paid into the escrow, and nothing minted into it could leave."
       }
     }
   },
-  "upgradeChecks": {
-    "what": "after the upgrade in slot 508274931: deal 1 again in the Open USD-shaped dollar, and a non-transferable mint's create simulated",
-    "signatures": {
-      "a non-transferable mint": "4vJ4oQ3YXZGzvp5KdwvwdPmj6HMgY6HLECCGvsE3ktQXLASm7LguL1Rct9NcyS4dQm8xxBSxMX43M6fprQDW3Jjz"
-    },
-    "nonTransferableMint": "5wSPSBjZLk5wzLZwM2mN3zSCgmYgm9rbyYrcepQYwunT",
-    "nonTransferableCreate": {
-      "simulated": true,
-      "err": {
-        "InstructionError": [
-          0,
-          {
-            "Custom": 6030
-          }
-        ]
+  "deals": {
+    "invoice": {
+      "what": "the recipient invoices 1.00 test dollar; the payer checks it, then, in one transaction, the deposit address made first, pays it in and pays it out to the recipient; nobody marks it",
+      "id": "11425362666324448882",
+      "signatures": {
+        "invoice": "2Uo3nhdkmKsk6JzJF4oVZm6pgu8J8aMkJEWVrkCNDHB4zG3NWcZLW5tkMR6npGiZjRMVM18HCLUwpqY3wvF9vY4p",
+        "one tap": "3e1AQu5ordYqDRbYEZ76J3sb1HCMGAMMxhoLXsffZA5rYFRsUR2qCxvLjcqADmX1xFAN6HsbmDt4pA7N5Zu5aNn2"
       },
-      "log": "AnchorError thrown in src/lib.rs:502. Error Code: NonTransferable. Error Number: 6030. Error Message: a token that cannot be transferred is not accepted: nothing could be paid into the escrow, and nothing minted into it could leave."
+      "escrow": "BeFrTeXAzXfEFAe6UtAW2hSQdJgq7oKF9qi4JJPRYTV8",
+      "mint": "J2QBACfPPb1ys2UyGx3ecXHgCr4hWuHFT3C2Nr6TSVSa",
+      "receipt": {
+        "version": 3,
+        "status": "ended",
+        "outcome": "pay",
+        "amount": "1000000",
+        "toPayer": "0",
+        "toRecipient": "1000000",
+        "creator": "recipient",
+        "arbiter": null,
+        "schedule": null,
+        "createdAt": "1792119471",
+        "fundedAt": "1792119472",
+        "endedAt": "1792119472",
+        "stop": null,
+        "stoppedAt": null,
+        "sponsor": "9CKUm2s7nwT7HrCpjtaffNH3PnUUVyQr2gELjHrWYBUd"
+      }
+    },
+    "takeBack": {
+      "what": "the payer opens 2.00 test dollar with one window, half back until a day from now, then paid; funds and marks it at once; takes back its half",
+      "id": "13984166893429780306",
+      "signatures": {
+        "create and fund": "4AP2NyhQCjxxdQEuyMP8FPhAzPnbNdwPc9fm9F6scB2eJbQ4qLAkkvsUFGcjwkWSKaw9mzhB7DWYdga3AML6f4gY",
+        "take_back": "5w5JbGgQGqQrcn5AbeEu9jHfh7W2d1DU5781RvHMVDpL27ywybWH8DUcuWVTMmjCcxGu11o7Mb29juUtU6WhYWtp"
+      },
+      "post": {
+        "schedule": {
+          "windows": [
+            {
+              "until": 1792205872,
+              "payerShare": 5000
+            }
+          ],
+          "end": "pay"
+        }
+      },
+      "escrow": "5bQAW1TpDsXbywcQkzz1gDHoTjCTTXDXiSnUoh3b5mRi",
+      "mint": "J2QBACfPPb1ys2UyGx3ecXHgCr4hWuHFT3C2Nr6TSVSa",
+      "receipt": {
+        "version": 3,
+        "status": "ended",
+        "outcome": "takeBack",
+        "amount": "2000000",
+        "toPayer": "1000000",
+        "toRecipient": "1000000",
+        "creator": "payer",
+        "arbiter": null,
+        "schedule": {
+          "windows": [
+            {
+              "until": "1792205872",
+              "payerShare": 5000
+            }
+          ],
+          "end": "pay"
+        },
+        "createdAt": "1792119473",
+        "fundedAt": "1792119473",
+        "endedAt": "1792119488",
+        "stop": null,
+        "stoppedAt": null,
+        "sponsor": "9CKUm2s7nwT7HrCpjtaffNH3PnUUVyQr2gELjHrWYBUd"
+      }
+    },
+    "stop": {
+      "what": "the payer opens 2.00 test dollar, paid in a day unless stopped, and funds and marks it at once; the payer stops it; the default is refused; both sign a 60/40 split",
+      "id": "13795613689591072822",
+      "signatures": {
+        "create and fund": "3sun1GXksf3HN8cVxaAnmUyA9o3zzD166gnnRjsSTmMR8fCahUQEbE8BSuqNB3r99UnJL8kGD1mKJqqkNmZWVL1",
+        "stop": "6qrxn53m4grM8PWxsE2Z5EZNGDpVSbMjcw2pJrQ6QEVofBEgMEitdjTHkdLtUodH19ot1iWSkvR4zzuWZ5XtdAG",
+        "agree": "jzQugSKCzEpcKBFVfsGMgAhYTKufs5wGwLouKD62smXNFNPP2TjdHV2BkgvykTvL3TpoWsvGvG9De5VE81e8BJQ"
+      },
+      "post": {
+        "schedule": {
+          "windows": [
+            {
+              "until": 1792205888,
+              "payerShare": 0
+            }
+          ],
+          "end": "pay"
+        }
+      },
+      "escrow": "4iqcfWxv6Pv83u2vZgrkx51q3tGygCveyVxHNVxmR1MP",
+      "mint": "J2QBACfPPb1ys2UyGx3ecXHgCr4hWuHFT3C2Nr6TSVSa",
+      "endRefused": "Stopped",
+      "receipt": {
+        "version": 3,
+        "status": "ended",
+        "outcome": "agree",
+        "amount": "2000000",
+        "toPayer": "800000",
+        "toRecipient": "1200000",
+        "creator": "payer",
+        "arbiter": null,
+        "schedule": {
+          "windows": [
+            {
+              "until": "1792205888",
+              "payerShare": 0
+            }
+          ],
+          "end": "pay"
+        },
+        "createdAt": "1792119489",
+        "fundedAt": "1792119489",
+        "endedAt": "1792119492",
+        "stop": "payer",
+        "stoppedAt": "1792119490",
+        "sponsor": "9CKUm2s7nwT7HrCpjtaffNH3PnUUVyQr2gELjHrWYBUd"
+      }
+    },
+    "end": {
+      "what": "the payer opens 1.00 test dollar, paid in a minute and a half unless stopped, and funds and marks it at once; the default is refused before the end time and sent from it by a third key",
+      "id": "2846099600625329840",
+      "signatures": {
+        "create and fund": "24PUS7raspww9GnQvNT42Fjzb9PaBmSq1aAkKnrihBjnuVp5CUJVczpTu81dD8usqo9QfsJHtTbP5EpaVQcR4Ps3",
+        "end": "3U4hmxfgKogQSyFhX65k2AnKLUUmP5Kh2diwnrH75NstDgCqz6iPy4L13bCe3msL9izogpnpvzNGF3reLrhs8tbm"
+      },
+      "post": {
+        "schedule": {
+          "windows": [
+            {
+              "until": 1792119594,
+              "payerShare": 0
+            }
+          ],
+          "end": "pay"
+        }
+      },
+      "escrow": "GrPet9TobYcxcv3pH5UtsjrmCA8iqFs6NHFnAdbi5cPQ",
+      "mint": "J2QBACfPPb1ys2UyGx3ecXHgCr4hWuHFT3C2Nr6TSVSa",
+      "endRefusedEarly": "ScheduleNotOver",
+      "receipt": {
+        "version": 3,
+        "status": "ended",
+        "outcome": "end",
+        "amount": "1000000",
+        "toPayer": "0",
+        "toRecipient": "1000000",
+        "creator": "payer",
+        "arbiter": null,
+        "schedule": {
+          "windows": [
+            {
+              "until": "1792119594",
+              "payerShare": 0
+            }
+          ],
+          "end": "pay"
+        },
+        "createdAt": "1792119505",
+        "fundedAt": "1792119505",
+        "endedAt": "1792119597",
+        "stop": null,
+        "stoppedAt": null,
+        "sponsor": "9CKUm2s7nwT7HrCpjtaffNH3PnUUVyQr2gELjHrWYBUd"
+      }
+    },
+    "late": {
+      "what": "the payer opens 1.00 test dollar, paid in a minute and a half unless stopped, and pays nothing in time; after the end time a plain transfer lands; the mark and the default are refused; the payer closes it and everything goes back",
+      "id": "13455918286067378071",
+      "signatures": {
+        "create": "5zAT2WS3f9JBwz89b2pRo8WMogE3Jpadf9j6AwRg58VJW1BGf2sqrPd7DSsRhHGQQTyYYYv4FSsjXAjySreRfQo9",
+        "late transfer": "2FjtZsJ5e1bXbMxSsbMJmYakCqjXThhPk4bkRN3odtSZrUZQpoZFHinnDdRgx4zBuFNk2vsUZnfGsa9mezeDJaU5",
+        "close_unfunded": "4BnH1brEWfXz4VSmyCprUFfBchPrMACV3Zk3BQRuu3NnPWvJvziQALqyXeeyoZyTNmCtQFyVeuD1LAnxMErb39Rc"
+      },
+      "post": {
+        "schedule": {
+          "windows": [
+            {
+              "until": 1792119595,
+              "payerShare": 0
+            }
+          ],
+          "end": "pay"
+        }
+      },
+      "escrow": "Gn9wgo2rR8imG72X86fdPcFC7ufU1GQ9NJtgWss5WTbD",
+      "mint": "J2QBACfPPb1ys2UyGx3ecXHgCr4hWuHFT3C2Nr6TSVSa",
+      "markRefused": "ScheduleOver",
+      "endRefused": "FundingNotMarked",
+      "receipt": null
+    },
+    "invoice, Token-2022": {
+      "what": "the recipient invoices 1.00 Open USD-shaped dollar; the payer checks it, then, in one transaction, the deposit address made first, pays it in and pays it out to the recipient; nobody marks it",
+      "id": "6178534414983153674",
+      "signatures": {
+        "invoice": "4FwTT8J9uiTkttpVAvuEinAmyF8JoTF43oWkStvFz6XB6RXJDX2voeRHQC5oSpx92FS9x9M5LrEA4oJgRBMtMybb",
+        "one tap": "4FkP8A4cABdiFgA2qa9xRZsVPUVZTteu82KuhbAGL8xBhWpt4x4KrWg62US8UicrgGJxL6n5YmZsA6m8trAyC361"
+      },
+      "escrow": "EVGzsYayePkK5oP83PpvAmiArB8dXjNt2Cbb1gNJrToP",
+      "mint": "g55mjY4swDAFt16TZds3tsmoK55qkdhDLn4kb32RGZz",
+      "receipt": {
+        "version": 3,
+        "status": "ended",
+        "outcome": "pay",
+        "amount": "1000000",
+        "toPayer": "0",
+        "toRecipient": "1000000",
+        "creator": "recipient",
+        "arbiter": null,
+        "schedule": null,
+        "createdAt": "1792119612",
+        "fundedAt": "1792119613",
+        "endedAt": "1792119613",
+        "stop": null,
+        "stoppedAt": null,
+        "sponsor": "9CKUm2s7nwT7HrCpjtaffNH3PnUUVyQr2gELjHrWYBUd"
+      }
+    },
+    "stop, Token-2022": {
+      "what": "the payer opens 2.00 Open USD-shaped dollar, paid in a day unless stopped, and funds and marks it at once; the payer stops it; the default is refused; both sign a 60/40 split",
+      "id": "10467787250686043222",
+      "signatures": {
+        "create and fund": "64GQReBxzJrWTR4XrF8hHXNdJKTYFKa2J4nZidQnSsXXyPdfMDPHcgreSiz7yzJiU5Urnz9weDqQpt12BBh83SnM",
+        "stop": "24fAaPrtZjaseBygw6GkL75qJcGWUpW2oEUDpo3zRGf9vURtJwHDRhsAUtARYGiGJuz8JL34CJPpZd1FqvJwkkEF",
+        "agree": "4C5WxPEjfMzH8LJkWf2p7i1Ptn8tiKZuGKqDKKuNuE3CjXyuSEpPvUgLRFG5uksTjGxPYM5DtUXaynwTUJAr99Yj"
+      },
+      "post": {
+        "schedule": {
+          "windows": [
+            {
+              "until": 1792206014,
+              "payerShare": 0
+            }
+          ],
+          "end": "pay"
+        }
+      },
+      "escrow": "4dg655xBqTVtB5WuM6445PQTnn9rHhP3bCygproJTqJA",
+      "mint": "g55mjY4swDAFt16TZds3tsmoK55qkdhDLn4kb32RGZz",
+      "endRefused": "Stopped",
+      "receipt": {
+        "version": 3,
+        "status": "ended",
+        "outcome": "agree",
+        "amount": "2000000",
+        "toPayer": "800000",
+        "toRecipient": "1200000",
+        "creator": "payer",
+        "arbiter": null,
+        "schedule": {
+          "windows": [
+            {
+              "until": "1792206014",
+              "payerShare": 0
+            }
+          ],
+          "end": "pay"
+        },
+        "createdAt": "1792119615",
+        "fundedAt": "1792119615",
+        "endedAt": "1792119624",
+        "stop": "payer",
+        "stoppedAt": "1792119619",
+        "sponsor": "9CKUm2s7nwT7HrCpjtaffNH3PnUUVyQr2gELjHrWYBUd"
+      }
     }
   }
 }
