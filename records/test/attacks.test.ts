@@ -114,9 +114,10 @@ describe('a stolen access key', () => {
 
   test('FINDING: once past, a stolen key can still add a record dated before its removal, and readers count it; the owner deletes it there', () => {
     // Hosts and readers follow one rule (host.test.ts, view.test.ts): a past key's record counts
-    // only if dated before the current permissions record. One dated after counts nowhere; one
-    // backdated counts, and the owner's record wins at that path, so the owner deletes it there.
-    const past = permissionsRecord(alice, [pastKey(accessKey, ['offer'])], T0 + MINUTE)
+    // only if dated before its until, the time of the permissions record that removed it. One
+    // dated after counts nowhere; one backdated counts, and the owner's record wins at that path,
+    // so the owner deletes it there.
+    const past = permissionsRecord(alice, [pastKey(accessKey, T0 + MINUTE, ['offer'])], T0 + MINUTE)
     const now = accessRecord(accessKey, alice.address, 'offer/now', offerBody('1'), T0 + 2 * MINUTE)
     const sneaked = accessRecord(accessKey, alice.address, 'offer/new', offerBody('1'), T0 + MINUTE - 1)
     const later = T0 + 365 * DAY
@@ -135,7 +136,7 @@ describe('a stolen write key that sends', () => {
     const inbox = await startHost({ now: () => T0, readSender })
     try {
       const listed = permissionsRecord(alice, [allow(accessKey, ['inbox'])], T0)
-      await publish([home.url], [hostsRecord(alice, [home.url], T0), listed, permissionsRecord(alice, [pastKey(accessKey, ['inbox'])], T0 + 1)])
+      await publish([home.url], [hostsRecord(alice, [home.url], T0), listed, permissionsRecord(alice, [pastKey(accessKey, T0 + 1, ['inbox'])], T0 + 1)])
       await publish([thief.url], [hostsRecord(alice, [home.url], T0), listed])
       const bobInbox = await inboxKey(bob.secret)
       const bobProfile = { ...profileBody('chemistry'), inboxKey: bobInbox.sealTo, inbox: { senders: 'anyone' } }

@@ -53,8 +53,8 @@ attributes*.
   (`noteToJson`, `noteFromJson`). Fields the issuer adds beside them pass through unchanged, so the
   person keeps what `attributes` was made from.
 - **The issuer's key is the issuer's to keep.** Whoever holds it can sign notes for people who do
-  not exist. An issuer signs only numbers it computed itself: a number someone hands it to sign
-  could be a note.
+  not exist. An issuer never signs a raw number someone hands it: it hashes the note itself, with
+  the tag, so nothing it signs for another purpose can pass as a note.
 
 **The note proof.** The device proves, showing neither the seed nor the note: *I know a seed scalar
 and a note this issuer signed for the note number it gives at this issuer's name; my stamp for this

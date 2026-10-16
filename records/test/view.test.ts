@@ -113,7 +113,7 @@ describe('access keys and permissions', () => {
   })
 
   test('which keys act on the inbox: a write key sends and a read key pulls when their paths cover inbox, or they list none', () => {
-    const access = [allow(accessKey, ['offer', 'inbox']), allow(stranger, ['offer']), allow(reader, undefined, 'read'), pastKey(bob, ['inbox'])]
+    const access = [allow(accessKey, ['offer', 'inbox']), allow(stranger, ['offer']), allow(reader, undefined, 'read'), pastKey(bob, T0, ['inbox'])]
     assert.equal(allowsInbox(access, accessKey.address, 'write'), true)
     assert.equal(allowsInbox(access, stranger.address, 'write'), false, 'its paths do not cover inbox')
     assert.equal(allowsInbox(access, reader.address, 'read'), true, 'no paths: the inbox too')
@@ -143,29 +143,35 @@ describe('access keys and permissions', () => {
     assert.equal(v.current.get('offer/physics')!.id, idOf(fix))
   })
 
-  test('removing a write key is replacing its scope with was: what it wrote dated before the permissions record still counts, a year later', () => {
-    const past = permissionsRecord(alice, [pastKey(accessKey, ['offer'])], T0 + 10 * MINUTE)
+  test('removing a write key is replacing its scope with was and adding until: what it wrote dated before its until still counts, a year later', () => {
+    const past = permissionsRecord(alice, [pastKey(accessKey, T0 + 10 * MINUTE, ['offer'])], T0 + 10 * MINUTE)
     const v = view([permissions, written, past], T0 + 365 * DAY)
     assert.equal(v.current.get('offer/physics')!.id, idOf(written), 'a year later')
-    assert.equal(v.permissionsTime, T0 + 10 * MINUTE)
     const outside = accessRecord(accessKey, alice.address, 'review/1', { subject: bob.address }, T0 + MINUTE)
     assert.equal(view([past, outside]).ignored.get(idOf(outside)), 'not-allowed', 'a past key keeps its paths')
   })
 
-  test('a past key’s record counts only if dated before the current permissions record; one dated at its time or after is ignored', () => {
-    const past = permissionsRecord(alice, [pastKey(accessKey, ['offer'])], T0 + 10 * MINUTE)
+  test('a past key’s record counts only if dated before its until; one dated at its until or after is ignored', () => {
+    const past = permissionsRecord(alice, [pastKey(accessKey, T0 + 10 * MINUTE, ['offer'])], T0 + 10 * MINUTE)
     const before = accessRecord(accessKey, alice.address, 'offer/before', offerBody('1'), T0 + 10 * MINUTE - 1)
     const at = accessRecord(accessKey, alice.address, 'offer/at', offerBody('1'), T0 + 10 * MINUTE)
     const after = accessRecord(accessKey, alice.address, 'offer/after', offerBody('1'), T0 + 11 * MINUTE)
     const v = view([past, before, at, after], T0 + 365 * DAY)
     assert.equal(v.current.get('offer/before')!.id, idOf(before))
-    assert.equal(v.ignored.get(idOf(at)), 'not-allowed', 'at its time')
+    assert.equal(v.ignored.get(idOf(at)), 'not-allowed', 'at its until')
     assert.equal(v.ignored.get(idOf(after)), 'not-allowed', 'after it')
-    // A later permissions record moves the line: what the past key dates before it counts too.
-    const rewritten = permissionsRecord(alice, [pastKey(accessKey, ['offer'])], T0 + 20 * MINUTE)
-    assert.ok(view([past, rewritten, after], T0 + 365 * DAY).current.has('offer/after'), 'dated before the permissions record now current')
     // A write key still listed with its scope counts whatever the date.
     assert.ok(view([permissions, accessRecord(accessKey, alice.address, 'offer/later', offerBody('1'), T0 + 2 * DAY)], T0 + 2 * DAY).current.has('offer/later'))
+  })
+
+  test('adding another key after a removal does not reopen the removed key’s window', () => {
+    const removed = T0 + 10 * MINUTE
+    const past = permissionsRecord(alice, [pastKey(accessKey, removed, ['offer'])], removed)
+    const added = permissionsRecord(alice, [pastKey(accessKey, removed, ['offer']), allow(stranger, ['review'])], T0 + 20 * MINUTE)
+    const between = accessRecord(accessKey, alice.address, 'offer/between', offerBody('1'), T0 + 15 * MINUTE)
+    const v = view([past, added, between], T0 + 365 * DAY)
+    assert.equal(v.access.length, 2, 'the record now current is the later one')
+    assert.equal(v.ignored.get(idOf(between)), 'not-allowed', 'dated after its until, though before the permissions record now current')
   })
 
   test('deleting a key’s entry, or the permissions record, disowns what it wrote: it stops counting', () => {

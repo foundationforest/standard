@@ -213,7 +213,7 @@ export class Host {
     // is kept; what stopped being current gets a date, and goes `keepDays` later.
     if (this.storage.hasRecord(record.profile, c.id)) return { ok: true, message: 'already here' }
     const settled = viewProfile(record.profile, [...this.stored(record.profile), c], now)
-    if (record.by !== undefined && !allows(settled.access, settled.permissionsTime, record)) {
+    if (record.by !== undefined && !allows(settled.access, record)) {
       return { ok: false, error: 'permission', message: 'the permissions record does not allow this access key here' }
     }
     this.storage.addRecord(record.profile, c.id, encodeRecord(record), now, new Set([...settled.current.values()].map((s) => s.id)))
@@ -393,17 +393,26 @@ export class Host {
     const request = checkBlobRequest(text, now)
     if (request.action !== action) throw new RecordError('shape', `this is a ${action} request`)
     if (request.sha256 !== name) throw new RecordError('shape', 'the request names other bytes')
-    if (request.key !== undefined && !this.view(request.profile, now).access.some((k) => k.key === request.key && k.scope === 'write')) {
-      throw new RecordError('permission', 'the profile’s permissions record here does not list key as a write key')
-    }
+    const refused = this.blobRefusal(request.profile, request.key, now)
+    if (refused) throw new RecordError('permission', refused)
     return request
+  }
+
+  /**
+   * Why a blob request `key` signed is refused now: this host's current permissions record for the
+   * profile does not list it with scope write, whatever its paths. Null for the main key.
+   */
+  private blobRefusal(profile: string, key: string | undefined, now: number): string | null {
+    if (key === undefined || this.view(profile, now).access.some((k) => k.key === key && k.scope === 'write')) return null
+    return 'the profile’s permissions record here does not list key as a write key'
   }
 
   /**
    * Put bytes in a folder: the signed put request (checkBlob) names them by their hash, type and
    * size [shape], and they hash to it [hash]. Bytes the folder holds already are `already here`.
    * Otherwise this host must take their size and type [refused]. Bytes another folder holds are
-   * stored once.
+   * stored once. A write key is checked again in the step that stores them, right before they
+   * become the folder's [permission].
    */
   async putBlob(name: string, type: string, request: string, bytes: Uint8Array): Promise<Answer> {
     const now = this.now()
@@ -424,14 +433,17 @@ export class Host {
       const refused = bytes.length > this.maxBlobBytes ? `at most ${this.maxBlobBytes} bytes` : await this.blobChoice({ sha256: name, type, size: bytes.length, profile: put.profile }, this.storage.blobTotals(put.profile))
       if (refused) return { ok: false, error: 'refused', message: refused }
     }
-    await this.storage.putBlob(put.profile, name, type, bytes.length, by, bytes, now)
+    // A write key made past while the bytes went up, or while its turn came, is refused here, with no
+    // wait between the check and the commit, as a record's is (acceptOne); bytes it alone brought go.
+    const refused = await this.storage.putBlob(put.profile, name, type, bytes.length, by, bytes, now, () => this.blobRefusal(put.profile, put.key, now))
+    if (refused) return { ok: false, error: 'permission', message: refused }
     return { ok: true }
   }
 
   /**
-   * Delete bytes from a folder: the signed delete request (checkBlob). A write key deletes only
-   * bytes it put; the main key deletes any [permission]. Bytes the folder does not hold are `not
-   * here`. Once no folder holds them, they leave the store.
+   * Delete bytes from a folder: the signed delete request (checkBlob). A write key, still listed in
+   * the step that deletes them, deletes only bytes it put; the main key deletes any [permission].
+   * Bytes the folder does not hold are `not here`. Once no folder holds them, they leave the store.
    */
   async deleteBlob(name: string, request: string): Promise<Answer> {
     const now = this.now()
@@ -442,12 +454,13 @@ export class Host {
       if (!(err instanceof RecordError)) throw err
       return { ok: false, error: err.code, message: err.message }
     }
-    // Who put the bytes is read in the same step that deletes them, one blob operation at a time, so
-    // a put that lands while this request waits its turn is seen.
+    // Whether the write key is still listed, and who put the bytes, are read in the same step that
+    // deletes them, one blob operation at a time, so a permissions record or a put that lands while
+    // this request waits its turn is seen.
     const by = ask.key ?? null
-    const done = await this.storage.deleteBlob(ask.profile, name, (held) => by === null || held.by === by)
+    const done = await this.storage.deleteBlob(ask.profile, name, (held) => this.blobRefusal(ask.profile, ask.key, now) ?? (by === null || held.by === by ? null : 'a write key deletes only bytes it put'))
     if (done === 'not here') return { ok: true, message: 'not here' }
-    if (done === 'refused') return { ok: false, error: 'permission', message: 'a write key deletes only bytes it put' }
+    if (done !== 'deleted') return { ok: false, error: 'permission', message: done.refused }
     return { ok: true }
   }
 

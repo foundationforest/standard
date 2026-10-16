@@ -44,8 +44,8 @@ export const allow = (key: Key | ReadKey, paths?: string[], scope: 'write' | 're
   const entry: AccessKey = scope === 'read' ? { key: key.address, sealTo: (key as ReadKey).sealTo, scope } : { key: key.address, scope }
   return paths === undefined ? entry : { ...entry, paths }
 }
-/** A past write key's entry: `was: "write"` in place of `scope`, and the paths it had. */
-export const pastKey = (key: Key, paths?: string[]): AccessKey => (paths === undefined ? { key: key.address, was: 'write' } : { key: key.address, was: 'write', paths })
+/** A past write key's entry: `was: "write"` in place of `scope`, `until`, the time of the permissions record that made it past, and the paths it had. */
+export const pastKey = (key: Key, until: number, paths?: string[]): AccessKey => (paths === undefined ? { key: key.address, was: 'write', until } : { key: key.address, was: 'write', until, paths })
 
 /** A signed owner record whose canonical text is exactly `bytes` long, `wide` of its characters two-byte (é). */
 export function sizedRecord(key: Key, path: string, bytes: number, wide = 0): SignedRecord {

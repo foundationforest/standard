@@ -4,16 +4,15 @@ Part of Forest's standard: [the top README](../../README.md). Up: [proofs](../RE
 
 ## What it is
 
-The reputation proof lets a person carry a score from their profiles (their identities, one for
-each label, the free text saying what a profile is for) to another one of theirs, such as a new
-profile, without naming any of them. A profile's reviews are its own, and nothing public ties a
-person's profiles together; the proof carries the score across without linking them, and only to
-a profile of the person's own, so nobody can lend their score to someone else.
+The reputation proof lets a person carry a score from their profiles to another profile of their
+own, such as a new one, without naming any of them. A profile's reviews are its own, and nothing
+public ties a person's profiles together; the proof carries the score across without linking them,
+and only to a profile of the person's own, so nobody can lend their score to someone else.
 It has two uses:
 
 - **Across profiles:** the weighted average of up to eight profiles the person picks, naming none
-  of them: each profile's value in the index's tree, weighted by its weight.
-- **One profile:** the value of one of their profiles, with its label shown and which profile
+  of them: each profile's score in the index's tree, weighted by its count.
+- **One profile:** the score of one of their profiles, with its label shown and which profile
   hidden.
 
 It is a zero-knowledge proof: it shows that this is true and nothing else. The person's app makes
@@ -28,23 +27,21 @@ circom 2.2.3, Groth16 on BN254, and the Poseidon and Merkle pieces Semaphore use
 
 ### The tree an index publishes
 
-An index, a service that reads records (what profiles publish) from hosts (the servers that keep
-them) and scores profiles as it chooses ([records](../../records/README.md)), publishes its scores as
-a tree. The tree is a standard: any index may publish one, and a proof names the root it used, the
-one number the whole tree hashes down to. The circuit proves a weighted average over any tree of
-`(stamp, scope, value, weight)` leaves an index signs; a proof means only what that index says
-that root holds.
+An index reads profiles' records from hosts and scores profiles as it chooses
+([records](../../records/README.md)); it publishes its scores as a tree. The tree is a standard: any
+index may publish one, and a proof names the root it used, the one number the whole tree hashes down
+to. The circuit proves a weighted average over any tree of `(stamp, scope, score, count)` leaves an
+index signs; a proof means only what that index says that root holds.
 
-- **A leaf** is `Poseidon(stamp, scope, value, weight)`, circomlib's Poseidon with four inputs (the
-  circuit and the client name the last two `score` and `count`):
+- **A leaf** is `Poseidon(stamp, scope, score, count)`, circomlib's Poseidon with four inputs:
   - `stamp`: the profile's stamp at an issuer ([keys](../../keys/README.md#stamps)), as its note
     proof shows it ([note](../note/README.md#the-note-and-the-note-proof)): an issuer signed a note
     to the seed behind the profile.
   - `scope`: the profile's label as a number, exactly as `keys/` makes it
     ([keys](../../keys/README.md#the-recipe)).
-  - `value` and `weight`: each a whole number below 2^32 whose meaning is the index's. The
-    circuit outputs the values' average, each weighted by its weight; any other aggregate is a new
-    circuit.
+  - `score` and `count`: each a whole number below 2^32 whose meaning is the index's (a rating and
+    the number of reviews behind it, for instance). The circuit outputs the scores' average, each
+    weighted by its count; any other aggregate is a new circuit.
 - **One leaf per stamp.**
 - **The tree** is Semaphore's lean incremental Merkle tree over Poseidon of pairs, with the leaves
   in the index's order: it hashes the leaves in pairs, level by level, up to one number, the root,
@@ -68,7 +65,7 @@ circuit and a new setup.
 
 | | Signals |
 |---|---|
-| Private | `seedScalar`, the number `keys/`'s `seedScalar` gives; for each slot, `used`, the issuer's name hash, the leaf's stamp, scope, value (`score`) and weight (`count`), and its path's length, position and siblings; `profileScope`, the scope of the label of the profile the proof is shown on |
+| Private | `seedScalar`, the number `keys/`'s `seedScalar` gives; for each slot, `used`, the issuer's name hash, the leaf's stamp, scope, score and count, and its path's length, position and siblings; `profileScope`, the scope of the label of the profile the proof is shown on |
 | Public, in this order | `score`, the output, the weighted average; `root`; `profileX`, `profileY`, the key of the profile the proof is shown on; `scope`, the label shown, or 0 |
 
 `profileX` and `profileY` are the key of the profile the proof is shown on, worked out inside the
@@ -83,11 +80,11 @@ Inside the proof:
    `Poseidon(issuer tag, seedScalar, the slot's name hash)`. Only the person whose seed it is can
    count those profiles, and each slot may name its own issuer.
 2. Each used slot's leaf is in the tree with that root. The root is never 0.
-3. A blank slot is all zeros, and every value and weight is below 2^32.
+3. A blank slot is all zeros, and every score and count is below 2^32.
 4. No two used slots share a scope, so a profile counts once.
 5. A shown scope is the scope of every used slot, so a shown label means exactly one profile.
-6. The output is `floor(sum(value * weight) / sum(weight))`, over a weight of at least one. With
-   one profile, it is that profile's value.
+6. The output is `floor(sum(score * count) / sum(count))`, over a count of at least one. With
+   one profile, it is that profile's score.
 7. `Poseidon(profile tag, seedScalar, profileScope)` is split into its bits by `Num2Bits_strict`,
    and its lowest 250 bits times `Base8` must be `(profileX, profileY)`: the profile it is shown on
    is the person's own.
@@ -200,7 +197,7 @@ Measured in Node 22 on a 4-core machine, with 8 slots at depth 20:
 - A proof lands only on a profile of the prover's own: its key comes from the same seed as the
   profiles it counts.
 - A shown label means exactly one profile, under that label.
-- The score is the weighted average of the values of the profiles counted, rounded down, and
+- The score is the count-weighted average of the scores of the profiles counted, rounded down, and
   nothing else.
 - Nothing else about those profiles is in the proof: not which leaves, nor how many, nor their
   issuers.
@@ -222,7 +219,7 @@ Measured in Node 22 on a 4-core machine, with 8 slots at depth 20:
 
 - **The standard:** the leaf, the tree, what an index signs, and the circuit and its public
   signals.
-- **An index:** each leaf's value and weight, and what they mean; which reviews count and how much;
+- **An index:** each leaf's score and count, and what they mean; which reviews count and how much;
   and when and where it publishes its tree.
 - **A reader (an app, an index or a service):** which indexes it trusts, since a score is only as
   good as its index; how old a signed root may be; and what a score means to it.
@@ -239,8 +236,8 @@ seconds. More is a new circuit and a new setup.
 **Why a depth of 20?** A million leaves per index tree. A deeper tree is a new circuit and a new
 setup.
 
-**Why does the proof not say the weights?** An index that wants the number of reviews behind a
-profile to count puts it in the value. The weights only weigh one profile against another inside
+**Why does the proof not say the counts?** An index that wants the number of reviews behind a
+profile to count puts it in the score. The counts only weigh one profile against another inside
 the proof, and a second output would say more about the person than the average does.
 
 **Why does each slot name its own issuer, and the proof none?** A person's profiles may hold notes

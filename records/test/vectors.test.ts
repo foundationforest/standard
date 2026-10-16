@@ -52,9 +52,10 @@ test("the keys are keys/'s pinned ones; the write key and the read key, recomput
   })
 })
 
-test('the past permissions record keeps the write key, now past, and the read key as it was', () => {
-  assert.deepEqual(decodeRecord(pinned.past.wire).record.body!.access, [
-    { key: pinned.writeKey, was: 'write', paths: ['offer', 'inbox'] },
+test('the past permissions record keeps the write key, now past until its own time, and the read key as it was', () => {
+  const past = decodeRecord(pinned.past.wire).record
+  assert.deepEqual(past.body!.access, [
+    { key: pinned.writeKey, was: 'write', until: past.time, paths: ['offer', 'inbox'] },
     { key: pinned.readKey, sealTo: KEYS.accessKeys.read.sealTo, scope: 'read', paths: ['inbox'] },
   ])
 })

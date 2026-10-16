@@ -30,9 +30,10 @@ export function hostsRecord(owner: Key, urls: string[] | null, time: number): Si
 
 /**
  * The access keys this folder lists, each with its scope. To remove a write key, replace its
- * `scope` with `was: "write"`, keeping its paths: it can no longer act, and what it wrote still
- * counts. Deleting its entry instead disowns what it wrote. A read key is removed by deleting its
- * entry.
+ * `scope` with `was: "write"` and `until`, this record's `time`, keeping its paths, and keep the
+ * entry as it is in every later record: it can no longer act, and what it wrote dated before
+ * `until` still counts. Deleting its entry instead disowns what it wrote. A read key is removed by
+ * deleting its entry.
  */
 export function permissionsRecord(owner: Key, access: AccessKey[] | null, time: number): SignedRecord {
   return ownerRecord(owner, 'permissions', access && { access }, time)

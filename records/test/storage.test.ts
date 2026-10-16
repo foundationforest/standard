@@ -19,8 +19,8 @@ import { blobNameOf, blobRequest, pullRequest } from '../src/message.ts'
 import { message } from '../src/private.ts'
 import type { Body } from '../src/record.ts'
 import { s3Url, signS3 } from '../src/storage.ts'
-import { ownerRecord } from '../src/write.ts'
-import { MINUTE, T0, alice, bob, offerBody, profileBody } from './fixtures.ts'
+import { ownerRecord, permissionsRecord } from '../src/write.ts'
+import { MINUTE, T0, accessKey, alice, allow, bob, offerBody, pastKey, profileBody } from './fixtures.ts'
 import { Clock, startHost } from './helpers.ts'
 
 const dirs: string[] = []
@@ -249,14 +249,37 @@ describe('host.sqlite holds nothing that exists only there', () => {
   })
 })
 
+describe('a folder file in another layout', () => {
+  test('is refused by name, never migrated: one from before folders held blobs, on open and by a rebuild', async () => {
+    const dir = scratch()
+    const h = await startHost({ dir, now: () => T0 })
+    await publish([h.url], [ownerRecord(alice, 'profile', aliceProfile, T0)])
+    await h.close()
+    const file = join(dir, 'folders', `${alice.address}.sqlite`)
+    const db = new DatabaseSync(file)
+    db.exec('DROP TABLE blobs')
+    db.close()
+    const refused = { message: `${file} is not a folder file in this host's layout` }
+    const again = new Host({ dir, now: () => T0 })
+    try {
+      assert.throws(() => again.view(alice.address), refused)
+      assert.equal(again.view(bob.address).current.size, 0, 'another folder is untouched')
+    } finally {
+      await again.close()
+    }
+    await assert.rejects(rebuild(dir), refused)
+  })
+})
+
 describe('the S3 driver', () => {
   const credentials = { accessKeyId: 'FORESTTESTKEY', secretAccessKey: 'forest-test-secret' }
 
   /**
    * A local S3 stand-in, path-style: it checks each request's SigV4 signature and payload hash,
-   * keeps objects in memory with their content-type, and lists one key a page.
+   * keeps objects in memory with their content-type, and lists one key a page. `beforePut`, if
+   * given, holds each put, its bytes read, until it resolves.
    */
-  async function s3Stub() {
+  async function s3Stub(beforePut?: () => Promise<void>) {
     const objects = new Map<string, { type: string; bytes: Uint8Array }>()
     const server = createServer(async (req: IncomingMessage, res) => {
       const chunks: Buffer[] = []
@@ -279,6 +302,7 @@ describe('the S3 driver', () => {
       }
       const held = objects.get(key!)
       if (req.method === 'PUT') {
+        await beforePut?.()
         objects.set(key!, { type: String(req.headers['content-type']), bytes: new Uint8Array(body) })
         return void res.writeHead(200).end()
       }
@@ -333,6 +357,31 @@ describe('the S3 driver', () => {
       assert.equal((await putBlob([wrong.url], putAs(alice, photo, 'image/jpeg'), photo))[0]!.status, 500)
     } finally {
       await wrong.close()
+      await stub.close()
+    }
+  })
+
+  test('a write key made past while its bytes go up to the bucket is refused, and the bytes leave the bucket', async () => {
+    let arrived: () => void = () => {}
+    const uploading = new Promise<void>((resolve) => (arrived = resolve))
+    let release: () => void = () => {}
+    const held = new Promise<void>((resolve) => (release = resolve))
+    const stub = await s3Stub(async () => (arrived(), await held))
+    const h = await startHost({ now: () => T0, blobs: { kind: 's3', endpoint: stub.url, bucket: 'forest', ...credentials } })
+    try {
+      await publish([h.url], [permissionsRecord(alice, [allow(accessKey)], T0)])
+      const request = blobRequest({ key: accessKey, profile: alice.address }, { action: 'put', ...blobNameOf(photo, 'image/jpeg') }, T0) as Parameters<typeof putBlob>[1]
+      const putting = putBlob([h.url], request, photo)
+      await uploading
+      // While the bytes go up, the owner makes the key past.
+      await publish([h.url], [permissionsRecord(alice, [pastKey(accessKey, T0 + 1)], T0 + 1)])
+      release()
+      const [outcome] = await putting
+      assert.deepEqual([outcome!.error, outcome!.message], ['permission', 'the profile’s permissions record here does not list key as a write key'])
+      assert.deepEqual([...stub.objects.keys()], [], 'the bytes left the bucket')
+      assert.equal((await fetch(`${h.url}/v1/blobs/${sha256Hex(photo)}`)).status, 404)
+    } finally {
+      await h.close()
       await stub.close()
     }
   })
