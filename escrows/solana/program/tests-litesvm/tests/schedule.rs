@@ -40,13 +40,15 @@ enum State {
     StoppedAfterTheEnd,
     /// Paid in, never marked, stopped in the first window; from the end time on.
     StoppedUnmarkedAfterTheEnd,
+    /// Half the amount paid in, stopped by the recipient; the first window.
+    StoppedPartPaid,
     /// Ended by `pay`, and paid into again, so its deposit account is there.
     Ended,
     /// Closed by `close_unfunded`: nothing left at the address.
     Closed,
 }
 
-const STATES: [State; 11] = [
+const STATES: [State; 12] = [
     State::Unfunded,
     State::FundedUnmarked,
     State::MarkedWindow1,
@@ -56,6 +58,7 @@ const STATES: [State; 11] = [
     State::StoppedWindow1,
     State::StoppedAfterTheEnd,
     State::StoppedUnmarkedAfterTheEnd,
+    State::StoppedPartPaid,
     State::Ended,
     State::Closed,
 ];
@@ -67,13 +70,15 @@ fn in_state(state: State) -> (Harness, Address) {
     let payer = h.payer.insecure_clone();
     let t = terms(&h, 1);
     let (escrow, _) = h.create(&t).expect("create");
-    if state != State::Unfunded && state != State::Closed {
-        h.fund(&escrow, AMOUNT);
+    match state {
+        State::Unfunded | State::Closed => {}
+        State::StoppedPartPaid => h.fund(&escrow, AMOUNT / 2),
+        _ => h.fund(&escrow, AMOUNT),
     }
     if matches!(state, State::MarkedWindow1 | State::MarkedWindow2 | State::MarkedAfterTheEnd | State::StoppedWindow1 | State::StoppedAfterTheEnd | State::Ended) {
         h.mark_funded(&escrow).expect("mark");
     }
-    if matches!(state, State::StoppedWindow1 | State::StoppedAfterTheEnd | State::StoppedUnmarkedAfterTheEnd) {
+    if matches!(state, State::StoppedWindow1 | State::StoppedAfterTheEnd | State::StoppedUnmarkedAfterTheEnd | State::StoppedPartPaid) {
         h.stop(&escrow, &recipient).expect("stop");
     }
     match state {
@@ -136,6 +141,12 @@ fn expected(state: State, m: Move) -> Option<&'static str> {
         (Unfunded, End) => Some("FundingNotMarked"),
         (Unfunded, _) => Some("NotFunded"),
 
+        // A stop blocks no close of an escrow that holds less than the amount.
+        (StoppedPartPaid, CloseUnfunded) => None,
+        (StoppedPartPaid, TakeBack | End) => Some("Stopped"),
+        (StoppedPartPaid, Stop) => Some("AlreadyStopped"),
+        (StoppedPartPaid, _) => Some("NotFunded"),
+
         // Giving, agreeing and deciding: in every live state with the amount there.
         (_, Pay | Refund | Agree | Decide) => None,
 
@@ -173,6 +184,7 @@ fn every_move_in_every_state() {
             let (mut h, escrow) = in_state(state);
             let before = h.svm.get_account(&escrow);
             let (recipient_before, payer_before) = (h.balance(&h.recipient_tokens), h.balance(&h.payer_account()));
+            let held = if h.lamports(&h.vault(&escrow)) > 0 { h.vault_balance(&escrow) } else { 0 };
             let result = send(&mut h, &escrow, m);
             match (expected(state, m), result) {
                 (Some(want), Err(err)) => {
@@ -196,7 +208,7 @@ fn every_move_in_every_state() {
                         Move::CloseUnfunded => {
                             assert_eq!(names(&got), ["Closed"], "{state:?}");
                             h.assert_closed(&escrow, "no receipt");
-                            assert_eq!(to_payer, h.balance(&h.payer_account()) - payer_before, "{state:?}");
+                            assert_eq!((to_recipient, to_payer), (0, held), "{state:?}: everything it held, back to the payer");
                         }
                         _ => {
                             let (outcome, balance, r, p, _) = ended(&got);
