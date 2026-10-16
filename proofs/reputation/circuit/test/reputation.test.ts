@@ -15,8 +15,8 @@ import { fileURLToPath } from 'node:url'
 
 import { groth16 } from 'snarkjs'
 
-import { BN254_R, accessKey, issuerSecret, mainKey, nameHashOf, packSignature, scopeOf, seedScalar, signBytes, stampOf } from '../../../../keys/src/index.ts'
-import { BN254_P, fromBytes32, toBytes32 } from '../../../note/client/src/index.ts'
+import { BN254_R, accessKey, issuerSecret, mainKey, nameHashOf, packSignature, scopeOf, seedScalar, signBytes, stampOf } from '@foundationforest/keys'
+import { BN254_P, fromBytes32, toBytes32 } from '@foundationforest/note'
 import {
   buildTree,
   circuitInput,
@@ -26,7 +26,7 @@ import {
   signedBytes,
   verifyReputation,
   type Leaf,
-} from '../../client/src/index.ts'
+} from '@foundationforest/reputation'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const artifacts = { wasm: join(here, '../setup/reputation.wasm'), zkey: join(here, '../setup/reputation.zkey') }

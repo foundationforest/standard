@@ -1,12 +1,20 @@
 {
-  "name": "@forest/escrow-client",
+  "name": "@foundationforest/escrow-client",
   "version": "0.0.0",
   "private": true,
   "description": "Builds every instruction of the Forest escrow, for a mint of either token program (with a transfer hook's accounts resolved), builds an escrow's terms and schedule from a post's terms, shows a person any option they did not set, tells which window is in force and whether a stop, a take-back or the default can land, and decodes the escrow account and its events.",
   "license": "Apache-2.0",
   "type": "module",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "test": "node --test test/client.test.ts",
     "check": "tsc --noEmit",
@@ -16,9 +24,5 @@
     "@noble/hashes": "2.4.0",
     "@solana/spl-token": "0.4.9",
     "@solana/web3.js": "1.99.0"
-  },
-  "devDependencies": {
-    "@types/node": "22.20.2",
-    "typescript": "5.9.3"
   }
 }

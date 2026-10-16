@@ -27,7 +27,7 @@ import {
   profileScalarOf,
   publicKeyOf,
   stampOf,
-} from '../../../../keys/src/index.ts'
+} from '@foundationforest/keys'
 import { type SnarkjsProof, proofFromBytes } from './bytes.ts'
 import { fieldHash, fromBytes32, isFieldElement, nameHashOf, scopeOf } from './field.ts'
 import { NOTE_KEY } from './note-key.ts'

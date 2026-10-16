@@ -1,0 +1,22 @@
+{
+  "name": "standard",
+  "private": true,
+  "license": "Apache-2.0",
+  "workspaces": [
+    "keys",
+    "proofs/note/client",
+    "proofs/note/circuit",
+    "proofs/reputation/client",
+    "proofs/reputation/circuit",
+    "records",
+    "escrows/solana/client"
+  ],
+  "scripts": {
+    "build": "npm run build -w keys && npm run build -w proofs/note/client && npm run build -w proofs/reputation/client && npm run build -w records && npm run build -w escrows/solana/client",
+    "check": "npm run check --workspaces"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.2",
+    "typescript": "5.9.3"
+  }
+}

@@ -505,11 +505,11 @@ it to look now. An app sends the hosts record to the indexes the person chose.
 
 ### Run it
 
-`@forest/records` has four import paths, each built to `dist/` with types, and the shapes:
+`@foundationforest/records` has four import paths, each built to `dist/` with types, and the shapes:
 
-- `@forest/records`: keys as addresses (`publicKeyFromAddress`, `keyFromScalar`); canonical text;
-  signing, checking and encoding records; the view (`viewProfile`, `liveContent`, `allows`,
-  `allowsInbox`, `covers`); writing (`ownerRecord`, `accessRecord`, `hostsRecord`,
+- `@foundationforest/records`: keys as addresses (`publicKeyFromAddress`, `keyFromScalar`);
+  canonical text; signing, checking and encoding records; the view (`viewProfile`, `liveContent`,
+  `allows`, `allowsInbox`, `covers`); writing (`ownerRecord`, `accessRecord`, `hostsRecord`,
   `permissionsRecord`, `nextTime`); messages and pulls (`signMessage`, `decodeMessage`, `messageId`,
   `pullRequest`, `checkPull`, `inboxOf`, `sealedTo`); blob requests (`blobNameOf`, `blobRequest`,
   `checkBlobRequest`); a profile record's proofs as their verifiers take them (`proofsOf`,
@@ -522,26 +522,26 @@ it to look now. An app sends the hosts record to the indexes the person chose.
   and a pull go through the caller's own `fetch` if given, and refuse a host that redirects with
   `redirect: 'error'`. No server, database or encryption library is in it. The keys themselves,
   `mainKey`, `accessKey` and `readKey` among them, are keys/'s.
-- `@forest/records/private`: `makePrivate`, `openPrivate`, `readerCount`; `message` (seal to a
-  profile record's inbox key and readers, and sign) and `openMessage`; the vault (`vaultRecord`,
-  `openVault`, `readVault`, `checkVault`, `VAULT_PATH`). The inbox key itself is keys/'s
-  `inboxKey`, and the vault's keys/'s `vaultKey`.
-- `@forest/records/host`: `Host`, the reference host (below).
-- `@forest/records/public`: `publicFetch`, a fetch that reaches only public addresses and follows
-  no redirect, for a host or an app that goes to a host a stranger named: it refuses loopback,
-  private, link-local, carrier-grade NAT, NAT64, 6to4, multicast and every other range not
-  globally reachable, written in the URL or behind a name. `isPublic` checks one address. Node
-  only, like the host.
-- `@forest/records/schemas/profile.json`: the profile record's shape, as a JSON Schema.
+- `@foundationforest/records/private`: `makePrivate`, `openPrivate`, `readerCount`; `message` (seal
+  to a profile record's inbox key and readers, and sign) and `openMessage`; the vault
+  (`vaultRecord`, `openVault`, `readVault`, `checkVault`, `VAULT_PATH`). The inbox key itself is
+  keys/'s `inboxKey`, and the vault's keys/'s `vaultKey`.
+- `@foundationforest/records/host`: `Host`, the reference host (below).
+- `@foundationforest/records/public`: `publicFetch`, a fetch that reaches only public addresses and
+  follows no redirect, for a host or an app that goes to a host a stranger named: it refuses
+  loopback, private, link-local, carrier-grade NAT, NAT64, 6to4, multicast and every other range not
+  globally reachable, written in the URL or behind a name. `isPublic` checks one address. Node only,
+  like the host.
+- `@foundationforest/records/schemas/profile.json`: the profile record's shape, as a JSON Schema.
 
 Publish a profile with one offer, read it back, put a photo in the folder, then let another app
 write offers:
 
 ```ts
 import { randomBytes } from 'node:crypto'
-import { accessKey, mainKey } from '@forest/keys' // keys/
+import { accessKey, mainKey } from '@foundationforest/keys' // keys/
 import { accessRecord, blobNameOf, blobRequest, hostsRecord, ownerRecord, permissionsRecord,
-  publish, putBlob, readProfile } from '@forest/records'
+  publish, putBlob, readProfile } from '@foundationforest/records'
 
 const me = await mainKey(seed, 'tutoring/seller') // seed: its 32 bytes
 const now = Date.now()
@@ -563,9 +563,9 @@ await publish(view.hosts, [accessRecord(helper, me.address, 'offer/physics', phy
 Write to that profile's inbox from another profile, then pull it on the owner's device:
 
 ```ts
-import { inboxKey, mainKey } from '@forest/keys'
-import { deliver, pull, pullRequest, readProfile } from '@forest/records'
-import { message, openMessage } from '@forest/records/private'
+import { inboxKey, mainKey } from '@foundationforest/keys'
+import { deliver, pull, pullRequest, readProfile } from '@foundationforest/records'
+import { message, openMessage } from '@foundationforest/records/private'
 
 const buyer = await mainKey(otherSeed, 'tutoring/buyer')
 const seller = await readProfile([host], me.address, Date.now()) // it declares an inbox
@@ -584,9 +584,9 @@ Let a helper answer while the owner is away. It holds `reader`, a read key liste
 `inbox`:
 
 ```ts
-import { readAll } from '@forest/records'
-import { Host } from '@forest/records/host'
-import { verifyNote } from '@forest/note' // proofs/note/client
+import { readAll } from '@foundationforest/records'
+import { Host } from '@foundationforest/records/host'
+import { verifyNote } from '@foundationforest/note' // proofs/note/client
 
 // A host takes a message a write key signed only if it reads the sender's records; given
 // verifyNote too, it takes messages to inboxes with an issuer's rule.
@@ -609,9 +609,8 @@ await deliver(buyerView.hosts, [answer])
 ```
 # The tests take their keys from keys/, and check the example profile record's proofs with the
 # proofs' clients.
-for d in keys proofs/note/client proofs/reputation/client; do (cd "$d" && npm ci); done
+npm ci && npm run build   # at the root: every package; keys/, both clients and records to dist/
 cd records
-npm ci                 # also builds dist/
 npm run check          # type-check
 npm test               # everything, on loopback
 npm run bench          # speed on this machine

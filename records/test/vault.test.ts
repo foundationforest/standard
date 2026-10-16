@@ -3,8 +3,8 @@
 
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
-import { inboxKey, mainKey, seedScalar, vaultKey } from '../../keys/src/index.ts'
-import { fieldHash, noteNumberOf, noteToJson, signNote } from '../../proofs/note/client/src/index.ts'
+import { inboxKey, mainKey, seedScalar, vaultKey } from '@foundationforest/keys'
+import { fieldHash, noteNumberOf, noteToJson, signNote } from '@foundationforest/note'
 import { publish, readProfile } from '../src/client.ts'
 import { type Vault, VAULT_PATH, checkVault, openVault, readVault, readerCount, vaultRecord } from '../src/private.ts'
 import { RecordError } from '../src/record.ts'

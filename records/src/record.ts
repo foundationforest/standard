@@ -9,7 +9,7 @@
 // text, so no signature is ever two of them.
 
 import { sha256 } from '@noble/hashes/sha2.js'
-import { type Point, packSignature, publicKeyOf, signBytes, unpackSignature, verifyBytes } from '../../keys/src/curve.ts'
+import { type Point, packSignature, publicKeyOf, signBytes, unpackSignature, verifyBytes } from '@foundationforest/keys/curve'
 import { b64u, concat, hex, utf8 } from './bytes.ts'
 import { type Json, canonical, checkValue, parseCanonical } from './canonical.ts'
 import { type Key, publicKeyFromAddress } from './keys.ts'

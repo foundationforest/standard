@@ -19,7 +19,9 @@ Rules for apps: `keys/README.md`, Rules for apps that hold keys. Never copy them
 - Content shapes are never defined in this repo: what an offer, a review or a market holds is
   `foundationforest/markets`'s.
 - The repo is `keys/`, `proofs/` (`note/`, `reputation/`), `records/`, `escrows/` (`solana/`),
-  `README.md` and `LICENSE`, with `.github/` and `.claude/CLAUDE.md`. The README is the standard.
+  `README.md` and `LICENSE`, with `.github/`, `.claude/CLAUDE.md`, and the npm workspace's
+  `package.json`, `package-lock.json`, `tsconfig.base.json` and `types/`. The README is the
+  standard.
 - Keep the docs true in the same pull request: a change that makes a README wrong fixes it. A README
   says only what the code does. Say where each thing runs. The escrow runs on Solana's devnet;
   everything else is version 1.
@@ -39,9 +41,10 @@ Rules for apps: `keys/README.md`, Rules for apps that hold keys. Never copy them
   `devnet.json` beside it. No private key and no phrase ever goes in the repo.
 - Run what `.github/workflows/checks.yml` runs before you push (Node 22.18 or later; Solana CLI
   4.2.2; circom 2.2.3); the commands are there. A test that skips fails CI: the summary must say
-  `# skipped 0`. Install `keys` first: records, proofs/note/client and proofs/reputation/client read
-  it; then proofs/note/client before proofs/reputation/client, which reads it; both before records,
-  whose tests read them. Each circuit after keys and its client.
+  `# skipped 0`. `npm ci` at the root installs every package, and `npm run build` there builds keys,
+  proofs/note/client, proofs/reputation/client, records and escrows/solana/client to their `dist/`,
+  in that order, so each is built before a package that imports it. Then, in each package,
+  `npm run check` and `npm test`; in each circuit, `npm run fetch` and `npm run compile` first.
 
 The slower check, the escrow's fuzzer, runs nightly in CI; `escrows/solana/README.md` says how to
 run it.

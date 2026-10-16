@@ -3,7 +3,7 @@
 # would take to make a false proof. A public setup ceremony (many people contributing to the second
 # phase, on the same first phase) is on the list.
 #
-#   cd proofs/reputation/circuit && npm ci && setup/setup.sh     # circom 2.2.3 on PATH, or in CIRCOM
+#   npm ci && cd proofs/reputation/circuit && setup/setup.sh     # circom 2.2.3 on PATH, or in CIRCOM
 #
 # Phase 1 is public: PSE's Perpetual Powers of Tau, pinned below by SHA-256. Phase 2 is one
 # contribution: 64 random bytes drawn inside Node, never on a command line, to which snarkjs adds
@@ -51,7 +51,7 @@ const pin = (path) => {
   const bytes = readFileSync(path)
   return { bytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex') }
 }
-const lock = JSON.parse(readFileSync('package-lock.json', 'utf8')).packages
+const lock = JSON.parse(readFileSync('../../../package-lock.json', 'utf8')).packages
 const version = (name) => lock[`node_modules/${name}`].version
 const record = {
   note: 'Made by one party, by setup/setup.sh. Whoever ran it could make a false proof. A public setup ceremony is on the list.',

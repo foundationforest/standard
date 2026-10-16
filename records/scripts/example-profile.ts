@@ -10,9 +10,9 @@
 
 import { readFileSync, writeFileSync } from 'node:fs'
 import { sha256 } from '@noble/hashes/sha2.js'
-import { accessKey, fieldHash, inboxKey, issuerSecret, mainKey, packSignature, payKey, scopeOf, seedScalar, signBytes, stampOf } from '../../keys/src/index.ts'
-import { noteNumberOf, proofBytes, proveNote, signNote, toBytes32 } from '../../proofs/note/client/src/index.ts'
-import { type Leaf, proveReputation, signedBytes } from '../../proofs/reputation/client/src/index.ts'
+import { accessKey, fieldHash, inboxKey, issuerSecret, mainKey, packSignature, payKey, scopeOf, seedScalar, signBytes, stampOf } from '@foundationforest/keys'
+import { noteNumberOf, proofBytes, proveNote, signNote, toBytes32 } from '@foundationforest/note'
+import { type Leaf, proveReputation, signedBytes } from '@foundationforest/reputation'
 import { b64u, hex } from '../src/bytes.ts'
 
 const KEYS = JSON.parse(readFileSync(new URL('../../keys/test/vectors.json', import.meta.url), 'utf8'))

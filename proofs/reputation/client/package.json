@@ -1,5 +1,5 @@
 {
-  "name": "@forest/reputation",
+  "name": "@foundationforest/reputation",
   "version": "0.0.0",
   "private": true,
   "description": "The reputation proof's client: the tree an index publishes, the proof an app makes from it on the device for one of the person's own profiles, and the check any reader makes.",
@@ -8,17 +8,26 @@
   "engines": {
     "node": ">=22.18"
   },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist"
+  ],
   "scripts": {
+    "build": "tsc -p tsconfig.build.json",
     "check": "tsc --noEmit",
     "test": "node --test --test-force-exit test/client.test.ts"
   },
   "dependencies": {
+    "@foundationforest/keys": "0.0.0",
+    "@foundationforest/note": "0.0.0",
     "@semaphore-protocol/group": "4.12.1",
     "poseidon-lite": "0.3.0",
     "snarkjs": "0.7.5"
-  },
-  "devDependencies": {
-    "@types/node": "22.20.2",
-    "typescript": "5.9.3"
   }
 }

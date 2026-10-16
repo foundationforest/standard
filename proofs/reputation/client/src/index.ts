@@ -22,8 +22,8 @@ import {
   stampOf,
   unpackSignature,
   verifyBytes,
-} from '../../../../keys/src/index.ts'
-import { type SnarkjsProof, proofFromBytes, toBytes32 } from '../../../note/client/src/index.ts'
+} from '@foundationforest/keys'
+import { type SnarkjsProof, proofFromBytes, toBytes32 } from '@foundationforest/note'
 import { REPUTATION_KEY } from './reputation-key.ts'
 
 /** The circuit's slots: a proof counts up to this many profiles. */
@@ -215,7 +215,7 @@ export async function proveReputation(input: Parameters<typeof circuitInput>[0] 
 
 // The proof as a profile record stores it, 256 bytes, and back: the note client's, which a note
 // proof uses too (records/README.md, Proofs).
-export { proofBytes, proofFromBytes } from '../../../note/client/src/index.ts'
+export { proofBytes, proofFromBytes } from '@foundationforest/note'
 
 /**
  * Does this proof hold, under a root this index signed with this time, on this profile? Checks the
