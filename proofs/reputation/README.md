@@ -11,9 +11,10 @@ person's profiles together; the proof carries the score across without linking t
 a profile of the person's own, so nobody can lend their score to someone else.
 It has two uses:
 
-- **Global:** the weighted average of up to eight profiles the person picks, naming none of them:
-  each profile's value in the index's tree, weighted by its weight.
-- **Single:** the value of one of their profiles, with its label shown and which profile hidden.
+- **Across profiles:** the weighted average of up to eight profiles the person picks, naming none
+  of them: each profile's value in the index's tree, weighted by its weight.
+- **One profile:** the value of one of their profiles, with its label shown and which profile
+  hidden.
 
 It is a zero-knowledge proof: it shows that this is true and nothing else. The person's app makes
 it on the device from their seed scalar ([keys](../../keys/README.md#the-seed-scalar)), so the
