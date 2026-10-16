@@ -41,7 +41,7 @@ const hm = bytesMessage(message)
 rate('verify, zk-kit (@zk-kit/eddsa-poseidon), for comparison', 10, () => zkVerify(hm, signature, key.publicKey))
 rate('read one record off the wire (parse, canonical, strict verify)', 1_000, () => decodeRecord(wire))
 
-// A host taking records: 500 profiles, a card and 4 offers each, in batches of 100.
+// A host taking records: 500 profiles, a profile record and 4 offers each, in batches of 100.
 const host = new Host({ now: () => 1_790_000_000_000 })
 const lines: string[] = []
 for (let p = 0; p < 500; p++) {

@@ -9,7 +9,7 @@ import { assertText, utf8 } from './hkdf.ts'
 export const BN254_R = 21888242871839275222246405745257275088548364400416034343698204186575808495617n
 
 /** What a label is hashed after. Fixed: a change gives every profile a new key and stamp. */
-export const SCOPE_NS = 'forest.foundation/label/v1/'
+export const SCOPE_NS = 'forest/v1/label/'
 /** What an issuer's name is hashed after. */
 export const ISSUER_NS = 'forest/v1/issuer/'
 
@@ -37,7 +37,7 @@ export const TAG = {
   vault: fieldHash('forest/v1/vault'),
 } as const
 
-/** A label as a number: `keccak256("forest.foundation/label/v1/" || label) >> 8`. */
+/** A label as a number: `keccak256("forest/v1/label/" || label) >> 8`. */
 export function scopeOf(label: string): bigint {
   assertText('label', label)
   return fieldHash(SCOPE_NS, label)

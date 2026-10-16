@@ -5,7 +5,7 @@
 //! leaves a receipt at an address a review can point at. This file sends exactly that, measures
 //! it, and checks what it leaves behind: a permanent receipt, which keeps its own rent and records
 //! when the money was there though nobody marked it, and the deposit account's rent back, in the
-//! same transaction, to the key that fronted both rents (a fee payer, in production); a later
+//! same transaction, to the key that fronted both rents (usually a fee payer); a later
 //! sweep of what the rent cuts free goes to it too. The rent is measured at today's rate and at
 //! the rate the cuts end at.
 //!

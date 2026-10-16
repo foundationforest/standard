@@ -13,10 +13,10 @@ says so. Every escrow that held the money leaves a receipt at its address, for g
 saying how the deal ended.
 
 It runs on devnet at `FA6ZodkyhMDj9yjzY27dk8JDCtcHnJx8mr45Mx9TfKg8`, still upgradable
-([record](devnet/devnet.json)); nothing is on mainnet. On mainnet each version is to be sealed the
-day it deploys, because money sits inside it and nobody, the Open Forest Foundation included, may
-change the rules around money already there: a new version comes as a new program at a new
-address, never an upgrade, and the old ones keep working.
+([record](devnet/devnet.json)). It cannot change once deployed to Solana's mainnet, because money
+sits inside it and nobody, the Open Forest Foundation included, may change the rules around money
+already there: a new version is a new program beside it, at a new address, never an upgrade, and
+the old ones keep working.
 
 - `program/`: the program (Anchor 1.2), its LiteSVM tests and its fuzzer.
 - `client/`: builds every instruction and reads every account and event. It talks to no network
@@ -82,12 +82,13 @@ closes, recorded as the sponsor ([Rent](#rent)).
 
 ### Paying in
 
-- **The mint** is one made by the classic SPL Token program or by Token-2022, but not wrapped SOL
-  of either (SOL sent to its deposit account by a plain transfer would not count), a Token-2022
-  mint with a transfer fee (it would take part of every payment, while every way out pays the
-  whole balance), or one that cannot be transferred (it could never leave). A dollar, here, is
-  such a mint made to track the US dollar, such as Open USD; what its maker can still do is in
-  [Limits](#limits).
+- **The mint** is one made by the classic SPL Token program or by Token-2022. `create` refuses
+  three kinds (`program/src/errors.rs`): wrapped SOL (`NativeMint`: a plain SOL transfer to its
+  deposit account would not count); a token with a transfer fee (`TransferFee`: the fee would take
+  part of every payment in and out, while every way out pays the whole balance); and a token that
+  cannot be transferred (`NonTransferable`: nothing could be paid into the escrow, and nothing
+  minted into it could leave). A dollar, here, is such a mint made to track the US dollar, such as
+  Open USD; what its maker can still do is in [Limits](#limits).
 - **The deposit address** is the escrow's associated token account for the mint, so a payment
   sent "to the escrow's address" from anywhere lands there. Money arrives by a plain transfer,
   from anywhere; a payment in a Token-2022 mint must be a `transfer_checked`. Confidential
@@ -96,14 +97,15 @@ closes, recorded as the sponsor ([Rent](#rent)).
   fixed at creation, and only what they display drifts.
 - **Funded** is the live balance: the escrow is funded while its deposit account holds at least
   the amount. Every way out checks the balance itself.
-- **`mark_funded`** records when the amount was there. Anyone may send it, with no signature,
-  once, while the deposit account holds the amount, and only before the end time. Only `end`
-  needs it: the default pays only a marked escrow, so money that arrives after the end time never
-  counts toward it. `createAndFund` and `fundInvoice` mark in the same transaction as the payment,
-  so a payment they send after the end time fails whole and moves nothing. A plain transfer can
-  still land late: from the end time on, either side may close an escrow nobody marked or stopped,
-  and the money goes back to the payer (`close_unfunded`). So the side the default favours marks
-  any payment it sees before the end time.
+- **`mark_funded`** records when the amount was there. A plain token transfer into the deposit
+  account never calls the program, so the program cannot see on its own when money arrived: someone
+  marks it. Anyone may send it, with no signature, once, while the deposit account holds the amount,
+  and only before the end time. Only `end` needs it: the default pays only a marked escrow, so money
+  that arrives after the end time never counts toward it. `createAndFund` and `fundInvoice` mark in
+  the same transaction as the payment, so a payment they send after the end time fails whole and
+  moves nothing. A plain transfer can still land late: from the end time on, either side may close
+  an escrow nobody marked or stopped, and the money goes back to the payer (`close_unfunded`). So
+  the side the default favours marks any payment it sees before the end time.
 - **The amount** is one payment: one escrow per payment.
 - **The deposit address is made first** when paying in the same transaction as `create` or into
   an invoice (`createAndFund`, `fundInvoice` and the one-tap builders do), so a fee payer (a
@@ -185,14 +187,14 @@ whole schedule), `Funded`, `Stopped`, `Ended`, `Closed`, `RecoveredLate`, `RentS
 Solana holds a deposit, its rent, in every account, and gives it back when the account closes.
 Whoever fronts an escrow's rent signs `create` as the sponsor, is recorded, and gets every rent
 back: the deposit account's at every ending, both rents at `close_unfunded`, and, by `sweep_rent`,
-whatever a cut in Solana's rent later frees above the receipt's minimum. Refunds arrive in SOL, to
+whatever a cut in Solana's rent frees above the receipt's minimum. Refunds arrive in SOL, to
 that key. A fee payer may front it; what it charges for that is its own choice.
 
 One rent goes elsewhere. A payment that arrives after an escrow ended makes its closed deposit
 account again, and that payment is almost always the payer's own, so the payer paid that account's
 rent: `recover_late` sends it to the payer, with the late money.
 
-At today's 5,080 lamports a byte, the escrow account holds 304 bytes after its 8-byte
+At Solana's 5,080 lamports a byte, the escrow account holds 304 bytes after its 8-byte
 discriminator (2,235,200 lamports), and comes back whole only at `close_unfunded`; otherwise the
 receipt keeps its minimum. A classic deposit account is 165 bytes; one for Open USD's extensions,
 179 (1,559,560 lamports). It comes back to the sponsor at every ending.
@@ -308,9 +310,10 @@ to about 20,000 compute units with the keys.
 | one tap, the same | 65,574 | 704 |
 | one tap, a hook with two accounts | 97,205 | 872 |
 
-### What is sealed
+### What cannot change
 
-None of this can change after the mainnet deploy; on devnet the program is still upgradable.
+None of this can change once the program is deployed to Solana's mainnet; a new version is a new
+program beside it. On devnet the program is still upgradable.
 
 - **The account.** 304 bytes after the discriminator, laid out in `program/src/state.rs` (and
   written again in `program/tests-litesvm/src/lib.rs` and `client/src/program.ts`): version, id,
@@ -331,7 +334,7 @@ None of this can change after the mainnet deploy; on devnet the program is still
   instruction's own are passed on to each transfer, never as signers, for the mint's transfer
   hook.
 
-On mainnet the program is sealed the day it deploys:
+On Solana's mainnet the upgrade authority is removed the day the program deploys:
 
 ```
 solana program deploy --program-id <program-keypair.json> target/deploy/forest_escrow.so
@@ -344,8 +347,8 @@ keypair for it exists. Each deploy uses its own.
 
 ### Devnet
 
-On devnet the program is built as SBPF v3 and not sealed: its upgrade authority is the devnet
-deploy key. `devnet/deploy.sh` builds a copy of the source with the devnet id put in, deploys a
+On devnet the program is built as SBPF v3 and stays upgradable: its upgrade authority is the
+devnet deploy key. `devnet/deploy.sh` builds a copy of the source with the devnet id put in, deploys a
 fresh id or upgrades it in place, checks the deployed bytes against the build, and records
 everything public in [`devnet/devnet.json`](devnet/devnet.json); its header holds the recipe for
 every devnet key it needs. `client/scripts/devnet.ts` runs seven deals there, recorded in the same
@@ -415,7 +418,8 @@ each.
 
 ## Who decides what
 
-- **The standard:** the program's rules and the receipt, to be sealed on mainnet.
+- **The standard:** the program's rules and the receipt, which cannot change once deployed to
+  Solana's mainnet; a new version is a new program beside it.
 - **An app, with the person:** the terms, the arbiter, the schedule, and which escrow to use.
 - **A fee payer chooses** which transactions it pays for, and what it charges for fronting rent.
 

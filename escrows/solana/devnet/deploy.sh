@@ -33,9 +33,9 @@
 #    cargo-build-sbf 4.1.0, platform-tools v1.54.
 #
 # FOREST_DEVNET_RPC points the Solana CLI at another devnet RPC; the record always names the
-# public one, so a keyed URL never lands in the repo. Devnet is not sealed: the upgrade authority
-# stays on the deploy key, and whoever holds the phrase holds it. Sealing is the mainnet step
-# (`--final`, in escrows/solana/README.md). A new phrase starts from nothing: its deploy key needs SOL sent
+# public one, so a keyed URL never lands in the repo. On devnet the program stays upgradable: the
+# upgrade authority stays on the deploy key, and whoever holds the phrase holds it. Removing it is
+# the mainnet step (`--final`, in escrows/solana/README.md). A new phrase starts from nothing: its deploy key needs SOL sent
 # by hand, and the deals need a classic test dollar, the parties' token accounts and the buyer's
 # dollars, which no script here makes.
 

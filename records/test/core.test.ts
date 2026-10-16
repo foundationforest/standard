@@ -26,7 +26,7 @@ describe('keys', () => {
     assert.deepEqual(keyFromScalar(alice.scalar), { scalar: alice.scalar, publicKey: alice.publicKey, address: alice.address })
     assert.equal(accessKey.address, KEYS.accessKeys.write.address)
     assert.equal(reader.address, KEYS.accessKeys.read.address)
-    assert.equal(reader.recipient, KEYS.accessKeys.read.recipient)
+    assert.equal(reader.sealTo, KEYS.accessKeys.read.sealTo)
   })
 
   test('an address has one spelling and names a usable key', () => {
@@ -134,7 +134,7 @@ describe('records', () => {
     assert.ok(checkRecord(ownerRecord(alice, 'hosts', { urls: ['https://a.example', 'http://127.0.0.1:8080'] }, T0)))
 
     const perms = (access: unknown[]) => () => permissionsRecord(alice, access as never, T0)
-    const recipient = reader.recipient
+    const sealTo = reader.sealTo
     assert.throws(perms([{ ...allow(accessKey, ['offer']), pay: 5 }]), /unknown access field pay/)
     assert.throws(perms([{ ...allow(accessKey, ['offer']), until: T0 }]), /unknown access field until/, 'no dates')
     assert.throws(perms([allow(accessKey, ['hosts'])]), /content path/)
@@ -144,10 +144,10 @@ describe('records', () => {
     assert.throws(perms([{ key: accessKey.address, scope: 'admin' }]), /scope is one of/)
     assert.throws(perms([{ key: accessKey.address, scope: 'message' }]), /scope is one of write, read;/, 'no message scope: a write key sends')
     assert.throws(perms([{ key: accessKey.address, scope: 'pay' }]), /scope is one of write, read;/, 'there is no pay scope')
-    assert.throws(perms([{ key: reader.address, scope: 'read' }]), /read key gives its recipient/, 'a read key gives both halves')
-    assert.throws(perms([{ key: recipient, recipient, scope: 'read' }]), /usable/, 'its key is an address')
-    assert.throws(perms([{ key: reader.address, recipient: alice.address, scope: 'read' }]), /read key gives its recipient/)
-    assert.throws(perms([{ key: accessKey.address, recipient, scope: 'write' }]), /only a read key gives a recipient/)
+    assert.throws(perms([{ key: reader.address, scope: 'read' }]), /read key gives sealTo/, 'a read key gives both halves')
+    assert.throws(perms([{ key: sealTo, sealTo, scope: 'read' }]), /usable/, 'its key is an address')
+    assert.throws(perms([{ key: reader.address, sealTo: alice.address, scope: 'read' }]), /read key gives sealTo/)
+    assert.throws(perms([{ key: accessKey.address, sealTo, scope: 'write' }]), /only a read key gives sealTo/)
     assert.throws(perms([{ key: accessKey.address, scope: 'past' }]), /scope is one of/, 'a past key has was, not a scope')
     for (const was of ['read', 'message', 'pay', 'past']) assert.throws(perms([{ key: accessKey.address, was }]), /a past key has was, write, in its place/, `was ${was}`)
     assert.throws(perms([{ key: accessKey.address, scope: 'write', was: 'write' }]), /a past key has was/, 'one or the other')
@@ -155,7 +155,7 @@ describe('records', () => {
     assert.ok(checkRecord(permissionsRecord(alice, [allow(accessKey), pastKey(stranger, ['offer']), allow(reader, undefined, 'read')], T0)), 'paths are optional')
     assert.throws(perms([allow(accessKey), pastKey(accessKey, ['offer'])]), /listed twice/, 'one key, one entry')
     assert.throws(perms([allow(reader, undefined, 'read'), allow(reader, ['note'], 'read')]), /listed twice/)
-    assert.throws(perms([allow(reader, undefined, 'read'), { key: stranger.address, recipient, scope: 'read' }]), /listed twice/, 'one recipient, one entry')
+    assert.throws(perms([allow(reader, undefined, 'read'), { key: stranger.address, sealTo, scope: 'read' }]), /listed twice/, 'one sealTo, one entry')
     const many = Array.from({ length: 100 }, (_, i) => ({ key: makeAccessKey(new Uint8Array(32).fill(i + 1)).address, was: 'write' as const }))
     assert.ok(checkRecord(permissionsRecord(alice, many, T0)), 'no cap on how many keys it lists')
     assert.throws(() => ownerRecord(alice, 'permissions', { access: [], more: 1 }, T0), /unknown permissions field/)

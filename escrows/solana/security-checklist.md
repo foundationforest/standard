@@ -3,10 +3,10 @@
 Written with the safe-solana-builder skill (Frank Castle's, copied unchanged into this repo while
 the programs were written, and in its git history since): every rule in its
 `references/shared-base.md` (sections 1 to 31), `references/anchor.md` and `references/litesvm.md`,
-how this program applies it or why it does not apply, and every limit known today. The program is
+how this program applies it or why it does not apply, and every known limit. The program is
 `program/src/`; the tests named here are in `program/tests-litesvm/tests/` and
-`program/trident-tests/`. Devnet only: nothing here is shipped or on mainnet, and no paid review
-has happened.
+`program/trident-tests/`. It runs on Solana's devnet, not on its mainnet, and no paid review has
+happened.
 
 This program writes version 3 into every escrow: a schedule of windows, the payer and the
 recipient. Version 2 (a timer, an objection, a buyer and a seller) ran at the same devnet id until
@@ -18,14 +18,14 @@ git history.
 | Program | `forest_escrow`, version byte 3, `FoRE3EscrowV3scheduLeWindowsPayRefund3333333` for local work, `FA6ZodkyhMDj9yjzY27dk8JDCtcHnJx8mr45Mx9TfKg8` on devnet, upgraded in place four times (its first deploy, classic only, at `B3p13G8xvNvUrAnaXg9AUtwffBAUHcp6XoMwGV2jKPi7`, closed) |
 | Framework | Anchor 1.2 with `anchor-spl`'s token interface, `cargo build-sbf --arch v3` (Solana CLI 4.2.2, platform-tools v1.54), no IDL, no build warning |
 | Testing | LiteSVM, 95 tests on every pull request: 71 on a classic mint, 24 on Token-2022 mints (one made with Open USD's mainnet extensions compared with the mainnet account's bytes; others with one extension each), with a builtin test hook and a builtin spy standing in for Token-2022; one of them sends every move in every state (`every_move_in_every_state`). A mutation check of each of the 17 rules version 3 added (each removed in turn fails at least one test), and of the hook rules, the non-transferable refusal and the terms in the address. A Trident fuzzer: seventeen invariants, 50,000 iterations nightly, on an SBPF v0 build and a classic mint. On devnet: seven deals through the client, two of them in a Token-2022 dollar with Open USD's extensions, and five refusals simulated there. **No local-validator test** |
-| Risk level | 🟡 Medium by the skill's table (an escrow: token transfers, basic CPI, PDAs, no admin). Treated as 🔴 **Critical**, because it is sealed at deploy and holds other people's money, so this checklist carries a High-Risk Decisions section |
+| Risk level | 🟡 Medium by the skill's table (an escrow: token transfers, basic CPI, PDAs, no admin). Treated as 🔴 **Critical**, because it cannot change once deployed to Solana's mainnet and holds other people's money, so this checklist carries a High-Risk Decisions section |
 | Upgrade authority | Removed at mainnet deploy with `solana program set-upgrade-authority --final` (`README.md`). No admin key, no config, no pause, no fee. A change is a new program at a new address. On devnet the authority stays on the deploy key |
 
 ## High-risk decisions
 
 Each is on purpose, and none can be changed after deploy.
 
-1. **Sealed.** No upgrade, no pause, no admin. A bug found after deploy stays in every escrow made
+1. **It cannot change once deployed.** No upgrade, no pause, no admin. A bug found after deploy stays in every escrow made
    on this program; the only remedy is a new program for new deals.
 2. **The creator sets the schedule** (skill §29.2 says release gates should be protocol-defined).
    The schedule is chosen at creation by whichever party opens the escrow: one to four windows,

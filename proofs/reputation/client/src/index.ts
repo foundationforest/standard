@@ -3,9 +3,7 @@
 // published leaves, root, time and signature.
 //
 // The stamp, the scope and the profile's key come from keys/ unchanged, so a leaf names a profile
-// exactly as its human proof does, and a proof names the key of the profile it is shown on.
-//
-// Nothing here is in production: the circuit's setup is devnet only (../README.md).
+// exactly as its note proof does, and a proof names the key of the profile it is shown on.
 
 import { Group } from '@semaphore-protocol/group'
 import { poseidon4 } from 'poseidon-lite/poseidon4'
@@ -25,7 +23,7 @@ import {
   unpackSignature,
   verifyBytes,
 } from '../../../../keys/src/index.ts'
-import { type SnarkjsProof, proofFromBytes, toBytes32 } from '../../../human/client/src/index.ts'
+import { type SnarkjsProof, proofFromBytes, toBytes32 } from '../../../note/client/src/index.ts'
 import { REPUTATION_KEY } from './reputation-key.ts'
 
 /** The circuit's slots: a proof counts up to this many profiles. */
@@ -39,13 +37,13 @@ export const SIGNED_PREFIX = 'forest/v1/reputation\n'
 
 /** One profile in an index's tree. */
 export type Leaf = {
-  /** The profile's stamp at the issuer its human proof names. */
+  /** The profile's stamp at the issuer its note proof names. */
   stamp: bigint
   /** The scope of the profile's label (`scopeOf`). */
   scope: bigint
-  /** The leaf's value (README.md: value): a whole number below 2^32, meaning what the index says. */
+  /** The leaf's value (README.md: value): a whole number below 2^32 whose meaning is the index's. */
   score: bigint
-  /** The leaf's weight (README.md: weight): a whole number below 2^32, the index's choice. */
+  /** The leaf's weight (README.md: weight): a whole number below 2^32 whose meaning is the index's. */
   count: bigint
 }
 
@@ -215,9 +213,9 @@ export async function proveReputation(input: Parameters<typeof circuitInput>[0] 
   return { score, root, profile, address: addressOf(profile), scope, proof, publicSignals }
 }
 
-// The proof as a profile record stores it, 256 bytes, and back: the human client's, which a human
+// The proof as a profile record stores it, 256 bytes, and back: the note client's, which a note
 // proof uses too (records/README.md, Proofs).
-export { proofBytes, proofFromBytes } from '../../../human/client/src/index.ts'
+export { proofBytes, proofFromBytes } from '../../../note/client/src/index.ts'
 
 /**
  * Does this proof hold, under a root this index signed with this time, on this profile? Checks the

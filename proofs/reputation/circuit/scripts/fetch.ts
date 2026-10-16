@@ -1,10 +1,10 @@
-// Fetch the devnet setup's proving key and witness generator, and check them against their hashes.
+// Fetch the setup's proving key and witness generator, and check them against their hashes.
 //
 //   npm run fetch
 //
-// The verification key is committed (devnet/verification-key.json, a few kB). The proving key and
+// The verification key is committed (setup/verification-key.json, a few kB). The proving key and
 // the witness generator are about 30 MB and only ever used to make a proof, so they sit in a GitHub
-// release, pinned by SHA-256 in devnet/setup.json. A file that does not match its hash is deleted
+// release, pinned by SHA-256 in setup/setup.json. A file that does not match its hash is deleted
 // rather than kept.
 
 import { createHash } from 'node:crypto'
@@ -14,8 +14,8 @@ import { fileURLToPath } from 'node:url'
 
 type Entry = { bytes: number; sha256: string }
 
-const devnet = join(dirname(fileURLToPath(import.meta.url)), '../devnet')
-const setup = JSON.parse(readFileSync(join(devnet, 'setup.json'), 'utf8')) as {
+const dir = join(dirname(fileURLToPath(import.meta.url)), '../setup')
+const setup = JSON.parse(readFileSync(join(dir, 'setup.json'), 'utf8')) as {
   release: { baseUrl: string }
   files: Record<string, Entry>
   committed: Record<string, Entry>
@@ -25,7 +25,7 @@ const sha256 = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest(
 
 let failed = false
 for (const [name, entry] of Object.entries(setup.files)) {
-  const path = join(devnet, name)
+  const path = join(dir, name)
   if (existsSync(path) && sha256(readFileSync(path)) === entry.sha256) {
     console.log(`${name}: already here and correct`)
     continue
@@ -50,7 +50,7 @@ for (const [name, entry] of Object.entries(setup.files)) {
 }
 
 for (const [name, entry] of Object.entries(setup.committed)) {
-  const path = join(devnet, name)
+  const path = join(dir, name)
   const got = existsSync(path) ? sha256(readFileSync(path)) : 'missing'
   if (got !== entry.sha256) {
     console.log(`${name}: WRONG, want ${entry.sha256}, got ${got}`)
@@ -62,7 +62,7 @@ for (const [name, entry] of Object.entries(setup.committed)) {
 
 if (failed) {
   for (const [name, entry] of Object.entries(setup.files)) {
-    const path = join(devnet, name)
+    const path = join(dir, name)
     if (existsSync(path) && sha256(readFileSync(path)) !== entry.sha256) unlinkSync(path)
   }
   process.exit(1)

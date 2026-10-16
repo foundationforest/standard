@@ -1,8 +1,8 @@
 # Every pull request and every push to main: each Node package's type-check and tests that need no
-# chain (keys is installed first: records, the human proof's client and the reputation client read
+# chain (keys is installed first: records, the note proof's client and the reputation client read
 # it; records' tests also read both proofs' clients), the Solana escrow built as SBPF v3 with its
-# LiteSVM tests, and each circuit (reputation, and the human proof's) compiled, checked against its
-# devnet setup, and tested. After a merge, every package type-checks together. Nightly, and by
+# LiteSVM tests, and each circuit (reputation, and the note proof's) compiled, checked against its
+# setup, and tested. After a merge, every package type-checks together. Nightly, and by
 # hand: the escrow's fuzzer. A test that skips fails its step: the summary must say "# skipped 0".
 
 name: checks
@@ -40,13 +40,13 @@ jobs:
           - package: keys
             install: keys
           - package: records
-            install: keys proofs/human/client proofs/reputation/client records
-          - package: proofs/human/client
-            install: keys proofs/human/client
+            install: keys proofs/note/client proofs/reputation/client records
+          - package: proofs/note/client
+            install: keys proofs/note/client
           - package: escrows/solana/client
             install: escrows/solana/client
           - package: proofs/reputation/client
-            install: keys proofs/human/client proofs/reputation/client
+            install: keys proofs/note/client proofs/reputation/client
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -70,7 +70,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        circuit: [proofs/reputation/circuit, proofs/human/circuit]
+        circuit: [proofs/reputation/circuit, proofs/note/circuit]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -83,8 +83,8 @@ jobs:
           chmod +x "$RUNNER_TEMP/circom"
           echo "CIRCOM=$RUNNER_TEMP/circom" >> "$GITHUB_ENV"
       - name: Install
-        run: for dir in keys proofs/human/client proofs/reputation/client ${{ matrix.circuit }}; do (cd "$dir" && npm ci --no-audit --no-fund); done
-      - name: The devnet setup's files, hash-checked
+        run: for dir in keys proofs/note/client proofs/reputation/client ${{ matrix.circuit }}; do (cd "$dir" && npm ci --no-audit --no-fund); done
+      - name: The setup's files, hash-checked
         working-directory: ${{ matrix.circuit }}
         run: npm run fetch
       - name: Compile, and check it is the circuit the setup was made for
@@ -109,9 +109,9 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
       - name: Install
-        run: for dir in keys records proofs/human/client proofs/human/circuit escrows/solana/client proofs/reputation/client proofs/reputation/circuit; do (cd "$dir" && npm ci --no-audit --no-fund); done
+        run: for dir in keys records proofs/note/client proofs/note/circuit escrows/solana/client proofs/reputation/client proofs/reputation/circuit; do (cd "$dir" && npm ci --no-audit --no-fund); done
       - name: Type-check every package
-        run: for dir in keys records proofs/human/client proofs/human/circuit escrows/solana/client proofs/reputation/client proofs/reputation/circuit; do echo "== $dir"; (cd "$dir" && npm run check); done
+        run: for dir in keys records proofs/note/client proofs/note/circuit escrows/solana/client proofs/reputation/client proofs/reputation/circuit; do echo "== $dir"; (cd "$dir" && npm run check); done
 
   programs:
     runs-on: ubuntu-latest

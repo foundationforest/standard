@@ -1,8 +1,8 @@
 // The wire format of the escrow: addresses, discriminators, instruction bytes, the account
 // layout and the event layouts.
 //
-// Everything here is sealed with the program. These bytes are what clients and indexes read and
-// write forever, so this file is written out by hand rather than generated: a reader can check it
+// Everything here is fixed with the program, which cannot change once deployed to Solana's mainnet.
+// These bytes are what clients and indexes read and write forever, so this file is written out by hand rather than generated: a reader can check it
 // against `escrows/solana/program/src/lib.rs` line by line, and the Rust tests encode the same
 // bytes independently, so a drift on either side fails a test. An escrow of v2 or v1, earlier
 // programs no longer in this repo, is read with that program's own client, in this repo's git

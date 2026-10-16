@@ -4,7 +4,7 @@
 // profile's main key comes from the person's seed and signs its folder's records; its address is
 // the profile's name. An access key is 32 random bytes an app makes (keys/'s accessKey and
 // readKey): a write key signs records, and messages when its paths allow; a read key pulls the
-// inbox and opens what is encrypted to it. Every key signs with EdDSA-Poseidon on Baby Jubjub, by
+// inbox and opens what is sealed to it. Every key signs with EdDSA-Poseidon on Baby Jubjub, by
 // keys/'s signBytes, and every address is a packed point in base58.
 
 import { type Point, addressOf, pointOf, publicKeyOf } from '../../keys/src/curve.ts'

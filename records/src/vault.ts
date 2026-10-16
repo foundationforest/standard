@@ -1,9 +1,9 @@
 // The vault: what a new device needs and the seed alone cannot give back, kept on hosts in a folder
 // of the person's own (README.md, The vault). The folder's main key is keys/'s vault key, mixed from
-// the seed, so a new device finds the vault with the seed alone. The folder holds its hosts record
-// and one private record at `vault`, made for the vault's own inbox key alone (vaultRecord and
-// openVault in private.ts). Inside: the labels of the person's profiles and where each lives, their
-// issuers' notes, and apps' settings.
+// the seed, so a new device finds the vault with the seed and one host's address. The folder holds
+// its hosts record and one private record at `vault`, sealed to the vault's own inbox key alone
+// (vaultRecord and openVault in private.ts). Inside: the labels of the person's profiles and where
+// each lives, their issuers' notes, and apps' settings.
 //
 // An app keeps every field it does not know, at the top and inside `settings`, so two apps, or an
 // older and a newer one, share one vault without erasing each other's.
@@ -17,7 +17,7 @@ export const VAULT_PATH = 'vault'
 /** One of the person's profiles: its label, and the hosts its folder lived on when written. */
 export type VaultProfile = { label: string; hosts: string[] }
 
-/** An issuer's note: the issuer's name, as keys/'s recipe takes it, and the signed note, as JSON (proofs/human/client's noteToJson). */
+/** An issuer's note: the issuer's name, as keys/'s recipe takes it, and the signed note, as JSON (proofs/note/client's noteToJson). */
 export type IssuerNote = { issuer: string; note: { [key: string]: Json } }
 
 export type Vault = {

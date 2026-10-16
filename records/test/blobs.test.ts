@@ -71,10 +71,10 @@ describe('blobs', () => {
     }
   })
 
-  test('the main key deletes any of its folder’s bytes; a write key, whatever its paths, the ones a write key put', async () => {
+  test('the main key deletes any of its folder’s bytes; a write key, whatever its paths, only the ones it put', async () => {
     const h = await startHost({ now: () => T0 })
     try {
-      await publish([h.url], [permissionsRecord(alice, [allow(accessKey, ['inbox'])], T0)])
+      await publish([h.url], [permissionsRecord(alice, [allow(accessKey, ['inbox']), allow(stranger, ['offer'])], T0)])
       // The main key's bytes: only it deletes them, as the owner's records.
       assert.equal(await put(h, alice, photo), 'ok')
       assert.equal(await del(h, as(accessKey), photo), 'permission')
@@ -82,8 +82,9 @@ describe('blobs', () => {
       assert.equal((await fetch(`${h.url}/v1/blobs/${nameOf(photo)}`)).status, 404)
       assert.equal(await del(h, alice, photo), 'not here')
 
-      // A write key's bytes: a write key or the main key deletes them.
+      // A write key's bytes: that key or the main key deletes them; another write key does not.
       assert.equal(await put(h, as(accessKey), clip, 'video/mp4'), 'ok')
+      assert.equal(await del(h, as(stranger), clip), 'permission', 'another write key')
       assert.equal(await del(h, as(accessKey), clip), 'ok')
       assert.equal(await put(h, as(accessKey), clip, 'video/mp4'), 'ok')
       assert.equal(await del(h, alice, clip), 'ok')
@@ -94,6 +95,20 @@ describe('blobs', () => {
       assert.equal(await put(h, alice, both), 'ok')
       assert.equal(await put(h, as(accessKey), both), 'already here')
       assert.equal(await del(h, as(accessKey), both), 'permission')
+    } finally {
+      await h.close()
+    }
+  })
+
+  test('who put the bytes is read in the step that deletes them: bytes the main key took over while a delete waited stay', async () => {
+    const h = await startHost({ now: () => T0 })
+    try {
+      await publish([h.url], [permissionsRecord(alice, [allow(accessKey, ['inbox'])], T0)])
+      assert.equal(await put(h, as(accessKey), photo), 'ok')
+      const takeOver = h.putBlob(nameOf(photo), 'image/jpeg', canonical(putOf(alice, photo)), photo)
+      const deleting = h.deleteBlob(nameOf(photo), canonical(deleteOf(as(accessKey), photo)))
+      assert.deepEqual([(await takeOver).ok, (await deleting).error], [true, 'permission'])
+      assert.ok(await h.getBlob(nameOf(photo)), 'still held')
     } finally {
       await h.close()
     }

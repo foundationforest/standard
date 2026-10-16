@@ -313,7 +313,7 @@ impl FuzzTest {
         let schedule = self.schedule();
         let amount = self.amount();
         let id: u64 = self.trident.random_from_range(0..6);
-        // Who fronts the rent: the payer, a sponsor (a fee payer, in production), or anyone.
+        // Who fronts the rent: the payer, a sponsor (usually a fee payer), or anyone.
         let sponsor_i = match self.pick(3) {
             0 => payer_i,
             1 => SPONSOR,

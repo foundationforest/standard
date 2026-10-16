@@ -42,10 +42,10 @@ const deleteAs = (key: typeof alice, bytes: Uint8Array, time = T0) => blobReques
 const putBoth = async (url: string) => [...(await putBlob([url], putAs(alice, photo, 'image/jpeg'), photo)), ...(await putBlob([url], putAs(bob, clip, 'video/mp4'), clip))].map((o) => o.ok)
 
 const [aliceInbox, bobInbox] = await Promise.all([inboxKey(alice.secret), inboxKey(bob.secret)])
-const aliceCard: Body = { ...profileBody('calculus'), inboxKey: aliceInbox.recipient, inbox: { senders: 'anyone' } }
+const aliceProfile: Body = { ...profileBody('calculus'), inboxKey: aliceInbox.sealTo, inbox: { senders: 'anyone' } }
 /** Alice's offer pointing at her photo, by a field of its own: where a record points at a blob is the market's. */
 const photoOffer = ownerRecord(alice, 'offer/photo', { ...offerBody('5'), files: [blobNameOf(photo, 'image/jpeg')] }, T0)
-const bobCard: Body = { ...profileBody('chemistry'), role: 'buyer', inboxKey: bobInbox.recipient, inbox: { senders: 'anyone' } }
+const bobProfile: Body = { ...profileBody('chemistry'), role: 'buyer', inboxKey: bobInbox.sealTo, inbox: { senders: 'anyone' } }
 const withClip = (about: string): Body => ({ ...offerBody(about), files: [blobNameOf(clip, 'video/mp4')] })
 
 /** Every page of the feed, as [cursor, ids]: what a crawler sees, number for number. */
@@ -116,14 +116,14 @@ describe('a file per folder', () => {
     const reread = async () => ({ feed: await pages(h.url), bob: await pages(h.url, bob.address), bobInbox: await pull(h.url, pullRequest(bob, 0, T0)) })
     let was: Awaited<ReturnType<typeof reread>>
     try {
-      await publish([h.url], [ownerRecord(alice, 'profile', aliceCard, T0), photoOffer])
-      await publish([h.url], [ownerRecord(bob, 'profile', bobCard, T0)])
+      await publish([h.url], [ownerRecord(alice, 'profile', aliceProfile, T0), photoOffer])
+      await publish([h.url], [ownerRecord(bob, 'profile', bobProfile, T0)])
       await publish([h.url], [ownerRecord(alice, 'offer/a', offerBody('1'), T0)])
       await publish([h.url], [ownerRecord(bob, 'offer/b', withClip('2'), T0)])
       assert.deepEqual(await putBoth(h.url), [true, true])
       assert.ok((await putBlob([h.url], putAs(alice, clip, 'video/mp4'), clip))[0]!.ok, 'Alice holds the clip too')
-      await deliver([h.url], [await message(bob, alice.address, { text: 'Tuesday?' }, T0, aliceCard)])
-      await deliver([h.url], [await message(alice, bob.address, { text: 'Tuesday.' }, T0, bobCard)])
+      await deliver([h.url], [await message(bob, alice.address, { text: 'Tuesday?' }, T0, aliceProfile)])
+      await deliver([h.url], [await message(alice, bob.address, { text: 'Tuesday.' }, T0, bobProfile)])
       was = await reread()
     } finally {
       await h.close()
@@ -182,8 +182,8 @@ describe('host.sqlite holds nothing that exists only there', () => {
     let given: number
     let inboxCursor: number
     try {
-      await publish([h.url], [ownerRecord(bob, 'profile', bobCard, T0), ownerRecord(alice, 'profile', aliceCard, T0)])
-      await deliver([h.url], [await message(bob, alice.address, { text: 'Tuesday?' }, T0, aliceCard)])
+      await publish([h.url], [ownerRecord(bob, 'profile', bobProfile, T0), ownerRecord(alice, 'profile', aliceProfile, T0)])
+      await deliver([h.url], [await message(bob, alice.address, { text: 'Tuesday?' }, T0, aliceProfile)])
       given = (await readPage(h.url)).cursor
       inboxCursor = (await pull(h.url, pullRequest(alice, 0, T0))).cursor
       assert.deepEqual([given, inboxCursor], [T0 * 1000 + 1, T0 * 1000], 'the clock in microseconds, then one more')
@@ -199,8 +199,8 @@ describe('host.sqlite holds nothing that exists only there', () => {
     await rebuild(dir, { kind: 'disk' })
     h = await startHost(options)
     try {
-      await publish([h.url], [ownerRecord(alice, 'profile', aliceCard, clock.t)])
-      await deliver([h.url], [await message(bob, alice.address, { text: 'Still Tuesday?' }, clock.t, aliceCard)])
+      await publish([h.url], [ownerRecord(alice, 'profile', aliceProfile, clock.t)])
+      await deliver([h.url], [await message(bob, alice.address, { text: 'Still Tuesday?' }, clock.t, aliceProfile)])
       const page = await readPage(h.url, { after: given })
       assert.deepEqual([page.records.length, page.cursor], [1, clock.t * 1000], 'a reader holding the old cursor still gets the new record')
       assert.equal((await pull(h.url, pullRequest(alice, inboxCursor, clock.t))).messages.length, 1, 'and the inbox’s old cursor, the new message')
@@ -216,8 +216,8 @@ describe('host.sqlite holds nothing that exists only there', () => {
     let h = await startHost(options)
     let was: Array<[number, string[]]>
     try {
-      await publish([h.url], [ownerRecord(alice, 'profile', aliceCard, T0), photoOffer, ownerRecord(alice, 'offer/a', withClip('1'), T0)])
-      await publish([h.url], [ownerRecord(bob, 'profile', bobCard, T0)])
+      await publish([h.url], [ownerRecord(alice, 'profile', aliceProfile, T0), photoOffer, ownerRecord(alice, 'offer/a', withClip('1'), T0)])
+      await publish([h.url], [ownerRecord(bob, 'profile', bobProfile, T0)])
       assert.deepEqual(await putBoth(h.url), [true, true])
       was = await pages(h.url)
     } finally {
@@ -243,34 +243,6 @@ describe('host.sqlite holds nothing that exists only there', () => {
       assert.ok(await h.getBlob(sha256Hex(photo)))
       assert.ok((await deleteBlob([h.url], deleteAs(bob, clip)))[0]!.ok)
       assert.equal(await h.getBlob(sha256Hex(clip)), undefined)
-    } finally {
-      await h.close()
-    }
-  })
-
-  test('a folder file from before blobs were folders’ opens, and holds no blob until its keys put one', async () => {
-    const dir = scratch()
-    const options = { dir, now: () => T0 }
-    let h = await startHost(options)
-    try {
-      await publish([h.url], [ownerRecord(alice, 'profile', aliceCard, T0)])
-      assert.deepEqual(await putBoth(h.url), [true, true])
-    } finally {
-      await h.close()
-    }
-    // Version 1: no blobs table.
-    const file = join(dir, 'folders', `${alice.address}.sqlite`)
-    const old = new DatabaseSync(file)
-    old.exec('DROP TABLE blobs; PRAGMA user_version = 1;')
-    old.close()
-    h = await startHost(options)
-    try {
-      assert.equal((await readAll(h.url, { profile: alice.address })).records.length, 1, 'its records as they were')
-      await h.prune(T0)
-      assert.equal(await h.getBlob(sha256Hex(photo)), undefined, 'the photo no folder holds any more')
-      assert.ok(await h.getBlob(sha256Hex(clip)), 'Bob’s clip')
-      assert.ok((await putBlob([h.url], putAs(alice, photo, 'image/jpeg'), photo))[0]!.ok)
-      assert.equal(query<{ v: number }>(file, 'SELECT user_version AS v FROM pragma_user_version')[0]!.v, 2)
     } finally {
       await h.close()
     }
@@ -329,7 +301,7 @@ describe('the S3 driver', () => {
     const options = { dir, now: clock.now, blobs: driver }
     let h = await startHost(options)
     try {
-      await publish([h.url], [ownerRecord(alice, 'profile', aliceCard, T0), photoOffer, ownerRecord(alice, 'offer/a', withClip('1'), T0)])
+      await publish([h.url], [ownerRecord(alice, 'profile', aliceProfile, T0), photoOffer, ownerRecord(alice, 'offer/a', withClip('1'), T0)])
       assert.deepEqual(await putBoth(h.url), [true, true])
       assert.deepEqual([...stub.objects].map(([k, o]) => [k, o.type]).sort(), [[sha256Hex(photo), 'image/jpeg'], [sha256Hex(clip), 'video/mp4']].sort())
       assert.ok(!existsSync(join(dir, 'blobs')), 'nothing on disk')

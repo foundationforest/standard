@@ -1,7 +1,0 @@
-{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "review",
-  "description": "A review, at the path `review/<id>` in the reviewer's own profile. Its body is the market's: defined by the market the profile lives in (foundationforest/markets). The standard names none of its fields.",
-  "type": "object",
-  "additionalProperties": true
-}

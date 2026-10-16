@@ -1,12 +1,13 @@
-// A message: a sealed note any key delivers to a profile's inbox, on that profile's hosts. It is not
-// a record: no path, no versions, no newest-wins, and a host serves it only to its recipient.
+// A message: a sealed envelope any key delivers to a profile's inbox, on that profile's hosts. It is
+// not a record: no path, no versions, no newest-wins, and a host serves it only to the profile it is
+// to.
 //
 //   { v: 1, to, from, time, body: { private }, key?, host?, sig }
 //
 // `sig` is EdDSA-Poseidon on Baby Jubjub, as a record's, over 0xff || "forest/v1/message\n" ||
 // JCS(the rest), by `from`, or by `key`: a write key `from`'s permissions record lists for the inbox.
 // `host`, one of `from`'s hosts, says where a receiving host reads `from`'s records: its
-// permissions, for a message `key` signed, and its card, for an inbox with an issuer's rule. A pull
+// permissions, for a message `key` signed, and its profile record, for an inbox with an issuer's rule. A pull
 // request, `{ v: 1, profile, after, time, key?, sig }`, is signed the same way by the profile's main
 // key, or by `key`, a read key it lists for the inbox, over 0xff || "forest/v1/pull\n" || JCS(the
 // rest). A blob request, `{ v: 1, action, profile, sha256, mimeType?, size?, time, key?, sig }`,
@@ -21,17 +22,17 @@ import { sha256 } from '@noble/hashes/sha2.js'
 import { b64u, concat, hex, utf8 } from './bytes.ts'
 import { type Json, canonical, parseCanonical } from './canonical.ts'
 import { type Key, publicKeyFromAddress } from './keys.ts'
-import { type Body, MAX_FUTURE_MS, RECIPIENT, RecordError, normalizeOrigin, signAs, verifySignature } from './record.ts'
+import { type Body, MAX_FUTURE_MS, RecordError, SEAL_TO, normalizeOrigin, signAs, verifySignature } from './record.ts'
 
 export const MESSAGE_PREFIX = concat(Uint8Array.of(0xff), utf8('forest/v1/message\n'))
 export const PULL_PREFIX = concat(Uint8Array.of(0xff), utf8('forest/v1/pull\n'))
 export const BLOB_PREFIX = concat(Uint8Array.of(0xff), utf8('forest/v1/blob\n'))
 
-/** A sealed body: an age file, base64url, that only the recipient's inbox key and its readers open. */
+/** A sealed body: an age file, base64url, that only the inbox key of the profile it is to, and its readers, open. */
 export type SealedBody = { private: string }
 export type UnsignedMessage = {
   v: 1
-  /** The recipient profile's address. */
+  /** The address of the profile it is to. */
   to: string
   /** The sender's address: its main key, or any key. With `key`, a profile's main key. */
   from: string
@@ -80,8 +81,6 @@ const only = (value: object, fields: string[], what: string) => {
   for (const key of Object.keys(value)) if (!fields.includes(key)) fail('shape', `unknown ${what} field ${key}`)
 }
 const SIG = /^[A-Za-z0-9_-]{86}$/
-/** An issuer's key: x then y of its point on Baby Jubjub, each 32 bytes big-endian, in lowercase hex. */
-const ISSUER_KEY = /^[0-9a-f]{128}$/
 const B64U = /^[A-Za-z0-9_-]+$/
 
 function checkSig(value: { [key: string]: unknown }, signed: boolean) {
@@ -135,7 +134,7 @@ export function messageId(unsigned: UnsignedMessage): string {
 
 /** A write key, signing for `from`, a profile whose permissions record lists it for the inbox, as `host`, one of its hosts, serves it. */
 export type KeySender = { key: Key; from: string; host: string }
-/** The sender's own key, naming `host`, one of its hosts, where an inbox with an issuer's rule reads its card. */
+/** The sender's own key, naming `host`, one of its hosts, where an inbox with an issuer's rule reads its profile record. */
 export type HostSender = { from: Key; host: string }
 /** Who signs a message: the sender's own key (a main key, or any key), with one of its hosts or not, or a write key. */
 export type Sender = Key | HostSender | KeySender
@@ -318,21 +317,21 @@ export function checkBlobRequest(text: string, now: number): SignedBlobRequest {
 
 export type Inbox = {
   /**
-   * Who may deliver: anyone, or a profile whose card carries a human proof from this issuer, under
-   * any label. The issuer is named by its key: 128 characters of lowercase hex, x then y.
+   * Who may deliver: anyone, or a profile whose profile record carries a note proof from this
+   * issuer, under any label. The issuer is named by its key's address.
    */
   senders: 'anyone' | { issuer: string }
   /** One message from each sender, ever. */
   once?: true
   /** The largest message it takes, as canonical text in bytes. */
   maxBytes?: number
-  /** Read keys' recipients: a sender seals every message to the inbox key and to each of these. */
+  /** What read keys are sealed to (their sealTo): a sender seals every message to the inbox key and to each of these. */
   readers?: string[]
 }
 
 /**
  * The inbox a profile record's body declares: null when it declares none (no `inbox` field, or a
- * deleted or private card), 'unsupported' when it holds a rule, a field or a value this code does
+ * deleted or private profile record), 'unsupported' when it holds a rule, a field or a value this code does
  * not know. A host refuses deliveries to an inbox it cannot read rather than guess: a field it
  * skipped could be a limit the profile set, so a new kind of rule can be added later without an
  * old host taking what it should refuse.
@@ -344,11 +343,11 @@ export function inboxOf(body: Body | null | undefined): Inbox | null | 'unsuppor
   const { senders, once, maxBytes, readers } = inbox
   let rule: Inbox['senders']
   if (senders === 'anyone') rule = 'anyone'
-  else if (isObject(senders) && Object.keys(senders).length === 1 && typeof senders.issuer === 'string' && ISSUER_KEY.test(senders.issuer)) rule = { issuer: senders.issuer }
+  else if (isObject(senders) && Object.keys(senders).length === 1 && publicKeyFromAddress(senders.issuer)) rule = { issuer: senders.issuer as string }
   else return 'unsupported'
   if ('once' in inbox && once !== true) return 'unsupported'
   if ('maxBytes' in inbox && (!Number.isSafeInteger(maxBytes) || (maxBytes as number) < 0)) return 'unsupported'
-  if ('readers' in inbox && (!Array.isArray(readers) || readers.some((r) => typeof r !== 'string' || !RECIPIENT.test(r)))) return 'unsupported'
+  if ('readers' in inbox && (!Array.isArray(readers) || readers.some((r) => typeof r !== 'string' || !SEAL_TO.test(r)))) return 'unsupported'
   return {
     senders: rule,
     ...(once === true && { once }),
@@ -358,14 +357,14 @@ export function inboxOf(body: Body | null | undefined): Inbox | null | 'unsuppor
 }
 
 /**
- * The keys a message to this card is sealed to, in one envelope: its inbox key, then its inbox's
- * readers. Throws when the card gives no inbox key, or declares no inbox this code can read: a
- * field it does not know could name more keys to seal to.
+ * The keys a message to a profile is sealed to, in one envelope, from its profile record's body: its
+ * inbox key, then its inbox's readers. Throws when the profile record gives no inbox key, or declares
+ * no inbox this code can read: a field it does not know could name more keys to seal to.
  */
-export function sealedTo(card: Body | null | undefined): string[] {
-  const inbox = inboxOf(card)
-  if (inbox === null || inbox === 'unsupported') fail('no_inbox', 'the card declares no inbox this code can read')
-  const inboxKey = card!.inboxKey
-  if (typeof inboxKey !== 'string' || !RECIPIENT.test(inboxKey)) fail('no_inbox', 'the card gives no inbox key')
+export function sealedTo(profileBody: Body | null | undefined): string[] {
+  const inbox = inboxOf(profileBody)
+  if (inbox === null || inbox === 'unsupported') fail('no_inbox', 'the profile record declares no inbox this code can read')
+  const inboxKey = profileBody!.inboxKey
+  if (typeof inboxKey !== 'string' || !SEAL_TO.test(inboxKey)) fail('no_inbox', 'the profile record gives no inbox key')
   return [inboxKey, ...(inbox.readers ?? [])]
 }

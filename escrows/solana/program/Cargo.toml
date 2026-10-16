@@ -2,7 +2,7 @@
 name = "forest-escrow"
 version = "0.1.0"
 edition = "2021"
-description = "The Forest escrow: an amount of a token (classic SPL Token or Token-2022) held between a payer and a recipient under a schedule set at creation: generous moves always, selfish moves by the schedule, a stop that freezes it, a default at the end. To be sealed on mainnet."
+description = "The Forest escrow: an amount of a token (classic SPL Token or Token-2022) held between a payer and a recipient under a schedule set at creation: generous moves always, selfish moves by the schedule, a stop that freezes it, a default at the end. It cannot change once deployed to Solana's mainnet; a new version is a new program beside it."
 license = "Apache-2.0"
 publish = false
 exclude = ["tests-litesvm"]

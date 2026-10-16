@@ -4,7 +4,7 @@
 // tree, what an index signs and what the client refuses on its own are the client's tests
 // (../../client/test/).
 //
-// They need the devnet setup's files: `npm run fetch` first. A missing file fails; nothing skips.
+// They need the setup's files: `npm run fetch` first. A missing file fails; nothing skips.
 
 import assert from 'node:assert/strict'
 import { randomBytes } from 'node:crypto'
@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url'
 import { groth16 } from 'snarkjs'
 
 import { BN254_R, accessKey, issuerSecret, mainKey, nameHashOf, packSignature, scopeOf, seedScalar, signBytes, stampOf } from '../../../../keys/src/index.ts'
-import { BN254_P, fromBytes32, toBytes32 } from '../../../human/client/src/index.ts'
+import { BN254_P, fromBytes32, toBytes32 } from '../../../note/client/src/index.ts'
 import {
   buildTree,
   circuitInput,
@@ -29,7 +29,7 @@ import {
 } from '../../client/src/index.ts'
 
 const here = dirname(fileURLToPath(import.meta.url))
-const artifacts = { wasm: join(here, '../devnet/reputation.wasm'), zkey: join(here, '../devnet/reputation.zkey') }
+const artifacts = { wasm: join(here, '../setup/reputation.wasm'), zkey: join(here, '../setup/reputation.zkey') }
 const keysVectors = JSON.parse(readFileSync(join(here, '../../../../keys/test/vectors.json'), 'utf8'))
 const seed = Uint8Array.from(Buffer.from(keysVectors.seed, 'hex'))
 const S = await seedScalar(seed)
@@ -195,7 +195,7 @@ test('the circuit refuses a label shown with two profiles', async () => {
   await refused(input)
 })
 
-test("the circuit refuses a profile key that is not the prover's for its label", async () => {
+test("the circuit refuses a main key that is not the prover's for its label", async () => {
   const otherLabel = good()
   otherLabel.profileScope = scopeOf('tutoring/other')
   await refused(otherLabel)

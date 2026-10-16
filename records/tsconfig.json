@@ -16,5 +16,5 @@
     "skipLibCheck": true,
     "resolveJsonModule": true
   },
-  "include": ["src/**/*.ts", "test/**/*.ts", "bench/**/*.ts", "scripts/**/*.ts", "../proofs/human/client/types/snarkjs.d.ts"]
+  "include": ["src/**/*.ts", "test/**/*.ts", "bench/**/*.ts", "scripts/**/*.ts", "../proofs/note/client/types/snarkjs.d.ts"]
 }

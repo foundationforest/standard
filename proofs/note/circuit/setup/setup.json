@@ -1,0 +1,45 @@
+{
+  "note": "Made by one party, by setup/setup.sh. Whoever ran it could make a false proof. A public setup ceremony is on the list.",
+  "parties": 1,
+  "made": "2026-10-16",
+  "circuit": {
+    "file": "note.circom",
+    "constraints": 6466
+  },
+  "circom": {
+    "version": "2.2.3",
+    "linuxSha256": "85342c7ff332d948df7c0c50ecf201e6129349aef550ce873f3c811b79fe53a3",
+    "flags": "--O2"
+  },
+  "libraries": {
+    "snarkjs": "0.7.5",
+    "circomlib": "2.0.5"
+  },
+  "phase1": {
+    "what": "PSE's Perpetual Powers of Tau, up to 2^16 constraints",
+    "url": "https://pse-trusted-setup-ppot.s3.eu-central-1.amazonaws.com/pot28_0080/ppot_0080_16.ptau",
+    "sha256": "ed3622a7c79b0b49aadd134ebbc5b77df8c8c59bccebdfd0d9bf2c1a51561cf9"
+  },
+  "phase2": {
+    "contributions": 1,
+    "contributionHash": "d5499fcf73499293ecb07c5ffb14caa1031b7d53487520a48e7943991a4453afb3179a46057707b1d93f76a0870f96dc7449a5030a5259127d12b2e1f696d408"
+  },
+  "r1cs": {
+    "bytes": 1987100,
+    "sha256": "15ba3c3bfc7d61a172c9d6bba26b5b94dcf468fa2569c09b1fd44585e4b514dc"
+  },
+  "files": {
+    "note.zkey": {
+      "bytes": 3912483,
+      "sha256": "bd6e6c6ad615fed272733cb20e867c1354b01d8e0d719b3a7c1a776ff0205771"
+    },
+    "note.wasm": {
+      "bytes": 3266311,
+      "sha256": "2c9dcfe926c7bafe1f5e9edb947fb481cfcee6d061f7c09ca643b83b23ca09f0"
+    },
+    "verification-key.json": {
+      "bytes": 4025,
+      "sha256": "ad3cec965c8e36d31c51bc70e55c780978e0ca62e13f86522a584786b031f101"
+    }
+  }
+}
