@@ -8,17 +8,16 @@ A person's keys in Forest: one seed, 32 random bytes, and the recipe that mixes 
 from it, on the person's own device. Any app that follows this page gets the same keys from the
 same seed, so a person is never tied to one app.
 
-This README is the standard: the seed and the recipe are fixed, and the rules for apps are
-defaults an app adopts, or says it doesn't. The library in `src/` follows it, and
-`test/vectors.json` pins its answers.
+This README is the standard: the seed and the recipe are fixed. The library in `src/` follows it,
+and `test/vectors.json` pins its answers.
 
 ## How it works
 
 ### The seed
 
 - The seed is 32 random bytes.
-- How an app makes, keeps and unlocks it is the app's. The standard asks only that it never leaves
-  the device, is held in memory only to mix keys from it, and is dropped after.
+- How an app makes, keeps and unlocks it is the app's. Nothing in the standard needs it to leave
+  the device, or to be held longer than mixing keys from it takes.
 - A seed can be spelled as 24 words, BIP39's for the 32 bytes and not its PBKDF2 seed step, by
   `exportWords` and `importWords`, for an app that wants them; the Forest app doesn't.
 - Whoever controls the app that holds the seed controls the seed, since the app can do whatever the
@@ -215,9 +214,14 @@ The profile's permissions record, a record in its folder that only the main key 
 which access keys may act, a read key with its `sealTo`
 ([records](../records/README.md#permissions)).
 
-### Rules for apps that hold keys
+### What an app that holds keys should know
 
-1. The seed never leaves the device, and is held only while mixing keys for one action.
+The person decides what to do with their keys, and may expose or link them if they choose. This
+is what an app should know, and what ours does:
+
+1. The seed stays on the device behind its unlock. The main way, and the one the Forest app uses,
+   is a passkey, the device's own unlock, so there is no password to keep; an OS keychain or a
+   hardware key are others. The recipe is the same whichever is used.
 2. The app asks for the person's device unlock whenever it uses the seed: to sign with a main key
    or the vault key, or to make a proof. Access keys act within their permissions without it.
 3. Nothing leaves the device but access keys and signatures.
@@ -226,8 +230,8 @@ which access keys may act, a read key with its `sealTo`
 6. The app works with any host, and its host with any app.
 7. A server that acts for you holds access keys with write or read scope.
 8. The app that holds the seed is open source.
-9. Keep a copy of every record signed; a host may drop one, and the copy puts it back.
-10. Keep the issuer's note as safely as a key, in the vault.
+9. The app keeps a copy of every record it signs; a host may drop one, and the copy puts it back.
+10. The app keeps the issuer's note as safely as a key, in the vault.
 
 ### Use it
 
@@ -315,8 +319,8 @@ the circuit derives the same main key and stamp ([proofs/note](../proofs/note/RE
 ## Who decides what
 
 - **The standard:** the seed's 32 bytes, the recipe, its info strings and its tags.
-- **An app, with the person:** which of the rules above it adopts; how it makes, keeps and unlocks
-  the seed; backups; how a read key reaches its reader.
+- **An app, with the person:** how it makes, keeps and unlocks the seed; backups; how a read key
+  reaches its reader.
 - **A service:** nothing. No service holds a main key.
 
 ## FAQ
@@ -331,7 +335,7 @@ Then that app has everything the seed opens, and nothing takes it back:
 - the vault, with their issuers' notes.
 
 There is no rotation, so the only way out is a new seed and new profiles, moving the money first if
-there is still time. Give the seed only to an app that follows the rules above.
+there is still time. An app that holds the seed is trusted with all of that.
 
 **Why is a main key on Baby Jubjub, with a payment key beside it?**
 So a proof can derive it. The note proof shows that a profile's key comes from the same seed as

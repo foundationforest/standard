@@ -36,22 +36,19 @@ Its folder is everything signed for it, one current record per path:
 | `hosts` | where the folder lives |
 | `permissions` | the access keys the profile hands out: keys that act for it within limits |
 | `profile` | the profile record: market, role, payment address, inbox, proofs |
-| `offer/<id>` | an offer |
-| `review/<id>` | a review this profile wrote of another |
 
 - `hosts` and `permissions` are the control paths: only the main key writes them. Every other path
-  is content. Readers MAY ignore a first segment they do not know.
+  is content. Beside `profile`, content paths and their bodies are the market's, the one the
+  profile's label names: [foundationforest/markets](https://github.com/foundationforest/markets)
+  keeps `offer/<id>` and `review/<id>` as the two kinds a market defines. Readers MAY ignore a
+  first segment they do not know.
 - A path is 1 to 4 segments separated by `/`, each `[a-z0-9][a-z0-9._-]{0,63}`, at most 256
-  bytes. A prefix covers a path segment by segment: `offer` covers `offer` and `offer/x`, not
-  `offerx`.
+  bytes. A prefix covers a path segment by segment: `a` covers `a` and `a/b`, not `ab`.
 - `profile` is shaped by the JSON Schema in `schemas/`: its fields are the standard's, and its
-  market (the trade a label names, such as `tutoring`) adds fields beside them. An offer's and a
-  review's body is defined by the market the profile lives in, in
-  [foundationforest/markets](https://github.com/foundationforest/markets): the standard names none
-  of their fields. A blob a record points at is the folder's (Blobs). Neither names a market: its
-  profile's label does.
-- A review sits in the folder of the profile that wrote it: the one it is about cannot erase it;
-  the one who wrote it can.
+  market (the trade a label names, such as `tutoring`) adds fields beside them. A blob a record
+  points at is the folder's (Blobs).
+- A record sits in the folder of the profile that wrote it, so the profile a review is about
+  cannot erase it; the one who wrote it can.
 
 **The hosts record** is `{ "urls": [origin, …] }`: 1 to 8 distinct origins, `https://host[:port]`,
 lower case, no path (`http` only on loopback, for tests). Each host it names holds the whole
@@ -198,7 +195,8 @@ read keys pull. It is not a record: it has no path and no versions, and it is in
   `inboxKey`, since senders seal to it.
 - `senders` is `"anyone"`, or `{ "issuer" }`: the sender's profile record carries a note proof from
   that issuer (Proofs) that holds for the sender's key, under any label. The issuer is named by its
-  key's address, as the proof shows it.
+  key's address, as the proof shows it. Today the only requirement is a note from a named issuer;
+  a second kind would be a second proof the host checks, under a new `senders` kind.
 - `once`: one message from each sender, ever.
 - `maxBytes`: the largest message it takes, as canonical text in bytes.
 - `readers`: what read keys are sealed to, their `sealTo`. Senders seal every message to them too,
@@ -220,7 +218,9 @@ read keys pull. It is not a record: it has no path and no versions, and it is in
 - `v` is 1. No other field is allowed, in the message or in its body.
 - `to` is the profile it is to. `from` is the sender's key: a main key, or any other key on Baby
   Jubjub.
-- `body` is one envelope sealed to `to`'s inbox key and its inbox's readers.
+- `body` is one envelope sealed to `to`'s inbox key and its inbox's readers. The object sealed in
+  it is any JSON object the two apps agree on; the request kinds our MCP server sends and reads are
+  its own, in [foundationforest/services](https://github.com/foundationforest/services/tree/main/mcp).
 - `key` is there when a write key signs for `from`, a main key: the write key's address, other
   than `from`. So the profile it is to sees that a write key sent it.
 - `host` is one of `from`'s hosts, an origin as its hosts record writes it: where a receiving host
@@ -258,34 +258,6 @@ gives the last message on a page, so the next ask starts after it (`POST /v1/inb
 - It is signed because each body is sealed but `from`, `to` and the time are not: unsigned,
   anyone could list who wrote to whom. It is a POST and not a GET because hosting platforms log
   URLs, and a signed URL would be a log of pulls.
-
-**Requests.** A message body may be `{ "request": <kind>, … }`: something the sender was not
-allowed to do itself, for the receiving profile's app to do with its main key. `request` names one
-of the kinds below, and the other fields are that kind's parameters:
-`{ "request": "post-offer", "offer": { … } }`, `{ "request": "send", "to": <address>, "text": … }`.
-
-| Kind | Parameters |
-|---|---|
-| `post-offer` | `offer`, an offer record's body; and `id`, the `<id>` in `offer/<id>`, if wanted |
-| `update-offer` | `id`, the `<id>` of the offer; `offer`, its new body |
-| `remove-offer` | `id`, the `<id>` of the offer |
-| `post-review` | `review`, a review record's body; and `id`, the `<id>` in `review/<id>`, if wanted |
-| `send` | `to`, the address of the profile to send to; and `text`, or `body`, an object in its place, one of the two |
-| `private` | `path`, if wanted: only the private records under this path |
-| `inbox` | `after`, if wanted: the cursors a pull returned, by host, for newer messages only |
-| `pay` | `offer`, `amount`, `mint` and `note`, as below |
-
-For `pay` they are `offer`, the offer as `<profile address>/offer/<id>`; `amount`, decimal text in
-whole units of the mint, such as `"25"` or `"12.50"`; `mint`, the money's mint address on Solana;
-and, if wanted, `note`, text for the person: `{ "request": "pay", "offer": <profile
-address>/offer/<id>, "amount": "25", "mint": <mint address>, "note": … }`. The app reads the offer
-and opens the escrow from it ([solana](../escrows/solana/README.md#two-ways-to-open-it)).
-
-An app acts on a request only when it was sent to the profile's own inbox by the profile's main
-key or by a write key its permissions record lists for the inbox, and shows any other `request`
-body as a plain message. It shows the request, and does it only if the person agrees. So whoever
-holds a write key for `inbox` alone can send messages as the profile and ask for anything else; it
-writes records only under `inbox`, and moves no money.
 
 ### The vault
 
@@ -327,8 +299,9 @@ The profile record's optional `proofs` field carries up to four proofs, each nam
 `circuit` and checked by that circuit's verifier ([schemas/profile.json](schemas/profile.json)).
 A proof counts for one main key: a reader checks it against the address of the profile that
 carries it, so a proof copied to another profile fails. A reader ignores a proof whose circuit it
-does not know, so a newer kind never makes a profile invalid for an older app. An app puts a
-proof in the profile record only when the person chooses to show it there:
+does not know, so a newer kind never makes a profile invalid for an older app. `note` and
+`reputation`, below, are ours: the field takes any circuit's name, and anyone can add one. An app
+puts a proof in the profile record only when the person chooses to show it there:
 [proofs/reputation/](../proofs/reputation/README.md#limits) says what one can reveal. Records
 checks no proof itself: `noteCheck` and `reputationCheck` turn a proof on a profile record into
 what its verifier takes, for the profile that carries it.
@@ -386,9 +359,9 @@ pull's is the main key's or a read key's of the profile it pulls for, and a blob
 folder's main key's or a write key's. It is open: it takes signed records for any profile and serves
 them to anyone; it takes messages for any profile whose profile record on it declares an inbox, and
 serves them only to that profile's main key and read keys; it takes the bytes a folder's keys put,
-and serves them to anyone. It reads no offer's or review's body. A host never talks to an index; to
-take a message a write key signed, or one to an inbox with an issuer's rule, it reads the sender's
-records from the sender's host.
+and serves them to anyone. It reads no body but the hosts, permissions and profile records'. A host
+never talks to an index; to take a message a write key signed, or one to an inbox with an issuer's
+rule, it reads the sender's records from the sender's host.
 
 | Request | Body | Answer |
 |---|---|---|
@@ -743,9 +716,9 @@ checks both with their verifiers.
 
 - **The standard:** the record and the message, and what makes each valid (the ten-minute
   window); the eight requests and their codes; the control records and the scopes of access keys;
-  envelopes; the profile record's fields; a blob's name, its put and its delete; the inbox, its
-  rules and the request body; the vault; the proofs field.
-- **A market chooses:** its roles, the bodies of its offers and reviews, and where a record points
+  envelopes; the profile record's fields; a blob's name, its put and its delete; the inbox and its
+  rules; the vault; the proofs field.
+- **A market chooses:** its roles, its content paths and their bodies, and where a record points
   at a blob ([foundationforest/markets](https://github.com/foundationforest/markets)).
 - **A host chooses:** its keep days, and any retention rule for blobs; the largest record, message
   and blob it takes; batch and page sizes; which blob types it takes; which inbox rules it supports;
@@ -794,7 +767,7 @@ records under it too, which no shape names and readers may ignore.
 **Why is a blob the folder's, and not the record's that points at it?**
 A host that kept bytes only while a record named them had to read every record's body for the
 fields that name them, and where a record points at a blob is each market's to say. So the folder's
-own keys put and delete its blobs, and a host reads no offer's or review's body. A blob sits at no
+own keys put and delete its blobs, and a host reads no record's body to find them. A blob sits at no
 path, so a write key puts one whatever its paths; how much a folder may put is the host's choice.
 
 **Why is a message not a record in the sender's folder?**
