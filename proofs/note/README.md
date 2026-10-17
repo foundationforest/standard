@@ -5,10 +5,12 @@ Part of Forest's standard: [the top README](../../README.md). Up: [proofs](../RE
 ## What it is
 
 The note proof, and the client a device uses to make it and anyone uses to check it. Anyone can
-sign a note to a person's seed: whoever does is an issuer. Any of the person's profiles can then
-prove it holds such a note, without the issuer learning the seed or any profile, and without a
-reader learning the note. The issuer sees only the person's note number, a stable number for that
-person at that issuer.
+sign a note to a person's seed: whoever does is an issuer. The main use, and the one we build, is
+an issuer that checks one human per seed and signs them one note; a school, a club or a license
+board could sign notes the same way, and a reader decides which signers count. Any of the
+person's profiles can then prove it holds such a note, without the issuer learning the seed or any
+profile, and without a reader learning the note. The issuer sees only the person's note number, a
+stable number for that person at that issuer.
 
 A proof says: *the issuer with this key signed a note for the seed behind this profile; this is the
 profile's stamp for its label at that issuer; and this profile's key is the one that seed gives for
