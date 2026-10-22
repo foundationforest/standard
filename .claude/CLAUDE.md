@@ -9,7 +9,12 @@ key, write key, read key, permissions, private, envelope, sealed (an envelope), 
 inbox, pull, vault, blob, payment key, escrow, receipt, deal, index, fee payer, app, market, role.
 Plain words, no em-dashes.
 
-Rules for apps: `keys/README.md`, Rules for apps that hold keys. Never copy them here.
+The test for what goes in this repo: the standard holds formats (what bytes mean), recipes (how a
+number is derived) and checks (what a verifier runs); meanings and choices live outside it.
+Use cases are phrased "anyone can; the main way is X", never "X is one option" and never "X is
+the rule".
+
+What an app that holds keys should know: `keys/README.md`. Never copy it here.
 
 ## How to work in this repo
 
