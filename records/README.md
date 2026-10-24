@@ -113,13 +113,17 @@ and that key sealed once to each reader.
 
 - The owner seals it to its own inbox key, to open its copy; the profile record's `inboxKey` is
   its public half.
+- It may be sealed to other people's inbox keys besides the owner's, each the `inboxKey` of a
+  profile of theirs: that is how a person lets someone read. A signer does it by the person's
+  permissions (The vault, Permissions).
 - Each key an envelope is sealed to is an age post-quantum hybrid key (`age1pq1…`, stanza
   `mlkem768x25519`); an app MUST NOT seal an envelope to any other kind, since one classic key
   among them would let a quantum computer open it for all. Each adds about 2 KB.
 - A host checks a private record like any other and cannot open it. Anyone can see that it
-  exists, its path, time and size, and how many keys it is sealed to.
-- To remove a reader, the owner writes a new version for the rest; a reader keeps what it already
-  opened.
+  exists, its path, time and size, and how many keys it is sealed to, never which: each key's
+  stanza holds only its encapsulation, and no piece of a reader's key is in the file.
+- Removing someone stops new versions only: the owner writes the next version for the rest, and
+  they keep what they already opened (Limits).
 
 ### Inbox
 
@@ -620,8 +624,9 @@ checks both with their verifiers.
 - **A delete is a request.** What was public may already have been copied: whoever fetched the
   bytes has them.
 - **No forward secrecy.** An inbox key that leaks opens every message and private record sealed to
-  it, from any host or copy that still holds them, and a reader removed keeps what it already
-  opened.
+  it, from any host or copy that still holds them.
+- **Sharing reaches forward only.** Removing someone stops the versions written after; what they
+  already opened, and an older version a host or a copy still holds, they can still open.
 - **An envelope holds about 30 keys on the reference host.** Each key adds about 2 KB, and the
   reference host takes records and messages of up to 64 KB; another host chooses its own.
 - **Two profiles of one person can be linked by how they are written.** Written in the same moment,

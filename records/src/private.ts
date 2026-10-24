@@ -6,10 +6,11 @@
 // publishes. The record around the envelope is signed as usual, so no reader can forge content for
 // the others.
 //
-// What this does not hide: that a private record exists, its path, time and size, and how many
-// keys it was sealed to (one stanza each). Removing a reader means a new version sealed to the
-// rest; a reader keeps whatever it already opened. No forward secrecy: a key that leaks later opens
-// every envelope ever sealed to it.
+// The owner shares a record by sealing it to other people's inbox keys besides its own. What this
+// does not hide: that a private record exists, its path, time and size, and how many keys it was
+// sealed to (one stanza each), though never which: a stanza holds only its encapsulation. Removing a
+// reader means a new version sealed to the rest; a reader keeps whatever it already opened. No
+// forward secrecy: a key that leaks later opens every envelope ever sealed to it.
 //
 // A message's body is one of these envelopes, sealed to the inbox key of the profile it is to.
 // message() seals and signs one; openMessage() checks one and opens it. The

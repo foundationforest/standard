@@ -4,6 +4,7 @@
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 import { inboxKey } from '@foundationforest/keys'
+import { bech32 } from '@scure/base'
 import { canonical } from '../src/canonical.ts'
 import { publish, readAll, readProfile } from '../src/client.ts'
 import { DAY, DEFAULT_MAX_LINE_BYTES } from '../src/host.ts'
@@ -35,7 +36,7 @@ describe('keys an envelope is sealed to', () => {
 })
 
 describe('private records', () => {
-  test('the keys it is sealed to open it: the owner’s inbox key and Bob’s; the host, a stranger and the owner’s other profile cannot', async () => {
+  test('sharing: sealed to the owner’s inbox key and Bob’s, each opens it; the host, a stranger and the owner’s other profile cannot', async () => {
     const host = await startHost({ now: () => T0 })
     try {
       const secret = { text: 'My phone is +00 555 0100; call after six.', createdAt: '2026-10-02T12:00:00Z' }
@@ -80,6 +81,29 @@ describe('private records', () => {
     } finally {
       await host.close()
     }
+  })
+
+  test('its readers are anonymous: each stanza holds only its encapsulation, no piece of a reader’s key is in the file, and two envelopes to the same readers share nothing but the count', async () => {
+    const readers = [aliceInbox, bobInbox]
+    const stanzas = (body: { private: string }) => {
+      const header = Buffer.from(body.private, 'base64url').toString('latin1').split('\n---')[0]!
+      return header.split('\n-> ').slice(1).map((s) => s.split('\n')[0]!.split(' '))
+    }
+    const one = await makePrivate({ text: 'x' }, readers.map((r) => r.sealTo))
+    const two = await makePrivate({ text: 'x' }, readers.map((r) => r.sealTo))
+    for (const body of [one, two]) {
+      assert.deepEqual(stanzas(body).map((s) => [s[0], s.length - 1]), [['mlkem768x25519', 1], ['mlkem768x25519', 1]], 'one argument each')
+      const file = Buffer.from(body.private, 'base64url')
+      for (const r of readers) {
+        // The key others seal to, its ML-KEM-768 half and its X25519 half: no 16 bytes of it are in the file.
+        const key = bech32.fromWords(bech32.decode(r.sealTo as `${string}1${string}`, false).words)
+        assert.equal(key.length, 1216)
+        for (let i = 0; i + 16 <= key.length; i++) assert.ok(!file.includes(Buffer.from(key.subarray(i, i + 16))), `bytes ${i} to ${i + 16} of a reader's key`)
+      }
+    }
+    const args = (body: { private: string }) => stanzas(body).map((s) => s[1])
+    assert.ok(args(one).every((a) => !args(two).includes(a)), 'fresh encapsulations each time')
+    assert.equal(readerCount(one), 2, 'what shows: how many')
   })
 
   test('an envelope’s stanzas say mlkem768x25519, to anyone', async () => {
