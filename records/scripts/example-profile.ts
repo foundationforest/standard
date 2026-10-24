@@ -1,17 +1,17 @@
-// The example profile record's proofs (schemas/examples/profile.json): a note proof and a
+// The example profile record's proofs (schemas/examples/profile.json): a stamp proof and a
 // reputation proof for keys/'s test person, tutoring/seller, made with the circuits' setups. A proof
 // is made with fresh randomness, so running this again gives other proofs for the same statements;
 // the example keeps the ones made once, and test/schemas.test.ts checks them with both verifiers.
 //
 //   node scripts/example-profile.ts
 //
-// It needs proofs/note/circuit/setup/ (committed) and proofs/reputation/circuit/setup/'s proving
+// It needs proofs/stamp/circuit/setup/ (committed) and proofs/reputation/circuit/setup/'s proving
 // files (npm run fetch there).
 
 import { readFileSync, writeFileSync } from 'node:fs'
 import { sha256 } from '@noble/hashes/sha2.js'
 import { fieldHash, inboxKey, issuerSecret, mainKey, packSignature, payAddresses, scopeOf, seedScalar, serviceKey, signBytes, tagOf } from '@foundationforest/keys'
-import { noteNumberOf, proofBytes, proveNote, signNote, toBytes32 } from '@foundationforest/note'
+import { proofBytes, proveStamp, signStamp, stampNumberOf, toBytes32 } from '@foundationforest/stamp'
 import { type Leaf, proveReputation, signedBytes } from '@foundationforest/reputation'
 import { b64u, hex } from '../src/bytes.ts'
 
@@ -24,13 +24,15 @@ const setup = (proof: string, file: string) => new URL(`../../proofs/${proof}/ci
 const S = await seedScalar(seed)
 const me = await mainKey(seed, LABEL)
 
-// The note proof: an example issuer signed the person a note, with example attributes.
+// The stamp proof: an example issuer signed the person a stamp, with example facts. The two texts
+// below keep the bytes they had when the example was made, old words and all: the example issuer's
+// key and the facts come from them.
 const issuerPrivate = sha256(new TextEncoder().encode(`forest example issuer: ${ISSUER}`))
-const note = signNote(issuerPrivate, {
-  noteNumber: noteNumberOf(S, ISSUER),
-  attributes: fieldHash('forest example attributes', ISSUER),
+const stamp = signStamp(issuerPrivate, {
+  stampNumber: stampNumberOf(S, ISSUER),
+  facts: fieldHash('forest example attributes', ISSUER),
 })
-const noteProof = await proveNote({ seedScalar: S, issuerName: ISSUER, note, label: LABEL, artifacts: { wasm: setup('note', 'note.wasm'), zkey: setup('note', 'note.zkey') } })
+const stampProof = await proveStamp({ seedScalar: S, issuerName: ISSUER, stamp, label: LABEL, artifacts: { wasm: setup('stamp', 'note.wasm'), zkey: setup('stamp', 'note.zkey') } })
 
 // The reputation proof: the person's tutoring/buyer and cleaning/seller profiles in an example
 // index's tree, among made-up leaves, shown on tutoring/seller.
@@ -68,15 +70,15 @@ const profile = {
       proof: b64u.encode(proofBytes(reputation.proof)),
     },
     {
-      circuit: 'note',
-      issuer: noteProof.issuer,
+      circuit: 'stamp',
+      issuer: stampProof.issuer,
       issuerName: ISSUER,
       label: LABEL,
-      tag: hex.encode(toBytes32(noteProof.tag)),
-      proof: b64u.encode(proofBytes(noteProof.proof)),
+      tag: hex.encode(toBytes32(stampProof.tag)),
+      proof: b64u.encode(proofBytes(stampProof.proof)),
     },
   ],
 }
 writeFileSync(new URL('../schemas/examples/profile.json', import.meta.url), JSON.stringify(profile, null, 2) + '\n')
-console.log(`the example profile record for ${me.address}: a reputation score of ${reputation.score}, and a note proof from ${ISSUER}`)
+console.log(`the example profile record for ${me.address}: a reputation score of ${reputation.score}, and a stamp proof from ${ISSUER}`)
 process.exit(0)

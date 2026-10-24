@@ -203,7 +203,7 @@ test('the label is used exactly: another case, another space, another profile', 
 test('keys of one seed have nothing to do with keys of another seed', async () => {
   assert.notEqual((await mainKey(seed, 'tutoring/seller')).address, (await mainKey(otherSeed, 'tutoring/seller')).address)
   for (const type of PAY_TYPES) assert.notEqual((await payKey(seed, 'tutoring/seller', type)).address, (await payKey(otherSeed, 'tutoring/seller', type)).address)
-  assert.notEqual((await issuerSecret(seed, issuerA.name)).noteNumber, (await issuerSecret(otherSeed, issuerA.name)).noteNumber)
+  assert.notEqual((await issuerSecret(seed, issuerA.name)).stampNumber, (await issuerSecret(otherSeed, issuerA.name)).stampNumber)
 })
 
 test('a main key needs a 32-byte seed and a label that is text', async () => {
@@ -445,22 +445,22 @@ test("the vault key is no profile's, and another seed gives another", async () =
   await assert.rejects(vaultKey(new Uint8Array(31)), /seed must be 32 bytes/)
 })
 
-// Issuer secrets, note numbers and tags
+// Issuer secrets, stamp numbers and tags
 
-test('each issuer gives the pinned name hash, secret, note number and tags, and gives them again', async () => {
+test('each issuer gives the pinned name hash, secret, stamp number and tags, and gives them again', async () => {
   for (const expected of vectors.issuers) {
     for (let round = 0; round < 2; round++) {
-      const { name, nameHash, scalar, noteNumber } = await issuerSecret(seed, expected.name)
+      const { name, nameHash, scalar, stampNumber } = await issuerSecret(seed, expected.name)
       assert.equal(name, expected.name)
       assert.equal(nameHash.toString(), expected.nameHash)
       assert.equal(scalar.toString(), expected.scalar)
-      assert.equal(noteNumber.toString(), expected.noteNumber)
+      assert.equal(stampNumber.toString(), expected.stampNumber)
       for (const [label, tag] of Object.entries(expected.tags)) assert.equal(tagOf(scalar, label).toString(), tag)
     }
   }
 })
 
-test('the issuer secret, the note number and a tag, recomputed without the library', () => {
+test('the issuer secret, the stamp number and a tag, recomputed without the library', () => {
   for (const expected of vectors.issuers) {
     const nameHash = field('forest/v1/issuer/' + expected.name)
     assert.equal(nameHash.toString(), expected.nameHash)
@@ -468,7 +468,7 @@ test('the issuer secret, the note number and a tag, recomputed without the libra
     const scalar = poseidon3([PREFIX.issuer, S, nameHash])
     assert.equal(scalar.toString(), expected.scalar)
     assert.equal(issuerScalarOf(S, expected.name), scalar)
-    assert.equal(poseidon1([scalar]).toString(), expected.noteNumber)
+    assert.equal(poseidon1([scalar]).toString(), expected.stampNumber)
     for (const [label, tag] of Object.entries(expected.tags)) {
       assert.equal(poseidon2([field('forest/v1/label/' + label), scalar]).toString(), tag)
       assert.equal(scopeOf(label), field('forest/v1/label/' + label))
@@ -476,10 +476,10 @@ test('the issuer secret, the note number and a tag, recomputed without the libra
   }
 })
 
-test('two issuers, two unrelated note numbers and tags; and none of it is a key', async () => {
+test('two issuers, two unrelated stamp numbers and tags; and none of it is a key', async () => {
   const a = await issuerSecret(seed, issuerA.name)
   const b = await issuerSecret(seed, issuerB.name)
-  assert.notEqual(a.noteNumber, b.noteNumber)
+  assert.notEqual(a.stampNumber, b.stampNumber)
   assert.notEqual(tagOf(a.scalar, 'tutoring/seller'), tagOf(b.scalar, 'tutoring/seller'))
   const all = [issuerA.scalar, issuerB.scalar, seller.scalar, buyer.scalar, vectors.vault.scalar, vectors.seedScalar.scalar, seller.raw, buyer.raw]
   assert.equal(new Set(all).size, all.length)
@@ -488,7 +488,7 @@ test('two issuers, two unrelated note numbers and tags; and none of it is a key'
 test('the name is used exactly, and must be text; the seed is 32 bytes', async () => {
   const names = new Set<string>()
   for (const name of ['issuer-a.example', 'Issuer-A.example', 'issuer-a.example ', '']) {
-    names.add((await issuerSecret(seed, name)).noteNumber.toString())
+    names.add((await issuerSecret(seed, name)).stampNumber.toString())
   }
   assert.equal(names.size, 4)
   for (const name of ['issuer-\ud800a.example', 7, undefined]) {

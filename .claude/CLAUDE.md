@@ -23,7 +23,7 @@ What an app that holds keys should know: `keys/README.md`. Never copy it here.
   effect of a task.
 - Content shapes are never defined in this repo: what an offer, a review or a market holds is
   `foundationforest/markets`'s.
-- The repo is `keys/`, `proofs/` (`note/`, `reputation/`), `records/`, `escrows/` (`solana/`),
+- The repo is `keys/`, `proofs/` (`stamp/`, `reputation/`), `records/`, `escrows/` (`solana/`),
   `README.md` and `LICENSE`, with `.github/`, `.claude/CLAUDE.md`, and the npm workspace's
   `package.json`, `package-lock.json`, `tsconfig.base.json` and `types/`. The README is the
   standard.
@@ -47,7 +47,7 @@ What an app that holds keys should know: `keys/README.md`. Never copy it here.
 - Run what `.github/workflows/checks.yml` runs before you push (Node 22.18 or later; Solana CLI
   4.2.2; circom 2.2.3); the commands are there. A test that skips fails CI: the summary must say
   `# skipped 0`. `npm ci` at the root installs every package, and `npm run build` there builds keys,
-  proofs/note/client, proofs/reputation/client, records and escrows/solana/client to their `dist/`,
+  proofs/stamp/client, proofs/reputation/client, records and escrows/solana/client to their `dist/`,
   in that order, so each is built before a package that imports it. Then, in each package,
   `npm run check` and `npm test`; in each circuit, `npm run fetch` and `npm run compile` first.
 

@@ -333,7 +333,7 @@ describe('limits: each host’s own size, batch and page; each reader’s own si
   test('the reference host ends a page before 4 MB; a reader still gets every record, page by page', async () => {
     const h = await startHost({ now: () => T0 })
     try {
-      const full = Array.from({ length: 66 }, (_, i) => sizedRecord(alice, `note/${i}`, DEFAULT_MAX_LINE_BYTES))
+      const full = Array.from({ length: 66 }, (_, i) => sizedRecord(alice, `stamp/${i}`, DEFAULT_MAX_LINE_BYTES))
       const [outcome] = await publish([h.url], full)
       assert.ok(outcome!.results.every((r) => r.ok), JSON.stringify(outcome!.results.filter((r) => !r.ok)))
       const first = h.read()
@@ -377,7 +377,7 @@ describe('limits: each host’s own size, batch and page; each reader’s own si
   test('a reader takes a page of any length, and refuses a line longer than it takes without holding it', async () => {
     const h = await startHost({ now: () => T0 })
     try {
-      const atCap = encodeRecord(sizedRecord(alice, 'note/a', MAX_LINE_READ))
+      const atCap = encodeRecord(sizedRecord(alice, 'stamp/a', MAX_LINE_READ))
       h.read = () => ({ lines: Array(100).fill(atCap), cursor: 1 })
       const page = await readPage(h.url)
       assert.ok(bytes(Array(100).fill(atCap)) > 6_000_000)
@@ -391,9 +391,9 @@ describe('limits: each host’s own size, batch and page; each reader’s own si
   })
 
   test('size is a host’s own choice: the reference host takes records of up to 65,536 bytes in UTF-8, unless its operator says otherwise', async () => {
-    const atCap = sizedRecord(alice, 'note/a', DEFAULT_MAX_LINE_BYTES)
+    const atCap = sizedRecord(alice, 'stamp/a', DEFAULT_MAX_LINE_BYTES)
     // One more byte, from one two-byte character: still 65,536 characters, now 65,537 bytes.
-    const over = sizedRecord(alice, 'note/b', DEFAULT_MAX_LINE_BYTES + 1, 1)
+    const over = sizedRecord(alice, 'stamp/b', DEFAULT_MAX_LINE_BYTES + 1, 1)
     assert.deepEqual([encodeRecord(over).length, Buffer.byteLength(encodeRecord(over))], [DEFAULT_MAX_LINE_BYTES, DEFAULT_MAX_LINE_BYTES + 1])
     const h = await startHost({ now: () => T0 })
     const roomy = await startHost({ now: () => T0, maxLineBytes: 200_000 })
@@ -409,8 +409,8 @@ describe('limits: each host’s own size, batch and page; each reader’s own si
   test('a reader ignores a line longer than it takes: 65,536 bytes unless told otherwise', async () => {
     const h = await startHost({ now: () => T0, maxLineBytes: 200_000 })
     try {
-      const atCap = sizedRecord(alice, 'note/a', MAX_LINE_READ)
-      const over = sizedRecord(alice, 'note/b', MAX_LINE_READ + 1, 1)
+      const atCap = sizedRecord(alice, 'stamp/a', MAX_LINE_READ)
+      const over = sizedRecord(alice, 'stamp/b', MAX_LINE_READ + 1, 1)
       await publish([h.url], [atCap, over])
       const page = await readPage(h.url)
       assert.deepEqual(page.records.map((c) => c.id), [checkRecord(atCap).id])
@@ -527,7 +527,7 @@ describe('limits: each host’s own size, batch and page; each reader’s own si
     await new Promise<void>((resolve) => away.listen(0, '127.0.0.1', resolve))
     const url = `http://127.0.0.1:${(away.address() as { port: number }).port}`
     const profile = ownerRecord(alice, 'profile', profileBody('maths'), T0)
-    const note = signMessage(bob, alice.address, { private: 'YWdl' }, T0)
+    const stamp = signMessage(bob, alice.address, { private: 'YWdl' }, T0)
     try {
       const asked: string[] = []
       const counting: typeof fetch = (input, init) => {
@@ -535,12 +535,12 @@ describe('limits: each host’s own size, batch and page; each reader’s own si
         return fetch(input, init)
       }
       await publish([h.url], [profile], { fetch: counting })
-      await deliver([h.url], [note], { fetch: counting })
+      await deliver([h.url], [stamp], { fetch: counting })
       await pull(h.url, pullRequest(alice, 0, T0), { fetch: counting })
       assert.deepEqual(asked.map((u) => new URL(u).pathname), ['/v1/records', '/v1/inbox', '/v1/inbox/pull'])
 
       assert.equal((await publish([url], [profile], { redirect: 'error' }))[0]!.status, 0, 'a host that redirects takes nothing')
-      assert.equal((await deliver([url], [note], { redirect: 'error' }))[0]!.status, 0)
+      assert.equal((await deliver([url], [stamp], { redirect: 'error' }))[0]!.status, 0)
       await assert.rejects(pull(url, pullRequest(alice, 0, T0), { redirect: 'error' }))
       assert.equal((await publish([url], [profile]))[0]!.status, 200, 'followed unless told')
     } finally {

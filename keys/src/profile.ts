@@ -1,4 +1,4 @@
-// A profile's keys: the main key, one per label, mixed from the seed scalar so the note proof can
+// A profile's keys: the main key, one per label, mixed from the seed scalar so the stamp proof can
 // derive it too; the profile's secret, mixed from the seed; and its inbox key, mixed from that
 // secret. See README.md, "The recipe".
 
@@ -39,7 +39,7 @@ export type InboxKey = {
   sealTo: string
 }
 
-/** A profile's scalar from the seed scalar and its label. The note circuit computes the same. */
+/** A profile's scalar from the seed scalar and its label. The stamp circuit computes the same. */
 export function profileScalarOf(seed: bigint, label: string): bigint {
   if (!isFieldElement(seed)) throw new RangeError('a seed scalar is a field element')
   return keyScalar(poseidon3([PREFIX.profile, seed, scopeOf(label)]))

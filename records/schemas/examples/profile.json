@@ -21,7 +21,7 @@
       "proof": "DoMKlBQwdkBLHIBUb2GOZ_4RnaEi1rBaRQSog1TrXOYC16kOh3wCsv859y-kvOwmWP1Z4Ekxi9J9qmzodweakxpcQv1TbFfTnl4-jNkUyCp884OcX2-976NySimv5DoVCCBeXXbo5BcKxi56zd5-fYiHitetqwU7nEJm9PmxN6YHOd0P3P8b0e7moW1l9rVZ4NpWlZNyvaFYNSlWtfhFHxlTVVhcIjcB_-PYzRxO6RBgsJXTPpfR55c1BmdWKTLUBcTbThrw0jEAvImzlt3IpHHVykNyh_e7Dm9LfnjSONwZfLS88FIGAQca9iFzZ-JKDit8yALoNIKSvGQGIPoKpw"
     },
     {
-      "circuit": "note",
+      "circuit": "stamp",
       "issuer": "9PNXwbxrL3HBZVo4DyrQYSUCuHuBUnuGcmaNJzokkDRG",
       "issuerName": "issuer-a.example",
       "label": "tutoring/seller",

@@ -1,6 +1,6 @@
 // A service key: the signing key of an index or an issuer, never a person's. It is 32 random bytes
 // the service makes for itself, from no seed, and its signing key is the one zk-kit's EdDSA-Poseidon
-// makes of 32 private bytes (`deriveSecretScalar`), as an issuer's note key is. It signs as a main
+// makes of 32 private bytes (`deriveSecretScalar`), as an issuer's stamp key is. It signs as a main
 // key does, and its address is spelled as one is.
 
 import { deriveSecretScalar } from '@zk-kit/eddsa-poseidon'

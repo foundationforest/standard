@@ -1,16 +1,16 @@
 // The proofs a profile record carries (README.md, Proofs), as their verifiers take them. Records
-// checks no proof itself: a note proof's verifier is proofs/note/client's verifyNote, a reputation
+// checks no proof itself: a stamp proof's verifier is proofs/stamp/client's verifyStamp, a reputation
 // proof's proofs/reputation/client's verifyReputation. These turn a profile record's proof into what
 // each one takes, for the profile that carries it, or null when the proof is not that shape. A host
-// that keeps inboxes with an issuer's rule is given verifyNote (HostOptions); a reader calls them
+// that keeps inboxes with an issuer's rule is given verifyStamp (HostOptions); a reader calls them
 // itself.
 
 import { b64u, hex } from './bytes.ts'
 import { publicKeyFromAddress } from './keys.ts'
 import type { Body } from './record.ts'
 
-/** What verifyNote takes, for one note proof on a profile record. */
-export type NoteCheck = {
+/** What verifyStamp takes, for one stamp proof on a profile record. */
+export type StampCheck = {
   proof: Uint8Array
   /** The issuer's key: its address. */
   issuer: string
@@ -47,9 +47,9 @@ export function proofsOf(body: Body | null | undefined): Array<{ [key: string]: 
   return (proofs as unknown[]).filter((p): p is { [key: string]: unknown; circuit: string } => isObject(p) && typeof p.circuit === 'string')
 }
 
-/** A note proof on a profile record as verifyNote takes it, for the profile `profile`; null if it is not one. */
-export function noteCheck(proof: unknown, profile: string): NoteCheck | null {
-  if (!isObject(proof) || proof.circuit !== 'note') return null
+/** A stamp proof on a profile record as verifyStamp takes it, for the profile `profile`; null if it is not one. */
+export function stampCheck(proof: unknown, profile: string): StampCheck | null {
+  if (!isObject(proof) || proof.circuit !== 'stamp') return null
   const { issuer, issuerName, label, tag } = proof
   if (!publicKeyFromAddress(issuer) || typeof issuerName !== 'string' || typeof label !== 'string') return null
   if (typeof tag !== 'string' || !HEX64.test(tag) || typeof proof.proof !== 'string' || !PROOF.test(proof.proof)) return null

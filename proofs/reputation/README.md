@@ -34,8 +34,8 @@ to. The circuit proves a weighted average over any tree of `(tag, scope, score, 
 index signs; a proof means only what that index says that root holds.
 
 - **A leaf** is `Poseidon(tag, scope, score, count)`, circomlib's Poseidon with four inputs:
-  - `tag`: the profile's tag at an issuer ([keys](../../keys/README.md#tags)), as its note
-    proof shows it ([note](../note/README.md#the-note-and-the-note-proof)): an issuer signed a note
+  - `tag`: the profile's tag at an issuer ([keys](../../keys/README.md#tags)), as its stamp proof
+    shows it ([stamp](../stamp/README.md#the-stamp-and-the-stamp-proof)): an issuer signed a stamp
     to the seed behind the profile.
   - `scope`: the profile's label as a number, exactly as `keys/` makes it
     ([keys](../../keys/README.md#the-recipe)).
@@ -72,8 +72,8 @@ The signals keep the names the circuit was set up with, since it keeps its bytes
 the leaves' tags.
 
 `profileX` and `profileY` are the key of the profile the proof is shown on, worked out inside the
-proof from the same seed scalar as every counted profile's tag, the way the note proof works it
-out ([note](../note/README.md#the-note-and-the-note-proof)). So the proof holds only on a
+proof from the same seed scalar as every counted profile's tag, the way the stamp proof works it
+out ([stamp](../stamp/README.md#the-stamp-and-the-stamp-proof)). So the proof holds only on a
 profile of the person whose seed is behind the counted profiles: it cannot be lent to anyone else,
 nor copied to another profile.
 
@@ -211,9 +211,9 @@ Measured in Node 22 on a 4-core machine, with 8 slots at depth 20:
   is public: when few leaves have that score, and that label, the one left names the profile. The
   app should say so before a proof is shown.
 - **One seed per proof.** A person with two seeds cannot count one seed's profiles on the other's.
-- **The profile it lands on need not hold a note.** The proof shows that profile is the person's
-  own, not that an issuer signed its seed a note; a reader that wants both reads its note proofs too
-  ([note](../note/README.md)).
+- **The profile it lands on need not hold a stamp.** The proof shows that profile is the person's
+  own, not that an issuer signed its seed a stamp; a reader that wants both reads its stamp proofs
+  too ([stamp](../stamp/README.md)).
 - **Building the tree takes time.** About twelve minutes for a million leaves at the speed above. An
   app that asks the index for its path instead tells the index which profiles are its.
 - **Not audited.**
@@ -243,9 +243,9 @@ setup.
 profile to count puts it in the score. The counts only weigh one profile against another inside
 the proof, and a second output would say more about the person than the average does.
 
-**Why does each slot name its own issuer, and the proof none?** A person's profiles may hold notes
+**Why does each slot name its own issuer, and the proof none?** A person's profiles may hold stamps
 from different issuers, and one seed is behind them all, so the proof counts them together. Which
-issuers' tags a tree holds is the index's choice, made when it read each profile's note proofs,
+issuers' tags a tree holds is the index's choice, made when it read each profile's stamp proofs,
 so a reader trusts the index for it; naming the issuers would tell a reader more about the
 person than the score does.
 

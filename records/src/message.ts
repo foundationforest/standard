@@ -274,7 +274,7 @@ export function checkBlobRequest(text: string, now: number): SignedBlobRequest {
 
 export type Inbox = {
   /**
-   * Who may deliver: anyone, or a profile whose profile record carries a note proof from this
+   * Who may deliver: anyone, or a profile whose profile record carries a stamp proof from this
    * issuer, under any label. The issuer is named by its key's address.
    */
   senders: 'anyone' | { issuer: string }

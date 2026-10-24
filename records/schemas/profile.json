@@ -59,7 +59,7 @@
       "additionalProperties": false,
       "properties": {
         "senders": {
-          "description": "Who may deliver: anyone, or a profile whose profile record carries a note proof from this issuer, under any label.",
+          "description": "Who may deliver: anyone, or a profile whose profile record carries a stamp proof from this issuer, under any label.",
           "oneOf": [
             {
               "const": "anyone"
@@ -93,12 +93,12 @@
     },
     "proof": {
       "type": "object",
-      "description": "One proof, named by its circuit. A reader ignores a proof whose circuit it does not know, so a profile carrying a newer kind stays valid for an older app. A note proof and a reputation proof have the shapes below; another circuit's fields are its own.",
+      "description": "One proof, named by its circuit. A reader ignores a proof whose circuit it does not know, so a profile carrying a newer kind stays valid for an older app. A stamp proof and a reputation proof have the shapes below; another circuit's fields are its own.",
       "required": ["circuit"],
       "properties": {
         "circuit": {
           "type": "string",
-          "description": "The circuit that checks it: note (proofs/note/) and reputation (proofs/reputation/) have the shapes below.",
+          "description": "The circuit that checks it: stamp (proofs/stamp/) and reputation (proofs/reputation/) have the shapes below.",
           "pattern": "^[a-z][a-z0-9-]{0,31}$"
         }
       },
@@ -119,24 +119,24 @@
           "if": {
             "properties": {
               "circuit": {
-                "const": "note"
+                "const": "stamp"
               }
             }
           },
           "then": {
-            "$ref": "#/$defs/note"
+            "$ref": "#/$defs/stamp"
           }
         }
       ]
     },
-    "note": {
+    "stamp": {
       "type": "object",
-      "description": "A note proof (proofs/note/): the issuer with this key and this name signed a note for the person whose seed gives this profile's key for this label, and this is their tag for the label at that issuer. Everything verifyNote takes but the profile's key, which is the profile's own address.",
+      "description": "A stamp proof (proofs/stamp/): the issuer with this key and this name signed a stamp for the person whose seed gives this profile's key for this label, and this is their tag for the label at that issuer. Everything verifyStamp takes but the profile's key, which is the profile's own address.",
       "required": ["circuit", "issuer", "issuerName", "label", "tag", "proof"],
       "additionalProperties": false,
       "properties": {
         "circuit": {
-          "const": "note"
+          "const": "stamp"
         },
         "issuer": {
           "type": "string",

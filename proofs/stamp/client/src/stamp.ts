@@ -1,16 +1,16 @@
-// The note and the note proof (../README.md, The note and the note proof).
+// The stamp and the stamp proof (../README.md, The stamp and the stamp proof).
 //
-// An issuer signs a note for each person: { note number, attributes }. The note number is Poseidon
+// An issuer signs a stamp for each person: { stamp number, facts }. The stamp number is Poseidon
 // of the person's secret for that issuer (`keys/`'s `issuerSecret`), so the issuer never learns the
-// secret, nor the seed it comes from. The attributes are one field element, whatever the issuer
-// attests; the proof keeps them private. The issuer signs Poseidon(prefix, note number, attributes)
+// secret, nor the seed it comes from. The facts are one field element, whatever the issuer
+// attests; the proof keeps them private. The issuer signs Poseidon(prefix, stamp number, facts)
 // with its EdDSA key on Baby Jubjub over Poseidon: zk-kit's signer, unchanged, which circomlib's
 // verifier checks inside the circuit. The prefix is fixed, so nothing the issuer signs for another
-// purpose can be turned into a note. Its key is an address, as every key in the standard is: its
+// purpose can be turned into a stamp. Its key is an address, as every key in the standard is: its
 // point packed into 32 bytes, in base58; keys/'s pointOf gives x and y back.
 //
-// The person proves on the device, from the seed scalar and the note: "this issuer signed a note
-// for the note number my seed gives at it; my tag for this label at it is this one; this
+// The person proves on the device, from the seed scalar and the stamp: "this issuer signed a stamp
+// for the stamp number my seed gives at it; my tag for this label at it is this one; this
 // profile's key is the one my seed gives for this label". Public: the tag, the profile's key,
 // the issuer's key, the label's scope and the issuer's name hash.
 
@@ -30,7 +30,7 @@ import {
 } from '@foundationforest/keys'
 import { type SnarkjsProof, proofFromBytes } from './bytes.ts'
 import { fieldHash, fromBytes32, isFieldElement, nameHashOf, scopeOf } from './field.ts'
-import { NOTE_KEY } from './note-key.ts'
+import { STAMP_KEY } from './stamp-key.ts'
 
 /** The setup's proving files (`circuit/setup/`): paths on Node, or the bytes in a browser. */
 export type Artifacts = {
@@ -39,37 +39,38 @@ export type Artifacts = {
 }
 
 /**
- * The text whose field value starts every note an issuer signs. The circuit has it as a constant,
- * under the name it was set up with, `var NOTE_TAG`.
+ * The text whose field value starts every stamp an issuer signs. The circuit has it as a constant,
+ * under the name it was set up with, `var NOTE_TAG`. It keeps its bytes, the old word note among
+ * them: it is part of every stamp ever signed, and of the circuit.
  */
-export const NOTE_PREFIX_TEXT = 'forest/v1/note'
-/** `keccak256("forest/v1/note") >> 8`: the first input of every signed note. */
-export const NOTE_PREFIX = fieldHash(NOTE_PREFIX_TEXT)
+export const STAMP_PREFIX_TEXT = 'forest/v1/note'
+/** `keccak256("forest/v1/note") >> 8`: the first input of every signed stamp. */
+export const STAMP_PREFIX = fieldHash(STAMP_PREFIX_TEXT)
 
 /** An issuer's key: the address of its EdDSA public key on Baby Jubjub, the point packed into 32 bytes, in base58. */
 export type IssuerKey = string
 
-export type Note = {
-  /** The person's note number for this issuer: `keys/`'s `issuerSecret(seed, name).noteNumber`. */
-  noteNumber: bigint
+export type Stamp = {
+  /** The person's stamp number for this issuer: `keys/`'s `issuerSecret(seed, name).stampNumber`. */
+  stampNumber: bigint
   /** What the issuer attests, as one field element of its choosing. The proof keeps it private. */
-  attributes: bigint
+  facts: bigint
 }
 
-/** A JSON value: what an issuer adds beside a note is one. */
+/** A JSON value: what an issuer adds beside a stamp is one. */
 export type Json = null | boolean | number | string | Json[] | { [key: string]: Json }
 
 /** An EdDSA signature on Baby Jubjub, as zk-kit writes it. */
-export type NoteSignature = { R8: [bigint, bigint]; S: bigint }
+export type StampSignature = { R8: [bigint, bigint]; S: bigint }
 
 /**
- * A note, the key of the issuer that signed it, and the signature. The person keeps it. Any other
- * field is one the issuer added beside them, such as what `attributes` was made from: the note's
+ * A stamp, the key of the issuer that signed it, and the signature. The person keeps it. Any other
+ * field is one the issuer added beside them, such as what `facts` was made from: the stamp's
  * functions pass it through unchanged, and nothing here reads it.
  */
-export type SignedNote = Note & { issuer: IssuerKey; signature: NoteSignature; [field: string]: unknown }
+export type SignedStamp = Stamp & { issuer: IssuerKey; signature: StampSignature; [field: string]: unknown }
 
-export type NoteProof = {
+export type StampProof = {
   /** The tag for this label at this issuer, `Poseidon(scope, issuer secret)`. */
   tag: bigint
   /** The profile's key, which the seed gives for this label. */
@@ -86,16 +87,16 @@ export type NoteProof = {
   publicSignals: string[]
 }
 
-/** The person's note number for one issuer, from the seed scalar: what the issuer signs in the note. */
-export function noteNumberOf(seedScalar: bigint, issuerName: string): bigint {
+/** The person's stamp number for one issuer, from the seed scalar: what the issuer signs in the stamp. */
+export function stampNumberOf(seedScalar: bigint, issuerName: string): bigint {
   return poseidon1([issuerScalarOf(seedScalar, issuerName)])
 }
 
-/** What an issuer signs: Poseidon(prefix, note number, attributes). */
-export function noteHash(note: Note): bigint {
-  if (!isFieldElement(note.noteNumber)) throw new RangeError('a note number is a field element')
-  if (!isFieldElement(note.attributes)) throw new RangeError('attributes are a field element')
-  return poseidon3([NOTE_PREFIX, note.noteNumber, note.attributes])
+/** What an issuer signs: Poseidon(prefix, stamp number, facts). */
+export function stampHash(stamp: Stamp): bigint {
+  if (!isFieldElement(stamp.stampNumber)) throw new RangeError('a stamp number is a field element')
+  if (!isFieldElement(stamp.facts)) throw new RangeError('facts are a field element')
+  return poseidon3([STAMP_PREFIX, stamp.stampNumber, stamp.facts])
 }
 
 /** The issuer's key, its address, from its 32-byte private key. */
@@ -104,21 +105,21 @@ export function issuerKeyOf(privateKey: Uint8Array): IssuerKey {
   return addressOf(derivePublicKey(privateKey))
 }
 
-/** For an issuer: sign a note with its 32-byte private key. Fields it adds beside the note pass through. */
-export function signNote(privateKey: Uint8Array, note: Note & { [field: string]: unknown }): SignedNote {
+/** For an issuer: sign a stamp with its 32-byte private key. Fields it adds beside the stamp pass through. */
+export function signStamp(privateKey: Uint8Array, stamp: Stamp & { [field: string]: unknown }): SignedStamp {
   const issuer = issuerKeyOf(privateKey)
-  return { ...note, issuer, signature: signMessage(privateKey, noteHash(note)) }
+  return { ...stamp, issuer, signature: signMessage(privateKey, stampHash(stamp)) }
 }
 
 /**
- * A signed note as JSON: the form a person's vault keeps it in (records/README.md, The vault), and
+ * A signed stamp as JSON: the form a person's vault keeps it in (records/README.md, The vault), and
  * an issuer may hand it over in. Big numbers in decimal text, the issuer's key as its address.
  * Every key starts in lower case, so it fits inside a record. Any other field is the issuer's, as
  * it wrote it.
  */
-export type NoteJson = {
-  noteNumber: string
-  attributes: string
+export type StampJson = {
+  stampNumber: string
+  facts: string
   issuer: string
   signature: { r8: [string, string]; s: string }
   [field: string]: Json
@@ -141,12 +142,12 @@ const isAddress = (value: unknown): value is string => {
   }
 }
 
-/** A signed note as JSON (NoteJson). */
-export function noteToJson(note: SignedNote): NoteJson {
-  const { noteNumber, attributes, issuer, signature, ...added } = note
+/** A signed stamp as JSON (StampJson). */
+export function stampToJson(stamp: SignedStamp): StampJson {
+  const { stampNumber, facts, issuer, signature, ...added } = stamp
   return {
-    noteNumber: String(noteNumber),
-    attributes: String(attributes),
+    stampNumber: String(stampNumber),
+    facts: String(facts),
     issuer,
     signature: { r8: [String(signature.R8[0]), String(signature.R8[1])], s: String(signature.S) },
     // What the issuer added, as it wrote it: JSON values, so they travel as they came.
@@ -155,62 +156,63 @@ export function noteToJson(note: SignedNote): NoteJson {
 }
 
 /**
- * A signed note back from its JSON. Refuses a note whose own fields are not as NoteJson says; passes
- * every other field through unchanged. Whether its issuer signed it is noteSigned's to say.
+ * A signed stamp back from its JSON. Refuses a stamp whose own fields are not as StampJson says; passes
+ * every other field through unchanged. Whether its issuer signed it is stampSigned's to say.
  */
-export function noteFromJson(value: unknown): SignedNote {
+export function stampFromJson(value: unknown): SignedStamp {
   const isObject = (v: unknown): v is { [key: string]: unknown } => v !== null && typeof v === 'object' && !Array.isArray(v)
-  if (!isObject(value)) throw new Error('a note is an object')
-  const { noteNumber, attributes, issuer, signature: sig, ...added } = value
+  if (!isObject(value)) throw new Error('a stamp is an object')
+  const { stampNumber, facts, issuer, signature: sig, ...added } = value
   if (!isAddress(issuer)) throw new Error("an issuer's key is an address: a point on Baby Jubjub, packed, in base58")
   if (!isObject(sig) || Object.keys(sig).sort().join() !== 'r8,s' || !Array.isArray(sig.r8) || sig.r8.length !== 2) throw new Error('a signature is { r8: [x, y], s }')
   return {
     ...added,
-    noteNumber: decimal(noteNumber, 'noteNumber'),
-    attributes: decimal(attributes, 'attributes'),
+    stampNumber: decimal(stampNumber, 'stampNumber'),
+    facts: decimal(facts, 'facts'),
     issuer,
     signature: { R8: [decimal(sig.r8[0], 'r8 x'), decimal(sig.r8[1], 'r8 y')], S: decimal(sig.s, 's') },
   }
 }
 
-/** Did the note's issuer sign it? zk-kit's check, the same equation the circuit checks. */
-export function noteSigned(note: SignedNote): boolean {
+/** Did the stamp's issuer sign it? zk-kit's check, the same equation the circuit checks. */
+export function stampSigned(stamp: SignedStamp): boolean {
   try {
-    return verifySignature(noteHash(note), note.signature, pointOf(note.issuer))
+    return verifySignature(stampHash(stamp), stamp.signature, pointOf(stamp.issuer))
   } catch {
     return false
   }
 }
 
 /**
- * The circuit's input, and the public signals it must give. `proveNote` proves it; it is
+ * The circuit's input, and the public signals it must give. `proveStamp` proves it; it is
  * exported for a caller that drives snarkjs itself.
  */
-export function noteInput(input: {
+export function stampInput(input: {
   /** The seed scalar: `keys/`'s `seedScalar(seed)`. */
   seedScalar: bigint
   /** The name the issuer publishes as its own, as `keys/`'s `issuerSecret` took it. */
   issuerName: string
-  note: SignedNote
+  stamp: SignedStamp
   /** The profile's label. The proof is for the key the seed gives for it, and for no other. */
   label: string
 }): { input: Record<string, unknown>; publicSignals: bigint[] } {
-  const { note, seedScalar } = input
+  const { stamp, seedScalar } = input
   if (!isFieldElement(seedScalar)) throw new RangeError('a seed scalar is a field element')
-  if (!isFieldElement(note.attributes)) throw new RangeError('attributes are a field element')
-  const [issuerX, issuerY] = pointOf(note.issuer)
+  if (!isFieldElement(stamp.facts)) throw new RangeError('facts are a field element')
+  const [issuerX, issuerY] = pointOf(stamp.issuer)
   const issuerScalar = issuerScalarOf(seedScalar, input.issuerName)
   const nameHash = nameHashOf(input.issuerName)
   const scope = scopeOf(input.label)
   const profile = publicKeyOf(profileScalarOf(seedScalar, input.label))
   const tag = tagOf(issuerScalar, input.label)
   return {
+    // The circuit's own signal names: note.circom keeps its bytes, so the facts go in as attributes.
     input: {
       seedScalar,
-      attributes: note.attributes,
-      R8x: note.signature.R8[0],
-      R8y: note.signature.R8[1],
-      S: note.signature.S,
+      attributes: stamp.facts,
+      R8x: stamp.signature.R8[0],
+      R8y: stamp.signature.R8[1],
+      S: stamp.signature.S,
       profileX: profile[0],
       profileY: profile[1],
       issuerX,
@@ -223,13 +225,13 @@ export function noteInput(input: {
 }
 
 /**
- * Make the note proof, on the device. Refuses a note for another seed or issuer name, or one its
+ * Make the stamp proof, on the device. Refuses a stamp for another seed or issuer name, or one its
  * issuer did not sign, before proving anything.
  */
-export async function proveNote(input: Parameters<typeof noteInput>[0] & { artifacts: Artifacts }): Promise<NoteProof> {
-  if (input.note.noteNumber !== noteNumberOf(input.seedScalar, input.issuerName)) throw new Error('this note is not for this seed at this issuer')
-  if (!noteSigned(input.note)) throw new Error("the issuer's signature is not on this note")
-  const { input: signals, publicSignals: want } = noteInput(input)
+export async function proveStamp(input: Parameters<typeof stampInput>[0] & { artifacts: Artifacts }): Promise<StampProof> {
+  if (input.stamp.stampNumber !== stampNumberOf(input.seedScalar, input.issuerName)) throw new Error('this stamp is not for this seed at this issuer')
+  if (!stampSigned(input.stamp)) throw new Error("the issuer's signature is not on this stamp")
+  const { input: signals, publicSignals: want } = stampInput(input)
   const { proof, publicSignals } = (await groth16.fullProve(signals, input.artifacts.wasm, input.artifacts.zkey)) as {
     proof: SnarkjsProof
     publicSignals: string[]
@@ -256,14 +258,14 @@ export async function proveNote(input: Parameters<typeof noteInput>[0] & { artif
 }
 
 /**
- * Does this proof hold: did the issuer with this key and this name sign a note for whoever holds
+ * Does this proof hold: did the issuer with this key and this name sign a stamp for whoever holds
  * the seed behind this profile's key, with this tag for this label? Every public value must be a
  * field element, the scope and the name hash are derived from the label and the name, and the
  * proof is checked with the committed verification key. Which issuers to trust is the reader's
  * choice. Anything that is not a good proof for these inputs is false.
  */
-export async function verifyNote(input: {
-  /** The proof as snarkjs writes it, `proveNote`'s `proof`, or its 256 bytes (`proofBytes`). */
+export async function verifyStamp(input: {
+  /** The proof as snarkjs writes it, `proveStamp`'s `proof`, or its 256 bytes (`proofBytes`). */
   proof: SnarkjsProof | Uint8Array
   /** The issuer's key: its address, or its point. */
   issuer: IssuerKey | Point
@@ -280,7 +282,7 @@ export async function verifyNote(input: {
     if (!isFieldElement(tag)) return false
     const values = [tag, profile[0], profile[1], issuer[0], issuer[1], scopeOf(input.label), nameHashOf(input.issuerName)]
     const proof = input.proof instanceof Uint8Array ? proofFromBytes(input.proof) : input.proof
-    return await groth16.verify(NOTE_KEY, values.map(String), proof)
+    return await groth16.verify(STAMP_KEY, values.map(String), proof)
   } catch {
     return false
   }

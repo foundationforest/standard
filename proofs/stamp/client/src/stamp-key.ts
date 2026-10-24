@@ -1,8 +1,8 @@
-// The note circuit's verification key, as snarkjs reads it: `circuit/setup/verification-key.json`,
+// The stamp circuit's verification key, as snarkjs reads it: `circuit/setup/verification-key.json`,
 // value for value. A module rather than an import of the JSON file, so the client bundles without
 // reading a file. A test checks it is that file.
 
-export const NOTE_KEY = {
+export const STAMP_KEY = {
  "protocol": "groth16",
  "curve": "bn128",
  "nPublic": 7,

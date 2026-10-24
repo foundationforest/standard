@@ -3,7 +3,7 @@
 // published leaves, root, time and signature.
 //
 // The tag, the scope and the profile's key come from keys/ unchanged, so a leaf names a profile
-// exactly as its note proof does, and a proof names the key of the profile it is shown on.
+// exactly as its stamp proof does, and a proof names the key of the profile it is shown on.
 
 import { Group } from '@semaphore-protocol/group'
 import { poseidon4 } from 'poseidon-lite/poseidon4'
@@ -23,7 +23,7 @@ import {
   unpackSignature,
   verifyBytes,
 } from '@foundationforest/keys'
-import { type SnarkjsProof, proofFromBytes, toBytes32 } from '@foundationforest/note'
+import { type SnarkjsProof, proofFromBytes, toBytes32 } from '@foundationforest/stamp'
 import { REPUTATION_KEY } from './reputation-key.ts'
 
 /** The circuit's slots: a proof counts up to this many profiles. */
@@ -37,7 +37,7 @@ export const SIGNED_PREFIX = 'forest/v1/reputation\n'
 
 /** One profile in an index's tree. */
 export type Leaf = {
-  /** The profile's tag at the issuer its note proof names. */
+  /** The profile's tag at the issuer its stamp proof names. */
   tag: bigint
   /** The scope of the profile's label (`scopeOf`). */
   scope: bigint
@@ -214,9 +214,9 @@ export async function proveReputation(input: Parameters<typeof circuitInput>[0] 
   return { score, root, profile, address: addressOf(profile), scope, proof, publicSignals }
 }
 
-// The proof as a profile record stores it, 256 bytes, and back: the note client's, which a note
+// The proof as a profile record stores it, 256 bytes, and back: the stamp client's, which a stamp
 // proof uses too (records/README.md, Proofs).
-export { proofBytes, proofFromBytes } from '@foundationforest/note'
+export { proofBytes, proofFromBytes } from '@foundationforest/stamp'
 
 /**
  * Does this proof hold, under a root this index signed with this time, on this profile? Checks the

@@ -1,7 +1,7 @@
 // The person's secret for one issuer: a Poseidon mix of the seed scalar and the issuer's name. An
-// issuer is anyone who signs notes for people, such as one that checks faces.
+// issuer is anyone who signs stamps for people, such as one that checks faces.
 //
-// The name, not the issuer's key: an issuer that changes its key changes no one's note number or
+// The name, not the issuer's key: an issuer that changes its key changes no one's stamp number or
 // tags. A different secret at each issuer, so no two issuers share a number for one person: two
 // issuers comparing what they hold find nothing in common.
 
@@ -18,11 +18,11 @@ export type IssuerSecret = {
   nameHash: bigint
   /** The secret: `Poseidon(issuer prefix, seed scalar, name hash)`. */
   scalar: bigint
-  /** The note number, `Poseidon(scalar)`. The issuer signs it in the person's note. */
-  noteNumber: bigint
+  /** The stamp number, `Poseidon(scalar)`. The issuer signs it in the person's stamp. */
+  stampNumber: bigint
 }
 
-/** The person's secret for an issuer, from the seed scalar. The note circuit computes the same. */
+/** The person's secret for an issuer, from the seed scalar. The stamp circuit computes the same. */
 export function issuerScalarOf(seed: bigint, name: string): bigint {
   if (!isFieldElement(seed)) throw new RangeError('a seed scalar is a field element')
   return poseidon3([PREFIX.issuer, seed, nameHashOf(name)])
@@ -35,12 +35,12 @@ export function tagOf(issuerScalar: bigint, label: string): bigint {
 }
 
 /**
- * The person's secret for the issuer named `name`, and their note number for it. The name is the
+ * The person's secret for the issuer named `name`, and their stamp number for it. The name is the
  * text the issuer publishes as its own, used exactly as given.
  */
 export async function issuerSecret(seed: Uint8Array, name: string): Promise<IssuerSecret> {
   assertBytes('seed', seed, SEED_LENGTH)
   assertText('issuer name', name)
   const scalar = issuerScalarOf(await seedScalar(seed), name)
-  return { name, nameHash: nameHashOf(name), scalar, noteNumber: poseidon1([scalar]) }
+  return { name, nameHash: nameHashOf(name), scalar, stampNumber: poseidon1([scalar]) }
 }

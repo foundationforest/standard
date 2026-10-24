@@ -140,9 +140,9 @@ It is not a record: it has no path and no versions, and it is in no one's folder
 
 - No `inbox` field means no inbox: hosts refuse deliveries. A profile with an inbox gives
   `inboxKey`, since senders seal to it.
-- `senders` is `"anyone"`, or `{ "issuer" }`: the sender's profile record carries a note proof from
+- `senders` is `"anyone"`, or `{ "issuer" }`: the sender's profile record carries a stamp proof from
   that issuer (Proofs) that holds for the sender's key, under any label. The issuer is named by its
-  key's address, as the proof shows it. Today the only requirement is a note from a named issuer;
+  key's address, as the proof shows it. Today the only requirement is a stamp from a named issuer;
   a second kind would be a second proof the host checks, under a new `senders` kind.
 - `once`: one message from each sender, ever.
 - `maxBytes`: the largest message it takes, as canonical text in bytes.
@@ -193,14 +193,14 @@ gives the last message on a page, so the next ask starts after it (`POST /v1/inb
 ### The vault
 
 The vault is one folder on a host, sealed to the vault's own inbox key, holding what the seed cannot
-recompute: which profiles exist and where each lives, their issuers' notes (the note each issuer
+recompute: which profiles exist and where each lives, their issuers' stamps (the stamp each issuer
 signed to the seed), the person's permissions, and settings. Its main key is the vault key, mixed
 from the seed ([keys](../keys/README.md#the-vault-key)), so a new device finds it with the seed and
 one host's address; like any folder, its hosts record may name more than one host.
 
 ```
 { "profiles": [{ "label": <label>, "hosts": [<origin>, …] }, …],
-  "issuerNotes": [{ "issuer": <issuer name>, "note": <signed note> }, …],
+  "stamps": [{ "issuer": <issuer name>, "stamp": <signed stamp> }, …],
   "permissions": [<permission>, …],
   "settings": { … } }
 ```
@@ -211,8 +211,8 @@ one host's address; like any folder, its hosts record may name more than one hos
   `settings`, so two apps share one vault.
 - `profiles`: each label once, with the hosts its folder lived on when written; the signed hosts
   record there is the truth.
-- `issuerNotes`: the issuer's name, exactly as keys/'s recipe takes it, and the note it signed, as
-  proofs/note/'s JSON ([note](../proofs/note/README.md#the-note-and-the-note-proof)).
+- `stamps`: the issuer's name, exactly as keys/'s recipe takes it, and the stamp it signed, as
+  proofs/stamp/'s JSON ([stamp](../proofs/stamp/README.md#the-stamp-and-the-stamp-proof)).
 - `permissions`: who may ask the person's signers to act, and for what (Permissions, below).
 - `settings`: apps' settings, such as the hosts, issuers and indexes the person chose. Each field
   is an app's own.
@@ -224,7 +224,7 @@ secret. It needs one host's address: it asks a host it knows, or one the person 
 key's folder; the folder's hosts record names the rest. It finds no vault only when every host it
 asked answered: if one failed, the read fails too, since the vault may be there. It opens `vault`,
 then mixes each profile's main key from its label and reads that folder from its hosts. Issuer
-secrets come from the seed and each note's issuer name.
+secrets come from the seed and each stamp's issuer name.
 
 #### Permissions
 
@@ -274,17 +274,17 @@ The profile record's optional `proofs` field carries up to four proofs, each nam
 `circuit` and checked by that circuit's verifier ([schemas/profile.json](schemas/profile.json)).
 A proof counts for one main key: a reader checks it against the address of the profile that
 carries it, so a proof copied to another profile fails. A reader ignores a proof whose circuit it
-does not know, so a newer kind never makes a profile invalid for an older app. `note` and
+does not know, so a newer kind never makes a profile invalid for an older app. `stamp` and
 `reputation`, below, are ours: the field takes any circuit's name, and anyone can add one. An app
 puts a proof in the profile record only when the person chooses to show it there:
 [proofs/reputation/](../proofs/reputation/README.md#limits) says what one can reveal. Records
-checks no proof itself: `noteCheck` and `reputationCheck` turn a proof on a profile record into
+checks no proof itself: `stampCheck` and `reputationCheck` turn a proof on a profile record into
 what its verifier takes, for the profile that carries it.
 
-- **`note`** shows that an issuer signed a note to the seed that gives this profile's key for its
-  label ([proofs/note/](../proofs/note/README.md)). It carries the issuer's key, as its address, and
-  its name, the label, the profile's tag at that issuer, and the proof's 256 bytes, in the
-  reputation proof's order. A reader checks it with proofs/note/client's `verifyNote`, which works
+- **`stamp`** shows that an issuer signed a stamp to the seed that gives this profile's key for its
+  label ([proofs/stamp/](../proofs/stamp/README.md)). It carries the issuer's key, as its address,
+  and its name, the label, the profile's tag at that issuer, and the proof's 256 bytes, in the
+  reputation proof's order. A reader checks it with proofs/stamp/client's `verifyStamp`, which works
   the name hash and the scope out of the name and the label itself. Each reader decides which
   issuers it trusts.
 - **`reputation`** shows the score of profiles the person holds in an index's tree, without
@@ -377,13 +377,13 @@ rule, it reads the sender's records from the sender's host.
 3. The current profile record of `to` on this host declares an inbox [`no_inbox`].
 4. The signature, by `from` [`signature`].
 5. The rule, on `from`. An inbox the host cannot read is [`rule_unsupported`]. `"anyone"` passes.
-   `{ issuer }`: a host that reads no sender's records, or checks no note proof, accepts only
+   `{ issuer }`: a host that reads no sender's records, or checks no stamp proof, accepts only
    `"anyone"` [`rule_unsupported`]. The message MUST name `host` [`sender`]. The host reads
    `from`'s records from it, as a reader does (`GET /v1/records`), or uses what it read before,
    kept for a time it chooses; a read that fails is [`lookup`]: the sender may try again. `host`
    MUST be one `from`'s current hosts record names, and `from`'s current profile record there MUST
-   carry a note proof from that issuer that holds for `from`, under any label:
-   proofs/note/client's `verifyNote`, given the proof as `noteCheck` makes it [`sender`]. A check
+   carry a stamp proof from that issuer that holds for `from`, under any label:
+   proofs/stamp/client's `verifyStamp`, given the proof as `stampCheck` makes it [`sender`]. A check
    that fails to run is [`lookup`]: the sender may try again.
 6. `once`: a second message from this `from` to this `to` is refused, ever [`once`]. The host
    keeps each pair it takes while the inbox says `once`, for as long as it keeps the profile.
@@ -429,7 +429,7 @@ reference host does (Run it).
 
 ### Indexes
 
-An index reads the hosts it lists in full, page by page (`GET /v1/records`), verifies the note
+An index reads the hosts it lists in full, page by page (`GET /v1/records`), verifies the stamp
 proofs on each profile, and interprets records by the market files it reads
 ([foundationforest/markets](https://github.com/foundationforest/markets)). Each index chooses which
 hosts it reads. It MAY answer one request, `POST /v1/hosts`: the body is a profile's hosts record
@@ -446,7 +446,7 @@ it to look now. An app sends the hosts record to the indexes the person chose.
   writing (`ownerRecord`, `hostsRecord`, `nextTime`); messages and pulls (`signMessage`,
   `decodeMessage`, `messageId`, `pullRequest`, `checkPull`, `inboxOf`, `inboxKeyOf`); blob requests
   (`blobNameOf`, `blobRequest`, `checkBlobRequest`); a profile record's proofs as their verifiers
-  take them (`proofsOf`, `noteCheck`, `reputationCheck`); talking to hosts (`publish`, `readPage`,
+  take them (`proofsOf`, `stampCheck`, `reputationCheck`); talking to hosts (`publish`, `readPage`,
   `readAll`, `readProfile`, `deliver`, `pull`, `putBlob`, `getBlob`, `deleteBlob`). A host that
   fails does not stop `readProfile`: it reads the others and lists that host, with the error, in
   `failed`. A read ends with an error on a cursor that is not a whole number or does not move
@@ -511,13 +511,13 @@ the sender's hosts:
 ```ts
 import { readAll } from '@foundationforest/records'
 import { Host } from '@foundationforest/records/host'
-import { verifyNote } from '@foundationforest/note' // proofs/note/client
+import { verifyStamp } from '@foundationforest/stamp' // proofs/stamp/client
 
 // A host takes a message to an inbox with an issuer's rule only if it reads the sender's records
-// and checks note proofs.
+// and checks stamp proofs.
 const buyersHost = new Host({
   readSender: async (url, profile) => (await readAll(url, { profile })).records,
-  verifyNote,
+  verifyStamp,
 })
 
 const buyerView = await readProfile([host], buyer.address, Date.now())
@@ -549,7 +549,7 @@ Node 22.18 or later. Built from existing pieces, unchanged: `@noble/curves`, `@n
 operator's. What it chooses, unless told otherwise: records and messages of up to 65,536 bytes, and
 100 a request; pages of at most 1,000 lines and 4,194,304 bytes; a replaced record and a message,
 kept for 30 days; png, jpeg and mp4 blobs of up to 50,000,000 bytes, kept until their folder
-deletes them. Give it `readSender` and `verifyNote` to take messages for inboxes with an issuer's
+deletes them. Give it `readSender` and `verifyStamp` to take messages for inboxes with an issuer's
 rule: it reads the sender's records again for each request.
 
 It keeps everything in its data directory, `dir` (a temporary one, removed on close, when none is
@@ -587,7 +587,7 @@ and opens the message with the pinned inbox key it was sealed to. The profile is
 (`0xff`, then `forest/`).
 
 The example profile record, [schemas/examples/profile.json](schemas/examples/profile.json), is that
-profile's, with a note proof from an example issuer and a reputation proof from an example index's
+profile's, with a stamp proof from an example issuer and a reputation proof from an example index's
 tree, made with the circuits' setups by `scripts/example-profile.ts`; `test/schemas.test.ts`
 checks both with their verifiers.
 

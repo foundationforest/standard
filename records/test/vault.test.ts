@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 import { inboxKey, mainKey, seedScalar, vaultKey } from '@foundationforest/keys'
-import { fieldHash, noteNumberOf, noteToJson, signNote } from '@foundationforest/note'
+import { fieldHash, signStamp, stampNumberOf, stampToJson } from '@foundationforest/stamp'
 import { publish, readProfile } from '../src/client.ts'
 import { ACTIONS, CURRENCIES, PERIODS, type Permission, type Vault, VAULT_PATH, checkVault, knowsPermission, openVault, readVault, readerCount, vaultRecord } from '../src/private.ts'
 import { RecordError } from '../src/record.ts'
@@ -15,11 +15,11 @@ import { startHost } from './helpers.ts'
 const vault = await vaultKey(SEED)
 const vaultInbox = await inboxKey(vault.secret)
 const code = (c: string) => (err: unknown) => err instanceof RecordError && err.code === c
-// A note an example issuer signed for keys/'s test person, as proofs/note/client's noteToJson writes it.
-const note = noteToJson(
-  signNote(new Uint8Array(32).fill(0x31), {
-    noteNumber: noteNumberOf(await seedScalar(SEED), 'issuer-a.example'),
-    attributes: fieldHash('forest example attributes', 'issuer-a'),
+// A stamp an example issuer signed for keys/'s test person, as proofs/stamp/client's stampToJson writes it.
+const stamp = stampToJson(
+  signStamp(new Uint8Array(32).fill(0x31), {
+    stampNumber: stampNumberOf(await seedScalar(SEED), 'issuer-a.example'),
+    facts: fieldHash('forest example attributes', 'issuer-a'),
   }),
 )
 
@@ -44,7 +44,7 @@ describe('the vault', () => {
   })
 
   test('a bad entry is refused, before it is sealed and after it is opened', async () => {
-    checkVault({ profiles: [{ label: 'tutoring/seller', hosts: ['https://a.example'] }], issuerNotes: [{ issuer: 'issuer-a.example', note }], settings: {} })
+    checkVault({ profiles: [{ label: 'tutoring/seller', hosts: ['https://a.example'] }], stamps: [{ issuer: 'issuer-a.example', stamp }], settings: {} })
     const bad: [string, unknown][] = [
       ['an array', []],
       ['profiles is a list', { profiles: {} }],
@@ -53,15 +53,15 @@ describe('the vault', () => {
       ['a host that is no origin', { profiles: [{ label: 'a', hosts: ['https://a.example/path'] }] }],
       ['a host twice', { profiles: [{ label: 'a', hosts: ['https://a.example', 'https://a.example'] }] }],
       ['a profile field nobody knows', { profiles: [{ label: 'a', hosts: ['https://a.example'], since: 1 }] }],
-      ['an issuer note with no issuer', { issuerNotes: [{ issuer: '', note }] }],
-      ['a note that is no object', { issuerNotes: [{ issuer: 'issuer-a.example', note: 'x' }] }],
+      ['an issuer stamp with no issuer', { stamps: [{ issuer: '', stamp }] }],
+      ['a stamp that is no object', { stamps: [{ issuer: 'issuer-a.example', stamp: 'x' }] }],
       ['settings is an object', { settings: [] }],
     ]
     for (const [why, v] of bad) assert.throws(() => checkVault(v), code('vault'), why)
     await assert.rejects(vaultRecord(vault, vaultInbox.sealTo, { settings: [] } as never, T0), code('vault'))
   })
 
-  test('a full restore: a new device with only the seed and one host gets every profile, note and setting back', async () => {
+  test('a full restore: a new device with only the seed and one host gets every profile, stamp and setting back', async () => {
     const now = () => T0 + MINUTE
     const [a, b, c] = await Promise.all([startHost({ now }), startHost({ now }), startHost({ now })])
     try {
@@ -76,13 +76,13 @@ describe('the vault', () => {
       // The first device keeps the rest in the vault, on a third host.
       const kept: Vault = {
         profiles: [{ label: 'tutoring/seller', hosts: [a.url] }, { label: 'tutoring/buyer', hosts: [b.url] }],
-        issuerNotes: [{ issuer: 'issuer-a.example', note }],
+        stamps: [{ issuer: 'issuer-a.example', stamp }],
         bookmarks: [{ url: 'https://shop.example', since: T0 }],
         settings: { indexes: ['https://index.example'], theme: 'dark' },
       }
       await publish([c.url], [hostsRecord(vault, [c.url], T0), await vaultRecord(vault, vaultInbox.sealTo, kept, T0)])
       const disk = c.dump().join('\n')
-      for (const secret of ['tutoring/seller', 'issuer-a.example', 'index.example', note.noteNumber]) assert.ok(!disk.includes(secret), `the host holds no ${secret}`)
+      for (const secret of ['tutoring/seller', 'issuer-a.example', 'index.example', stamp.stampNumber]) assert.ok(!disk.includes(secret), `the host holds no ${secret}`)
 
       // The new device: the seed, and one host's address. Nothing else.
       const v2 = await vaultKey(SEED)
@@ -96,7 +96,7 @@ describe('the vault', () => {
         assert.deepEqual(view.current.get('profile')?.record.body?.subjects, ['maths'], p.label)
       }
       assert.ok((await readProfile([a.url], seller.address, now())).current.has('offer/maths'), 'the offers come back from their hosts')
-      assert.deepEqual(found.vault.issuerNotes, [{ issuer: 'issuer-a.example', note }])
+      assert.deepEqual(found.vault.stamps, [{ issuer: 'issuer-a.example', stamp }])
       assert.deepEqual(found.vault.bookmarks, [{ url: 'https://shop.example', since: T0 }], 'a field an app added comes back as it was')
 
       // A later write, from either device, after the one read: the newer vault counts.

@@ -40,12 +40,12 @@ describe('private records', () => {
     const host = await startHost({ now: () => T0 })
     try {
       const secret = { text: 'My phone is +00 555 0100; call after six.', createdAt: '2026-10-02T12:00:00Z' }
-      await publish([host.url], [hostsRecord(alice, [host.url], T0), ownerRecord(alice, 'note/1', await makePrivate(secret, [bobInbox.sealTo, aliceInbox.sealTo]), T0)])
+      await publish([host.url], [hostsRecord(alice, [host.url], T0), ownerRecord(alice, 'stamp/1', await makePrivate(secret, [bobInbox.sealTo, aliceInbox.sealTo]), T0)])
 
       // What the host holds: no plaintext, and not the keys it is sealed to.
       assert.ok(!host.dump().join('\n').includes('555 0100'))
       assert.ok(!host.dump().join('\n').includes(bobInbox.sealTo))
-      const onHost = (await readProfile([host.url], alice.address, T0)).current.get('note/1')!.record.body!
+      const onHost = (await readProfile([host.url], alice.address, T0)).current.get('stamp/1')!.record.body!
       assert.ok(isPrivate(onHost))
 
       assert.deepEqual(await openPrivate(onHost, bobInbox.identity), secret)
@@ -62,22 +62,22 @@ describe('private records', () => {
   test('a reader is removed in the next version: they cannot open it; the old one stays on hosts until keep days pass', async () => {
     const host = await startHost({ now: () => T0 })
     try {
-      const v1 = ownerRecord(alice, 'note/door', await makePrivate({ text: 'first' }, [bobInbox.sealTo, aliceInbox.sealTo]), T0 + 1)
-      const v2 = ownerRecord(alice, 'note/door', await makePrivate({ text: 'second' }, [aliceInbox.sealTo]), T0 + 2)
+      const v1 = ownerRecord(alice, 'stamp/door', await makePrivate({ text: 'first' }, [bobInbox.sealTo, aliceInbox.sealTo]), T0 + 1)
+      const v2 = ownerRecord(alice, 'stamp/door', await makePrivate({ text: 'second' }, [aliceInbox.sealTo]), T0 + 2)
       await publish([host.url], [v1, v2])
 
-      const current = host.view(alice.address).current.get('note/door')!.record.body as { private: string }
+      const current = host.view(alice.address).current.get('stamp/door')!.record.body as { private: string }
       assert.equal(readerCount(current), 1)
       assert.deepEqual(await openPrivate(current, aliceInbox.identity), { text: 'second' })
       await assert.rejects(openPrivate(current, bobInbox.identity), 'Bob cannot open the new version')
 
       // Removal reaches what comes next, not what a reader already had: the old version is still
       // on the host for its keep days, and Bob can open it there.
-      const notes = async () => (await readAll(host.url, { profile: alice.address })).records.filter((c) => c.record.path === 'note/door')
-      const old = (await notes()).find((c) => c.record.time === T0 + 1)!
+      const stamps = async () => (await readAll(host.url, { profile: alice.address })).records.filter((c) => c.record.path === 'stamp/door')
+      const old = (await stamps()).find((c) => c.record.time === T0 + 1)!
       assert.deepEqual(await openPrivate(old.record.body!, bobInbox.identity), { text: 'first' })
       await host.prune(T0 + 31 * DAY)
-      assert.deepEqual((await notes()).map((c) => c.record.time), [T0 + 2])
+      assert.deepEqual((await stamps()).map((c) => c.record.time), [T0 + 2])
     } finally {
       await host.close()
     }
@@ -114,7 +114,7 @@ describe('private records', () => {
 
   test('each key adds about 2 KB, so a record the reference host takes, 65,536 bytes, is made for about 30', async () => {
     const readers = await Promise.all(Array.from({ length: 32 }, (_, i) => inboxKey(new Uint8Array(32).fill(i + 1))))
-    const size = async (n: number) => canonical({ ...ownerRecord(alice, 'note/many', null, T0), body: await makePrivate({ text: 'x' }, readers.slice(0, n).map((r) => r.sealTo)) }).length
+    const size = async (n: number) => canonical({ ...ownerRecord(alice, 'stamp/many', null, T0), body: await makePrivate({ text: 'x' }, readers.slice(0, n).map((r) => r.sealTo)) }).length
     const [one, two] = [await size(1), await size(2)]
     assert.ok(two - one > 2000 && two - one < 2200, `${two - one} bytes a reader`)
     assert.ok((await size(30)) <= DEFAULT_MAX_LINE_BYTES)

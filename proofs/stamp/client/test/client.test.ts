@@ -1,4 +1,4 @@
-// The note client without proving: the verification key it checks with, the constants the circuit
+// The stamp client without proving: the verification key it checks with, the constants the circuit
 // shares with keys/, the hashes that turn text into numbers, and the 256 bytes a proof is carried
 // in. The proofs themselves are the circuit's tests (../../circuit/test/).
 
@@ -24,7 +24,7 @@ import {
   toBytes32,
   type SnarkjsProof,
 } from '../src/index.ts'
-import { NOTE_KEY } from '../src/note-key.ts'
+import { STAMP_KEY } from '../src/stamp-key.ts'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const circuit = readFileSync(join(here, '../../circuit/note.circom'), 'utf8')
@@ -32,8 +32,8 @@ const hash = (text: string) => fromBytes32(keccak_256(new TextEncoder().encode(t
 
 test("the verification key is the circuit's committed one, value for value", () => {
   const committed = JSON.parse(readFileSync(join(here, '../../circuit/setup/verification-key.json'), 'utf8'))
-  assert.deepEqual(NOTE_KEY, committed)
-  assert.equal(NOTE_KEY.nPublic, 7)
+  assert.deepEqual(STAMP_KEY, committed)
+  assert.equal(STAMP_KEY.nPublic, 7)
 })
 
 test("the circuit's constants are keys/'s: the issuer and profile prefixes, and Base8", () => {

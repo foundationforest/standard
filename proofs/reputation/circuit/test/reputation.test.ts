@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url'
 import { groth16 } from 'snarkjs'
 
 import { BN254_R, issuerSecret, mainKey, nameHashOf, packSignature, scopeOf, seedScalar, serviceKey, signBytes, tagOf } from '@foundationforest/keys'
-import { BN254_P, fromBytes32, toBytes32 } from '@foundationforest/note'
+import { BN254_P, fromBytes32, toBytes32 } from '@foundationforest/stamp'
 import {
   buildTree,
   circuitInput,

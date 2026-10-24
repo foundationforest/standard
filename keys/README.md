@@ -43,9 +43,9 @@ The table uses words from the rest of the standard:
 
 - **profile:** one of the person's identities, one for each label, a free text saying what the
   profile is for;
-- **note:** what an issuer, anyone who signs notes, signs to a person's seed;
+- **stamp:** what an issuer, anyone who signs stamps, signs to a person's seed;
 - **tag:** the number an index's tree knows a profile by, one for each issuer that signed the
-  person a note;
+  person a stamp;
 - **vault:** a folder of the person's own on a host, which a new device restores from. A folder is
   the signed records kept under one key, and a host is a server that keeps folders.
 
@@ -56,7 +56,7 @@ The table uses words from the rest of the standard:
 | the seed | HKDF, `forest/v1/profile/<label>` | that profile's secret, which its inbox key comes from |
 | a profile's secret | HKDF, `forest/v1/inbox` | that profile's inbox key, which opens what is sealed to it |
 | the seed | HKDF, `forest/v1/pay/<type>/<label>` | that profile's payment key for one address type, `solana` or `evm`, and its address |
-| the seed scalar | Poseidon, the issuer prefix and the issuer's name hash | the person's secret for one issuer, which their note number and tags come from |
+| the seed scalar | Poseidon, the issuer prefix and the issuer's name hash | the person's secret for one issuer, which their stamp number and tags come from |
 | the seed scalar | Poseidon, the vault prefix | the vault key: the main key of the person's vault |
 | the seed | HKDF, `forest/v1/vault` | the vault's secret, which its inbox key comes from |
 
@@ -75,7 +75,7 @@ and the app writes it when what it holds changes, such as a new profile
 ### The seed scalar
 
 The seed scalar is the number the proofs take from the seed. Inside a proof, it ties a person's
-notes and profiles together, and only Poseidon mixes of it ever leave, so nothing public links
+stamps and profiles together, and only Poseidon mixes of it ever leave, so nothing public links
 them.
 
 - It is HKDF of the seed with `forest/v1/seed`, made into a number the way Semaphore v4 made its
@@ -97,9 +97,9 @@ and its address is the profile's name.
   `<market>/<role>`, such as `tutoring/seller`
   ([foundationforest/markets](https://github.com/foundationforest/markets)).
 - Its scalar is the lowest 250 bits of `Poseidon(profile prefix, seed scalar, scope)`. Baby Jubjub's
-  subgroup order `l` is above 2^250, so every 250-bit number is already a scalar, and the note
+  subgroup order `l` is above 2^250, so every 250-bit number is already a scalar, and the stamp
   proof derives the same key from the same seed scalar with nothing to reduce
-  ([proofs/note](../proofs/note/README.md)).
+  ([proofs/stamp](../proofs/stamp/README.md)).
 - Its public key is the scalar times Baby Jubjub's `Base8`, the point circomlib and zk-kit use.
 - Its address is the public key packed into 32 bytes (y little-endian, with x's sign in the top
   bit, as circomlib and zk-kit pack it), in base58 (the Bitcoin alphabet): 43 or 44 characters. An
@@ -163,8 +163,8 @@ key of each type.
 
 ### The issuer secret
 
-An issuer is anyone who signs notes to people's seeds
-([proofs/note](../proofs/note/README.md#the-note-and-the-note-proof)). For each issuer, a person
+An issuer is anyone who signs stamps to people's seeds
+([proofs/stamp](../proofs/stamp/README.md#the-stamp-and-the-stamp-proof)). For each issuer, a person
 has one secret: `Poseidon(issuer prefix, seed scalar, name hash)`.
 
 - The name is the text the issuer publishes as its own, such as a domain, used exactly as given,
@@ -172,16 +172,16 @@ has one secret: `Poseidon(issuer prefix, seed scalar, name hash)`.
   changes no one's tags.
 - Nothing is stored: the app mixes the secret again from the seed whenever it needs it.
 
-### The note number
+### The stamp number
 
-The note number is what a person gives an issuer: `Poseidon(issuer secret)`. The device sends it
-to the issuer once, and the issuer signs it in the person's note. The issuer never learns the
+The stamp number is what a person gives an issuer: `Poseidon(issuer secret)`. The device sends it
+to the issuer once, and the issuer signs it in the person's stamp. The issuer never learns the
 secret, nor the seed scalar behind it.
 
 ### Tags
 
 A tag is the number an index's tree knows one profile by, at one issuer:
-`Poseidon(scope, issuer secret)`. The note proof shows it, and the reputation proof counts the
+`Poseidon(scope, issuer secret)`. The stamp proof shows it, and the reputation proof counts the
 profiles whose tags are the person's ([proofs](../proofs/README.md)).
 
 - The same person, issuer and label always give the same tag, and nobody without the secret can
@@ -191,7 +191,7 @@ profiles whose tags are the person's ([proofs](../proofs/README.md)).
 ### The vault key
 
 The vault is one folder on a host, sealed to the vault's own inbox key, holding what the seed
-cannot recompute: which profiles exist, issuer notes, the person's permissions, and settings
+cannot recompute: which profiles exist, stamps, the person's permissions, and settings
 ([records](../records/README.md#the-vault)). Its keys are mixed from the seed, so a new device
 finds the vault with the seed and one host's address.
 
@@ -212,7 +212,7 @@ itself, from no seed. No person's key is ever one.
   `deriveSecretScalar`), as zk-kit makes an EdDSA-Poseidon key of 32 private bytes. It signs as a
   main key does, and its address is spelled as one is.
 - An index signs its roots with one ([proofs/reputation](../proofs/reputation/README.md)), and an
-  issuer's note key is made the same way ([proofs/note](../proofs/note/README.md)).
+  issuer's stamp key is made the same way ([proofs/stamp](../proofs/stamp/README.md)).
 
 ### Signers
 
@@ -254,7 +254,7 @@ is what an app that holds the seed, a signer, should know, and what ours does:
 7. The app works with any host, and its host with any app.
 8. The app that holds the seed is open source.
 9. The app keeps a copy of every record it signs; a host may drop one, and the copy puts it back.
-10. The app keeps the issuer's note as safely as a key, in the vault.
+10. The app keeps the issuer's stamp as safely as a key, in the vault.
 
 ### Use it
 
@@ -271,7 +271,7 @@ mixes from the seed scalar is not.
 | `inboxKey(secret)` | The inbox key, from a profile's `secret` or the vault's: age's `identity`, and `sealTo`, what others seal to |
 | `payKey(seed, label, type)`, `payAddresses(seed, label)`, `PAY_TYPES` | A payment key of one type: `label`, `type`, `privateKey`, `publicKey`, `address`; the profile's address of each type; and the types |
 | `evmAddressOf(publicKey)`, `isEvmAddress(text)` | A secp256k1 key's EVM address, in EIP-55; and whether text is one, in that spelling |
-| `issuerSecret(seed, name)` | The issuer's `name`, its `nameHash`, the person's `scalar` for it, and the `noteNumber` |
+| `issuerSecret(seed, name)` | The issuer's `name`, its `nameHash`, the person's `scalar` for it, and the `stampNumber` |
 | `issuerScalarOf(seedScalar, name)`, `tagOf(issuerScalar, label)` | The issuer secret from the seed scalar, and a tag |
 | `vaultKey(seed)`, `vaultScalarOf(seedScalar)` | The vault key: `scalar`, `publicKey`, `address`, `secret`; and its scalar |
 | `serviceKey(secret)` | A service key from its 32 random bytes: `secret`, `scalar`, `publicKey`, `address` |
@@ -297,22 +297,22 @@ Node 22.18 or later runs the TypeScript directly.
 `test/vectors.json` pins, for the seed `00 01 … 1f`: its words; its seed scalar; the three prefixes;
 the main keys for `tutoring/seller` and `tutoring/buyer`, each with its secret and inbox key, and
 their payment keys of both types; for two issuers, `issuer-a.example` and `issuer-b.example`, the
-name hash, the person's secret, the note number and a tag for each label; the vault key, with its
+name hash, the person's secret, the stamp number and a tag for each label; the vault key, with its
 secret and inbox key; one signature by the `tutoring/seller` main key; and a service key, from 32
 bytes of `0x2a`. `npm test` checks each value and recomputes it without the library: HKDF and keccak
 from `@noble/hashes`, the seed scalar step by step without zk-kit, Baby Jubjub's points and
 signatures from zk-kit (`@zk-kit/baby-jubjub`, `@zk-kit/eddsa-poseidon`), the address packed by
 hand, the signature's equation, ed25519 from `@noble/curves`, secp256k1 from Node's own crypto with
 keccak256 and EIP-55 by hand, the hybrid key others seal to from `@noble/post-quantum`, age's bech32
-by hand, and an envelope sealed and opened through age. The note proof's tests check the circuit
-derives the same main key and tag ([proofs/note](../proofs/note/README.md)).
+by hand, and an envelope sealed and opened through age. The stamp proof's tests check the circuit
+derives the same main key and tag ([proofs/stamp](../proofs/stamp/README.md)).
 
 ## Promises
 
 - **The same seed gives the same keys,** in any app, on any device, every time.
 - **Nothing ties two profiles together.** Each label is its own mix: one profile's main key,
   address, payment key or inbox key says nothing about another's.
-- **Nothing ties two issuers together.** Each issuer is its own mix, so the same person's note
+- **Nothing ties two issuers together.** Each issuer is its own mix, so the same person's stamp
   numbers for two issuers are unrelated, and two issuers comparing what they hold cannot match
   them.
 - **No key gives the seed back.** Every mix is one way. A profile's secret gives its inbox key, and
@@ -328,7 +328,7 @@ derives the same main key and tag ([proofs/note](../proofs/note/README.md)).
   `@scure/base` 2.4.0 (base58, bech32), `@scure/bip39` 2.4.0, `age-encryption` 0.3.1 (whose hybrid
   runs on `@noble/post-quantum`), `@zk-kit/eddsa-poseidon` 1.0.4 (`deriveSecretScalar`) and
   `poseidon-lite` 0.3.0.
-- **An issuer's name is its own to keep unique.** Two issuers under one name get the same note
+- **An issuer's name is its own to keep unique.** Two issuers under one name get the same stamp
   number from each person, so they can match their people.
 - **No recovery.** Lose the seed, and every profile and every tag is gone. Nobody can reset
   them, because nobody else has them.
@@ -353,16 +353,16 @@ Then that app has everything the seed opens, and nothing takes it back:
 - every profile: a main key is mixed from the seed and a label, and labels are public, so it can
   mix the main key of every profile and sign as it, and every payment key and move its money;
 - every inbox key, so it can open the person's private records and messages;
-- the seed scalar, so it can make note proofs for the person's profiles with their notes, and
+- the seed scalar, so it can make stamp proofs for the person's profiles with their stamps, and
   reputation proofs from their scores;
-- the vault, with their issuers' notes.
+- the vault, with their issuers' stamps.
 
 There is no rotation, so the only way out is a new seed and new profiles, moving the money first if
 there is still time. An app that holds the seed is trusted with all of that.
 
 **Why is a main key on Baby Jubjub, with payment keys beside it?**
-So a proof can derive it. The note proof shows that a profile's key comes from the same seed as
-a note an issuer signed, and the reputation proof that a profile's key comes from the same seed as
+So a proof can derive it. The stamp proof shows that a profile's key comes from the same seed as
+a stamp an issuer signed, and the reputation proof that a profile's key comes from the same seed as
 the profiles it counts: both work the key out from the seed scalar inside the proof. Baby Jubjub
 is the curve a proof does that on cheaply; ed25519 inside a proof costs far more. Solana's accounts
 are ed25519 and EVM chains' secp256k1, so the money sits under payment keys of their own, one for
@@ -378,7 +378,7 @@ record's signature, so nothing asks for Poseidon there.
 **Why two mixers, HKDF and Poseidon?**
 They work in different places. HKDF-SHA256 mixes on the device, from the seed: it is a standard,
 built into every browser's Web Crypto, and well studied. Inside a zero-knowledge proof, SHA-256
-costs far more than Poseidon. So what a proof must work out (the issuer secret, the note number, a
+costs far more than Poseidon. So what a proof must work out (the issuer secret, the stamp number, a
 tag, a main key) is Poseidon of the seed scalar, and what no proof needs (the profiles' secrets,
 the payment keys, the vault's secret) is HKDF of the seed. Neither is ours; both are used
 unchanged.
