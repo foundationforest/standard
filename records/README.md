@@ -249,9 +249,15 @@ profile's main key.
   - a profile is a person or a business, by the address of a profile of their own: it asks by
     messages to the person's inbox, signed by that profile's main key (Inbox).
 - `profiles`: the person's profiles the entry covers, by label, or `"all"`.
-- `can`: what the who may ask for. The standard's actions are `post` (write records), `message`
-  (send messages), `read` (open private records and messages) and `pay`; review, book and the like
-  are a market's ([foundationforest/markets](https://github.com/foundationforest/markets)).
+- `can`: what the who may ask for. The standard's actions are `post` (write any record, whatever its
+  kind), `message` (send messages), `read` (open private records and messages) and `pay`, and
+  nothing more; markets decide the kinds of record
+  ([foundationforest/markets](https://github.com/foundationforest/markets)).
+- `post` never covers a profile's profile record, its hosts record or the vault: a signer always
+  asks the person for those. The vault holds the permissions, so an AI allowed to post there could
+  raise its own limits; the profile record holds the pay addresses, which no reader can check
+  against the seed; and the hosts record says where the folder lives. An AI could change any of them
+  after reading an offer written to trick it.
 - `limits`: how much the who may pay, each limit in one currency in any one period: a day is any
   24 hours, a week any 7 days, a month any 30 days. `amount` is decimal text, a whole number and up
   to six places (`"25"`, `"0.5"`). A limit with `profile` holds on that profile, which the entry

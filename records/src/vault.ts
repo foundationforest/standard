@@ -23,7 +23,12 @@ export type VaultProfile = { label: string; hosts: string[] }
 /** A verifier's stamp: the verifier's name, as keys/'s recipe takes it, and the signed stamp, as JSON (proofs/stamp/client's stampToJson). */
 export type VerifierStamp = { verifier: string; stamp: { [key: string]: Json } }
 
-/** What a permission lets its who ask a signer to do, in the standard's words. A market names its own beside them. */
+/**
+ * What a permission lets its who ask a signer to do: these four, and nothing more. `post` writes any
+ * record, whatever its kind, but never a profile's profile record, its hosts record or the vault: for
+ * those a signer always asks the person (README.md, Permissions). An action outside the four is kept,
+ * as any value this code does not know, and a signer acts on no entry that has one (knowsPermission).
+ */
 export const ACTIONS = ['post', 'message', 'read', 'pay'] as const
 export type Action = (typeof ACTIONS)[number]
 /** The currencies a limit is counted in. */
