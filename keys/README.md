@@ -232,6 +232,12 @@ The signer decides by the person's permissions, a list kept in their vault
 the person's yes; how it asks, a prompt or a message waiting in the inbox, is the app's. Whatever it
 does, it signs with the profile's main key, so a host or a reader checks one key per profile.
 
+A permission's `post` never covers a profile's profile record, its hosts record or the vault: a
+signer always asks the person for those. The vault holds the permissions, so an AI allowed to post
+there could raise its own limits; the profile record holds the pay addresses, which no reader can
+check against the seed; and the hosts record says where the folder lives. An AI could change any of
+them after reading an offer written to trick it.
+
 ### What an app that holds keys should know
 
 The person decides what to do with their keys, and may expose or link them if they choose. This

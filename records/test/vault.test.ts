@@ -209,7 +209,7 @@ describe('permissions', () => {
       ['a field on the entry', { ...assistant, spend: 'any' }],
       ['a field on who', { ...assistant, who: { ...assistant.who, device: 'phone' } }],
       ['a field on a limit', { ...assistant, limits: [{ amount: '25', currency: 'USD', per: 'day', from: 'card' }] }],
-      ['an action a market names', { ...partner, can: ['message', 'review'] }],
+      ['an action outside the four', { ...partner, can: ['message', 'review'] }],
       ['a currency', { ...assistant, limits: [{ amount: '25', currency: 'EUR', per: 'day' }] }],
       ['a period', { ...assistant, limits: [{ amount: '25', currency: 'USD', per: 'year' }] }],
       ['an inherited name as a period', { ...assistant, limits: [{ amount: '25', currency: 'USD', per: 'toString' }] }],
