@@ -146,8 +146,6 @@ function checkPermission(p: unknown): string | null {
       if ('profile' in l && (typeof l.profile !== 'string' || !covers(l.profile))) fail('a limit on one profile names a label its permission covers')
     }
   }
-  // No limit never means unlimited: a permission to pay names how much.
-  if (can.includes('pay') && (!Array.isArray(limits) || !limits.length)) fail('a permission to pay has limits')
   if ('until' in p && (!Number.isSafeInteger(until) || (until as number) < 0)) fail('until is a time, ms since 1970')
   return named
 }

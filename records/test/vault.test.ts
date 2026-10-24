@@ -167,11 +167,16 @@ describe('permissions', () => {
     checkVault(vaultOf(assistant, { ...assistant, who: { connector: 'https://other.example', connection: 'c-1' } }))
   })
 
-  test('refused: pay with no limit, a limit on a profile the entry does not cover, one who twice, and malformed fields', () => {
-    const { limits: _, ...unlimited } = assistant
+  test('an entry that can pay with no limit sets no cap: it goes in the vault, and a signer knows it whole', () => {
+    const { limits: _, ...uncapped } = assistant
+    for (const p of [uncapped, { ...assistant, limits: [] }]) {
+      checkVault(vaultOf(p))
+      assert.equal(knowsPermission(p), true)
+    }
+  })
+
+  test('refused: a limit on a profile the entry does not cover, one who twice, and malformed fields', () => {
     const bad: [string, unknown[]][] = [
-      ['pay with no limits: no limit never means unlimited', [unlimited]],
-      ['pay with an empty list', [{ ...assistant, limits: [] }]],
       ['a limit on a profile the entry does not cover', [{ ...assistant, limits: [{ amount: '5', currency: 'USD', per: 'day', profile: 'tutoring/buyer' }] }]],
       ['one connection twice, by another name', [assistant, { ...assistant, who: { connector, connection: 'c-1', name: 'Another name' } }]],
       ['one profile twice', [partner, { ...partner, can: ['read'] }]],
