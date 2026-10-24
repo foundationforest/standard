@@ -1,8 +1,8 @@
 // The reference host's storage: a SQLite file per folder, host.sqlite for the log and the blob
 // index, and the bytes on disk or in an S3-compatible bucket. None of it is the standard: the eight
 // requests answer the same whatever the storage. Here: where things land, the feed across
-// folders, removing a folder, a malformed address, a folder file from before blobs were folders',
-// rebuilding host.sqlite, and the S3 driver.
+// folders, removing a folder, a malformed address, rebuilding host.sqlite, a folder file of an
+// older version, migrated, and one in another layout, refused, and the S3 driver.
 
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
@@ -20,7 +20,7 @@ import { message } from '../src/private.ts'
 import type { Body } from '../src/record.ts'
 import { s3Url, signS3 } from '../src/storage.ts'
 import { ownerRecord } from '../src/write.ts'
-import { MINUTE, T0, alice, bob, offerBody, profileBody } from './fixtures.ts'
+import { MINUTE, T0, alice, aliceBuyer, bob, offerBody, profileBody, stranger } from './fixtures.ts'
 import { Clock, startHost } from './helpers.ts'
 
 const dirs: string[] = []
@@ -249,25 +249,86 @@ describe('host.sqlite holds nothing that exists only there', () => {
   })
 })
 
+/**
+ * Make a folder file version 1 again, its blobs table as version 1 had it: `by` said who put each
+ * blob, here a write key. `more` runs after.
+ */
+function toVersion1(file: string, more = '') {
+  const db = new DatabaseSync(file)
+  db.exec(`
+    CREATE TEMP TABLE held AS SELECT * FROM blobs;
+    DROP TABLE blobs;
+    CREATE TABLE blobs (
+      sha256 TEXT PRIMARY KEY,
+      type TEXT NOT NULL,
+      size INTEGER NOT NULL,
+      by TEXT,
+      arrived INTEGER NOT NULL
+    ) WITHOUT ROWID;
+    INSERT INTO blobs SELECT sha256, type, size, '${stranger.address}', arrived FROM held;
+    PRAGMA user_version = 1;
+    ${more}
+  `)
+  db.close()
+}
+
+/** A folder file's version and its blobs table's columns. */
+const shapeOf = (file: string) => [query<{ user_version: number }>(file, 'PRAGMA user_version')[0]!.user_version, query<{ name: string }>(file, `SELECT name FROM pragma_table_info('blobs')`).map((c) => c.name)]
+
+describe('a folder file of an older version', () => {
+  test('is migrated when it opens: version 1 loses the column that said who put each blob, and keeps its records and blobs', async () => {
+    const dir = scratch()
+    const options = { dir, now: () => T0 }
+    let h = await startHost(options)
+    let was: Array<[number, string[]]>
+    try {
+      await publish([h.url], [ownerRecord(alice, 'profile', aliceProfile, T0), photoOffer])
+      assert.ok((await putBlob([h.url], putAs(alice, photo, 'image/jpeg'), photo))[0]!.ok)
+      was = await pages(h.url)
+    } finally {
+      await h.close()
+    }
+    const file = join(dir, 'folders', `${alice.address}.sqlite`)
+    toVersion1(file)
+    assert.deepEqual(shapeOf(file), [1, ['sha256', 'type', 'size', 'by', 'arrived']])
+    h = await startHost(options)
+    try {
+      assert.deepEqual(await pages(h.url), was)
+      assert.equal((await putBlob([h.url], putAs(alice, photo, 'image/jpeg'), photo))[0]!.message, 'already here')
+      assert.ok((await deleteBlob([h.url], deleteAs(alice, photo)))[0]!.ok, 'her main key deletes a blob a write key put')
+      assert.equal(await h.getBlob(sha256Hex(photo)), undefined)
+    } finally {
+      await h.close()
+    }
+    assert.deepEqual(shapeOf(file), [2, ['sha256', 'type', 'size', 'arrived']])
+  })
+})
+
 describe('a folder file in another layout', () => {
-  test('is refused by name, never migrated: one from before folders held blobs, on open and by a rebuild', async () => {
+  test('is refused by name and left as it was, on open and by a rebuild: one from before folders held blobs, and one a step does not bring to this layout', async () => {
     const dir = scratch()
     const h = await startHost({ dir, now: () => T0 })
-    await publish([h.url], [ownerRecord(alice, 'profile', aliceProfile, T0)])
+    await publish([h.url], [ownerRecord(alice, 'profile', aliceProfile, T0), ownerRecord(bob, 'profile', bobProfile, T0)])
     await h.close()
-    const file = join(dir, 'folders', `${alice.address}.sqlite`)
-    const db = new DatabaseSync(file)
-    db.exec('DROP TABLE blobs')
+    const aliceFile = join(dir, 'folders', `${alice.address}.sqlite`)
+    const bobFile = join(dir, 'folders', `${bob.address}.sqlite`)
+    // Alice's says version 1, with no blobs table: its step fails.
+    const db = new DatabaseSync(aliceFile)
+    db.exec('DROP TABLE blobs; PRAGMA user_version = 1')
     db.close()
-    const refused = { message: `${file} is not a folder file in this host's layout` }
+    // Bob's is version 1 with a table no version had: its step runs, and what comes out is not this layout.
+    toVersion1(bobFile, 'CREATE TABLE extra (x)')
+    const refused = (file: string) => ({ message: `${file} is not a folder file in this host's layout` })
     const again = new Host({ dir, now: () => T0 })
     try {
-      assert.throws(() => again.view(alice.address), refused)
-      assert.equal(again.view(bob.address).current.size, 0, 'another folder is untouched')
+      assert.throws(() => again.view(alice.address), refused(aliceFile))
+      assert.throws(() => again.view(bob.address), refused(bobFile))
+      assert.equal(again.view(aliceBuyer.address).current.size, 0, 'another folder is untouched')
     } finally {
       await again.close()
     }
-    await assert.rejects(rebuild(dir), refused)
+    await assert.rejects(rebuild(dir), /is not a folder file in this host's layout/)
+    assert.deepEqual([shapeOf(aliceFile), shapeOf(bobFile)], [[1, []], [1, ['sha256', 'type', 'size', 'by', 'arrived']]])
   })
 })
 
