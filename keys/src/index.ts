@@ -29,4 +29,4 @@ export { mainKey, inboxKey, profileScalarOf, type MainKey, type InboxKey } from 
 export { payKey, type PayKey } from './pay.ts'
 export { issuerSecret, issuerScalarOf, stampOf, type IssuerSecret } from './issuer.ts'
 export { vaultKey, vaultScalarOf, type VaultKey } from './vault.ts'
-export { accessKey, readKey, type AccessKey, type ReadKey } from './access.ts'
+export { serviceKey, type ServiceKey } from './service.ts'

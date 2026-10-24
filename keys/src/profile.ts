@@ -65,7 +65,7 @@ export async function mainKey(seed: Uint8Array, label: string): Promise<MainKey>
  */
 export async function inboxKey(secret: Uint8Array): Promise<InboxKey> {
   assertBytes('secret', secret, 32)
-  const bytes = await hkdf(secret, INFO.read)
+  const bytes = await hkdf(secret, INFO.inbox)
   const identity = bech32.encodeFromBytes('AGE-SECRET-KEY-PQ-', bytes).toUpperCase()
   return { identity, sealTo: await identityToRecipient(identity) }
 }

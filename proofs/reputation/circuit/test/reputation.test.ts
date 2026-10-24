@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url'
 
 import { groth16 } from 'snarkjs'
 
-import { BN254_R, accessKey, issuerSecret, mainKey, nameHashOf, packSignature, scopeOf, seedScalar, signBytes, stampOf } from '@foundationforest/keys'
+import { BN254_R, issuerSecret, mainKey, nameHashOf, packSignature, scopeOf, seedScalar, serviceKey, signBytes, stampOf } from '@foundationforest/keys'
 import { BN254_P, fromBytes32, toBytes32 } from '@foundationforest/note'
 import {
   buildTree,
@@ -55,7 +55,7 @@ const tree = buildTree(leaves)
 
 // The index signs the root with a time, with its key on Baby Jubjub.
 const sign = (key: { scalar: bigint }, root: bigint, at: bigint) => packSignature(signBytes(key.scalar, signedBytes(root, at)))
-const indexKey = accessKey(randomBytes(32))
+const indexKey = serviceKey(randomBytes(32))
 const index = indexKey.address
 const time = 1_791_072_000_000n
 const signature = sign(indexKey, tree.root, time)
@@ -92,7 +92,7 @@ test('global: three profiles from two issuers, no label shown, their count-weigh
   // Each public value is bound: a changed output, root or time fails.
   assert.equal(await verifyReputation({ ...shown, score: r.score + 1n }), false, 'a changed output')
   assert.equal(await verifyReputation({ ...shown, time: time + 1n }), false, 'a time the index did not sign')
-  const otherKey = accessKey(randomBytes(32))
+  const otherKey = serviceKey(randomBytes(32))
   const forged = { index: otherKey.address, signature: sign(otherKey, r.root, time) }
   assert.equal(await verifyReputation({ ...shown, ...forged }), true, 'any index may sign a root; the reader picks whom to trust')
   assert.equal(await verifyReputation({ ...shown, index: forged.index }), false, 'a root this index did not sign')

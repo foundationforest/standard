@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs'
 import { describe, test } from 'node:test'
 import { Ajv2020 } from 'ajv/dist/2020.js'
 import formats from 'ajv-formats'
-import { accessKey as makeAccessKey, inboxKey, payKey, pointOf, readKey } from '@foundationforest/keys'
+import { inboxKey, payKey, pointOf, serviceKey } from '@foundationforest/keys'
 import { verifyNote } from '@foundationforest/note'
 import { verifyReputation } from '@foundationforest/reputation'
 import { checkValue } from '../src/canonical.ts'
@@ -86,15 +86,15 @@ describe('schemas', () => {
     for (const bad of ['age1pq1' + 'q'.repeat(60), alice.address, 'AGE1' + 'Q'.repeat(58), 'age1' + 'b'.repeat(58)]) assert.ok(!fits('profile', edit('profile', ['inboxKey'], bad)), bad)
   })
 
-  test('a profile’s inbox: open to anyone or to an issuer’s note proofs, once, a size, readers; nothing else', async () => {
-    const reader = (await readKey(new Uint8Array(32).fill(5))).sealTo
+  test('a profile’s inbox: open to anyone or to an issuer’s note proofs, once, a size; nothing else', async () => {
+    const reader = (await inboxKey(new Uint8Array(32).fill(5))).sealTo
     const issuer = example('profile').proofs[at('note')].issuer
-    for (const inbox of [{ senders: 'anyone' }, { senders: { issuer } }, { senders: 'anyone', once: true, maxBytes: 4000 }, { senders: 'anyone', readers: [reader] }, { senders: 'anyone', readers: [] }]) {
+    for (const inbox of [{ senders: 'anyone' }, { senders: { issuer } }, { senders: 'anyone', once: true, maxBytes: 4000 }]) {
       assert.ok(fits('profile', edit('profile', ['inbox'], inbox)), JSON.stringify(inbox))
       assert.ok(inboxOf(edit('profile', ['inbox'], inbox)) !== 'unsupported', 'and a host reads it')
     }
     assert.ok(fits('profile', edit('profile', ['inbox'], undefined)), 'optional: no field, no inbox')
-    for (const inbox of [{}, 'anyone', { senders: 'everyone' }, { senders: { issuer: 'x' } }, { senders: { issuer: pointOf(issuer).map((n) => n.toString(16).padStart(64, '0')).join('') } }, { senders: { issuer: issuer + '0' } }, { senders: { issuer: pointOf(issuer).map(String) } }, { senders: { issuer, label: 'x' } }, { senders: { deposit: '5' } }, { senders: 'anyone', once: false }, { senders: 'anyone', maxBytes: -1 }, { senders: 'anyone', deposit: '5' }, { senders: 'anyone', readers: reader }, { senders: 'anyone', readers: [alice.address] }, { senders: 'anyone', readers: [reader.toUpperCase()] }]) {
+    for (const inbox of [{}, 'anyone', { senders: 'everyone' }, { senders: { issuer: 'x' } }, { senders: { issuer: pointOf(issuer).map((n) => n.toString(16).padStart(64, '0')).join('') } }, { senders: { issuer: issuer + '0' } }, { senders: { issuer: pointOf(issuer).map(String) } }, { senders: { issuer, label: 'x' } }, { senders: { deposit: '5' } }, { senders: 'anyone', once: false }, { senders: 'anyone', maxBytes: -1 }, { senders: 'anyone', deposit: '5' }, { senders: 'anyone', readers: [reader] }, { senders: 'anyone', readers: [] }]) {
       assert.ok(!fits('profile', edit('profile', ['inbox'], inbox)), JSON.stringify(inbox))
       assert.equal(inboxOf(edit('profile', ['inbox'], inbox)), 'unsupported', 'and a host refuses deliveries to it')
     }
@@ -119,7 +119,7 @@ describe('schemas', () => {
     const i = at('reputation')
     const shown = example('profile').proofs[i]
     const set = (field: string, value: unknown) => edit('profile', ['proofs', i, field], value)
-    assert.equal(shown.index, makeAccessKey(new Uint8Array(32).fill(0x2c)).address, 'the example index’s key (scripts/example-profile.ts)')
+    assert.equal(shown.index, serviceKey(new Uint8Array(32).fill(0x2c)).address, 'the example index’s key (scripts/example-profile.ts)')
     const check = reputationCheck(shown, alice.address)!
     assert.equal(await verifyReputation(check), true)
     assert.equal(await verifyReputation({ ...check, profile: aliceBuyer.address }), false, 'nor on another profile')

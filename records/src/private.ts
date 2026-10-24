@@ -1,18 +1,18 @@
 // Private records: a body only chosen keys open. The body on a host is
 // `{ private: <age file, base64url> }`. The age file is the envelope: one random file key per
 // record, sealed once to each key, naming none of them. Each key is age's post-quantum hybrid
-// (mlkem768x25519: ML-KEM-768 with X25519); its public half is `age1pq1…`. The keys are read keys
-// the owner's app makes, one for each reader, and usually the owner's own inbox key, which keys/
-// mixes from the profile's secret and the profile record's `inboxKey` field publishes. The record
-// around the envelope is signed as usual, so no reader can forge content for the others.
+// (mlkem768x25519: ML-KEM-768 with X25519); its public half is `age1pq1…`. The owner's own inbox key
+// is one, which keys/ mixes from the profile's secret and the profile record's `inboxKey` field
+// publishes. The record around the envelope is signed as usual, so no reader can forge content for
+// the others.
 //
 // What this does not hide: that a private record exists, its path, time and size, and how many
 // keys it was sealed to (one stanza each). Removing a reader means a new version sealed to the
 // rest; a reader keeps whatever it already opened. No forward secrecy: a key that leaks later opens
 // every envelope ever sealed to it.
 //
-// A message's body is one of these envelopes, sealed to the inbox key of the profile it is to and
-// to its inbox's readers. message() seals and signs one; openMessage() checks one and opens it. The
+// A message's body is one of these envelopes, sealed to the inbox key of the profile it is to.
+// message() seals and signs one; openMessage() checks one and opens it. The
 // vault, what a new device needs and the seed cannot give back, is one private record at `vault` in
 // a folder of its own, sealed to the vault's own inbox key alone (vault.ts).
 
@@ -21,7 +21,7 @@ import { b64u } from './bytes.ts'
 import { canonical, parseCanonical } from './canonical.ts'
 import { readProfile, type ReadHow } from './client.ts'
 import type { Key } from './keys.ts'
-import { type Sender, type SignedMessage, decodeMessage, encodeMessage, sealedTo, signMessage } from './message.ts'
+import { type Sender, type SignedMessage, decodeMessage, encodeMessage, inboxKeyOf, signMessage } from './message.ts'
 import { type Body, RecordError, type SignedRecord, isPrivate } from './record.ts'
 import { VAULT_PATH, type Vault, checkVault } from './vault.ts'
 import { ownerRecord } from './write.ts'
@@ -59,21 +59,20 @@ export function readerCount(body: { private: string }): number {
 }
 
 /**
- * A message to `to`'s inbox: `body` sealed, in one envelope, to the inbox key and every reader
- * `profileBody` (to's profile record body) gives, and nothing else; then signed by the sender's own
- * key, or by a write key for its main key.
+ * A message to `to`'s inbox: `body` sealed to the inbox key `profileBody` (to's profile record body)
+ * gives, and nothing else; then signed by the sender's own key.
  */
 export async function message(sender: Sender, to: string, body: Body, time: number, profileBody: Body): Promise<SignedMessage> {
-  return signMessage(sender, to, await makePrivate(body, sealedTo(profileBody)), time)
+  return signMessage(sender, to, await makePrivate(body, [inboxKeyOf(profileBody)]), time)
 }
 
 /**
  * A message, as wire text or signed, checked, then its body opened with the identity of the inbox
- * key of the profile it is to, or of one of its readers. `key` is there when a write key sent it.
+ * key of the profile it is to.
  */
-export async function openMessage(message: SignedMessage | string, identity: string): Promise<{ id: string; from: string; to: string; time: number; body: Body; key?: string }> {
+export async function openMessage(message: SignedMessage | string, identity: string): Promise<{ id: string; from: string; to: string; time: number; body: Body }> {
   const { message: m, id } = decodeMessage(typeof message === 'string' ? message : encodeMessage(message))
-  return { id, from: m.from, to: m.to, time: m.time, body: await openPrivate(m.body, identity), ...(m.key !== undefined && { key: m.key }) }
+  return { id, from: m.from, to: m.to, time: m.time, body: await openPrivate(m.body, identity) }
 }
 
 /**

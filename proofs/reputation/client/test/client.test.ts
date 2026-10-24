@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url'
 import { Group } from '@semaphore-protocol/group'
 import { poseidon4 } from 'poseidon-lite/poseidon4'
 
-import { BN254_R, TAG, accessKey, issuerSecret, mainKey, nameHashOf, packSignature, publicKeyOf, scopeOf, seedScalar, signBytes, stampOf, verifyBytes } from '@foundationforest/keys'
+import { BN254_R, TAG, issuerSecret, mainKey, nameHashOf, packSignature, publicKeyOf, scopeOf, seedScalar, serviceKey, signBytes, stampOf, verifyBytes } from '@foundationforest/keys'
 import { BOUND, DEPTH, SIGNED_PREFIX, buildTree, circuitInput, leafHash, signedBytes, type Leaf } from '../src/index.ts'
 import { REPUTATION_KEY } from '../src/reputation-key.ts'
 
@@ -44,7 +44,7 @@ const leaves = [...others.slice(0, 40), mine[0], ...others.slice(40, 70), mine[1
 const tree = buildTree(leaves)
 
 // The index signs the root with a time, with its key on Baby Jubjub.
-const indexKey = accessKey(randomBytes(32))
+const indexKey = serviceKey(randomBytes(32))
 const time = 1_791_072_000_000n
 
 // The person shows the proof on a new profile of theirs.

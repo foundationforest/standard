@@ -4,7 +4,7 @@
 
 import { cpus } from 'node:os'
 import { verifySignature as zkVerify } from '@zk-kit/eddsa-poseidon'
-import { accessKey, bytesMessage, unpackSignature } from '@foundationforest/keys'
+import { bytesMessage, serviceKey, unpackSignature } from '@foundationforest/keys'
 import { b64u } from '../src/bytes.ts'
 import { canonical } from '../src/canonical.ts'
 import { Host } from '../src/host.ts'
@@ -26,7 +26,7 @@ function rate(label: string, n: number, run: (i: number) => void): number {
   return perSecond
 }
 
-const key = accessKey(new Uint8Array(32).fill(5))
+const key = serviceKey(new Uint8Array(32).fill(5))
 const record = ownerRecord(key, 'offer/maths', offer, 1_790_000_000_000)
 const wire = encodeRecord(record)
 const message = signingInput(unsignedOf(record))
@@ -45,7 +45,7 @@ rate('read one record off the wire (parse, canonical, strict verify)', 1_000, ()
 const host = new Host({ now: () => 1_790_000_000_000 })
 const lines: string[] = []
 for (let p = 0; p < 500; p++) {
-  const k = accessKey(new Uint8Array(32).map((_, j) => (p * 13 + j * 7 + 1) & 255))
+  const k = serviceKey(new Uint8Array(32).map((_, j) => (p * 13 + j * 7 + 1) & 255))
   lines.push(encodeRecord(ownerRecord(k, 'profile', { market: 'tutoring', role: 'seller' }, 1_790_000_000_000)))
   for (let o = 0; o < 4; o++) lines.push(encodeRecord(ownerRecord(k, `offer/${o}`, offer, 1_790_000_000_000 + o)))
 }

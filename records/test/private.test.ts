@@ -1,17 +1,15 @@
-// Private records: a body only chosen keys open (read keys, and the owner's inbox key), whoever
-// writes it: the owner, or an access key the permissions record allows. Hosts check and store them
-// like any record, and read none.
+// Private records: a body only chosen keys open, the owner's inbox key among them. Hosts check and
+// store them like any record, and read none.
 
 import assert from 'node:assert/strict'
-import { randomBytes } from 'node:crypto'
 import { describe, test } from 'node:test'
-import { inboxKey, readKey } from '@foundationforest/keys'
+import { inboxKey } from '@foundationforest/keys'
 import { canonical } from '../src/canonical.ts'
 import { publish, readAll, readProfile } from '../src/client.ts'
 import { DAY, DEFAULT_MAX_LINE_BYTES } from '../src/host.ts'
 import { isPrivate, makePrivate, openPrivate, readerCount } from '../src/private.ts'
-import { accessRecord, hostsRecord, ownerRecord, permissionsRecord } from '../src/write.ts'
-import { KEYS, MINUTE, T0, accessKey, alice, aliceBuyer, allow, bob } from './fixtures.ts'
+import { hostsRecord, ownerRecord } from '../src/write.ts'
+import { KEYS, T0, alice, aliceBuyer, bob } from './fixtures.ts'
 import { startHost } from './helpers.ts'
 
 const [aliceInbox, aliceBuyerInbox, bobInbox] = await Promise.all([inboxKey(alice.secret), inboxKey(aliceBuyer.secret), inboxKey(bob.secret)])
@@ -37,53 +35,24 @@ describe('keys an envelope is sealed to', () => {
 })
 
 describe('private records', () => {
-  test('the owner makes a read key for a reader and hands it over: that reader opens the envelope; the host, a stranger, the owner’s other profile and the reader’s own key cannot', async () => {
+  test('the keys it is sealed to open it: the owner’s inbox key and Bob’s; the host, a stranger and the owner’s other profile cannot', async () => {
     const host = await startHost({ now: () => T0 })
     try {
-      // Alice's app makes a read key for Bob and hands him its 32 bytes: Bob needs no profile and no key of his own.
-      const forBob = await readKey(randomBytes(32))
       const secret = { text: 'My phone is +00 555 0100; call after six.', createdAt: '2026-10-02T12:00:00Z' }
-      await publish([host.url], [hostsRecord(alice, [host.url], T0), ownerRecord(alice, 'note/1', await makePrivate(secret, [forBob.sealTo, aliceInbox.sealTo]), T0)])
+      await publish([host.url], [hostsRecord(alice, [host.url], T0), ownerRecord(alice, 'note/1', await makePrivate(secret, [bobInbox.sealTo, aliceInbox.sealTo]), T0)])
 
-      // What the host holds: no plaintext, no read key.
+      // What the host holds: no plaintext, and not the keys it is sealed to.
       assert.ok(!host.dump().join('\n').includes('555 0100'))
-      assert.ok(!host.dump().join('\n').includes(forBob.sealTo))
+      assert.ok(!host.dump().join('\n').includes(bobInbox.sealTo))
       const onHost = (await readProfile([host.url], alice.address, T0)).current.get('note/1')!.record.body!
       assert.ok(isPrivate(onHost))
 
-      assert.deepEqual(await openPrivate(onHost, forBob.identity), secret)
+      assert.deepEqual(await openPrivate(onHost, bobInbox.identity), secret)
       assert.deepEqual(await openPrivate(onHost, aliceInbox.identity), secret)
-      await assert.rejects(openPrivate(onHost, bobInbox.identity), 'Bob’s own inbox key is not one it was sealed to')
       await assert.rejects(openPrivate(onHost, aliceBuyerInbox.identity))
       await assert.rejects(openPrivate(onHost, strangerInbox.identity))
-      // A made key that leaks opens only what the owner who made it sealed to it.
-      const fromOther = await readKey(randomBytes(32))
-      await assert.rejects(openPrivate(await makePrivate(secret, [fromOther.sealTo]), forBob.identity))
       // What anyone can see: that it exists, its size, and how many keys it was sealed to.
       assert.equal(readerCount(onHost as { private: string }), 2)
-    } finally {
-      await host.close()
-    }
-  })
-
-  test('an access key writes a private record where the permissions record allows it; the host checks that, and reads nothing', async () => {
-    const host = await startHost({ now: () => T0 + MINUTE })
-    try {
-      await publish([host.url], [permissionsRecord(alice, [allow(accessKey, ['note'])], T0)])
-      // The access key's app holds no read key's secret: it seals to the keys it was given.
-      const forBob = await readKey(randomBytes(32))
-      const note = { text: 'The keys are under the mat.', createdAt: '2026-10-02T12:01:00Z' }
-      const readers = [aliceInbox.sealTo, forBob.sealTo]
-      const inside = accessRecord(accessKey, alice.address, 'note/door', await makePrivate(note, readers), T0 + MINUTE)
-      const outside = accessRecord(accessKey, alice.address, 'offer/door', await makePrivate(note, readers), T0 + MINUTE)
-      const [outcome] = await publish([host.url], [inside, outside])
-      assert.deepEqual(outcome!.results.map((r) => r.error ?? 'ok'), ['ok', 'permission'], 'private or not, the permissions record is checked')
-
-      const onHost = host.view(alice.address).current.get('note/door')!
-      assert.equal(onHost.record.by, accessKey.address)
-      assert.deepEqual(await openPrivate(onHost.record.body!, aliceInbox.identity), note)
-      assert.deepEqual(await openPrivate(onHost.record.body!, forBob.identity), note)
-      assert.ok(!host.dump().join('\n').includes('under the mat'))
     } finally {
       await host.close()
     }
@@ -126,24 +95,5 @@ describe('private records', () => {
     assert.ok(two - one > 2000 && two - one < 2200, `${two - one} bytes a reader`)
     assert.ok((await size(30)) <= DEFAULT_MAX_LINE_BYTES)
     assert.ok((await size(32)) > DEFAULT_MAX_LINE_BYTES)
-  })
-})
-
-describe('read keys', () => {
-  test('a read key is one secret: its address signs pulls, its identity opens; the permissions record lists both halves, so a writer finds what to seal to there', async () => {
-    const host = await startHost({ now: () => T0 })
-    try {
-      const forBob = await readKey(randomBytes(32))
-      const again = await readKey(forBob.secret)
-      assert.deepEqual([again.address, again.sealTo, again.identity], [forBob.address, forBob.sealTo, forBob.identity], 'the same 32 bytes, the same key')
-      assert.equal((await inboxKey(forBob.secret)).sealTo, forBob.sealTo, 'its age key is inboxKey of its secret')
-      await publish([host.url], [permissionsRecord(alice, [allow(accessKey, ['offer']), allow(forBob, ['note'], 'read')], T0)])
-      const readers = (await readProfile([host.url], alice.address, T0)).access.filter((k) => k.scope === 'read').map((k) => k.sealTo!)
-      assert.deepEqual(readers, [forBob.sealTo])
-      const record = ownerRecord(alice, 'note/1', await makePrivate({ text: 'hi' }, [aliceInbox.sealTo, ...readers]), T0)
-      assert.deepEqual(await openPrivate(record.body!, forBob.identity), { text: 'hi' })
-    } finally {
-      await host.close()
-    }
   })
 })

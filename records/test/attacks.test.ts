@@ -8,16 +8,16 @@ import { sha256 } from '@noble/hashes/sha2.js'
 import { Base8, addPoint, mulPointEscalar } from '@zk-kit/baby-jubjub'
 import { verifySignature as zkVerify } from '@zk-kit/eddsa-poseidon'
 import { poseidon5 } from 'poseidon-lite/poseidon5'
-import { BN254_R, SUBGROUP_ORDER, accessKey as makeAccessKey, bytesMessage, inboxKey, packSignature, unpackSignature, verifyWithPublicKey } from '@foundationforest/keys'
+import { BN254_R, SUBGROUP_ORDER, bytesMessage, inboxKey, packSignature, unpackSignature, verifyWithPublicKey } from '@foundationforest/keys'
 import { b64u, base58, concat, hex, utf8 } from '../src/bytes.ts'
-import { deliver, publish, readAll, readProfile } from '../src/client.ts'
+import { canonical } from '../src/canonical.ts'
+import { publish, readAll, readProfile } from '../src/client.ts'
 import type { Host } from '../src/host.ts'
-import { MESSAGE_PREFIX, PULL_PREFIX } from '../src/message.ts'
-import { message } from '../src/private.ts'
-import { SIGN_PREFIX, checkRecord, encodeRecord, signingInput, unsignedOf, verifySignature } from '../src/record.ts'
+import { BLOB_PREFIX, MESSAGE_PREFIX, PULL_PREFIX, blobNameOf, blobSigningInput, checkBlobRequest, checkPull, messageSigningInput, pullSigningInput, readMessage, verifyMessage } from '../src/message.ts'
+import { SIGN_PREFIX, checkRecord, encodeRecord, signAs, signingInput, unsignedOf, verifySignature } from '../src/record.ts'
 import { viewProfile } from '../src/view.ts'
-import { accessRecord, hostsRecord, ownerRecord, permissionsRecord } from '../src/write.ts'
-import { DAY, MINUTE, SEED, T0, accessKey, alice, aliceBuyer, allow, bob, offerBody, pastKey, profileBody } from './fixtures.ts'
+import { hostsRecord, ownerRecord } from '../src/write.ts'
+import { MINUTE, SEED, T0, alice, aliceBuyer, bob, offerBody, profileBody, stranger } from './fixtures.ts'
 import { startHost } from './helpers.ts'
 
 const L = SUBGROUP_ORDER
@@ -49,9 +49,9 @@ describe('nobody forges; a signature means one thing everywhere', () => {
     assert.equal(verifyWithPublicKey(ORDER_2, bytesMessage(message), universal), false)
     assert.equal(verifySignature(packSignature(universal), message, ORDER_2), false)
     t.diagnostic(`zk-kit's verifySignature accepts the universal signature for the key of order 2: ${zkVerify(bytesMessage(message), universal, ORDER_2)}`)
-    // A permissions record naming a small-order access key cannot even be written.
+    // A record for a small-order key cannot even be read: its profile is no usable address.
     const packed = le(ORDER_2[1])
-    assert.throws(() => permissionsRecord(alice, [{ key: base58.encode(packed), scope: 'write', paths: ['offer'] }], T0), /usable/)
+    assert.throws(() => checkRecord({ ...record, profile: base58.encode(packed), sig: b64u.encode(packSignature(universal)) }), /usable/)
   })
 
   test("a mixed-order key (the owner's key plus the point of order 2): zk-kit's check takes the owner's signatures for it; Forest refuses it", () => {
@@ -68,8 +68,8 @@ describe('nobody forges; a signature means one thing everywhere', () => {
     assert.equal(verifyWithPublicKey(mixed, m, forged), false, 'Forest takes no key outside the subgroup')
   })
 
-  test('the signed bytes of a record, a message, a pull and an index root each start with their own text', () => {
-    const texts = [SIGN_PREFIX, MESSAGE_PREFIX, PULL_PREFIX, concat(Uint8Array.of(0xff), utf8('forest/v1/reputation\n'))]
+  test('the signed bytes of a record, a message, a pull, a blob request and an index root each start with their own text', () => {
+    const texts = [SIGN_PREFIX, MESSAGE_PREFIX, PULL_PREFIX, BLOB_PREFIX, concat(Uint8Array.of(0xff), utf8('forest/v1/reputation\n'))]
     for (const [i, a] of texts.entries()) {
       for (const [j, b] of texts.entries()) if (i !== j) assert.notDeepEqual(a.subarray(0, Math.min(a.length, b.length)), b.subarray(0, Math.min(a.length, b.length)), 'no text begins another')
     }
@@ -83,73 +83,16 @@ describe('nobody forges; a signature means one thing everywhere', () => {
   })
 })
 
-describe('a stolen access key', () => {
-  const permissions = permissionsRecord(alice, [allow(accessKey, ['offer'])], T0)
-  const mine = ownerRecord(alice, 'offer/maths', offerBody('30'), T0)
-  const view = (...records: Parameters<typeof checkRecord>[0][]) => viewProfile(alice.address, records.map((r) => checkRecord(r)), T0 + DAY)
+describe('a key that is not the main key', () => {
+  const posing = <T extends object>(unsigned: T, input: (u: T) => Uint8Array) => ({ ...unsigned, sig: signAs(stranger, stranger.address, input(unsigned)) })
 
-  test('cannot rewrite or delete what the owner wrote, cannot touch hosts or permissions, cannot write outside its paths', () => {
-    const overwrite = accessRecord(accessKey, alice.address, 'offer/maths', offerBody('1'), T0 + DAY)
-    const forgery = accessRecord(accessKey, alice.address, 'profile', profileBody('forgery'), T0 + DAY)
-    const v = view(permissions, mine, overwrite, forgery)
-    assert.equal(v.current.get('offer/maths')!.id, checkRecord(mine).id)
-    assert.equal(v.current.has('profile'), false)
-    assert.throws(() => accessRecord(accessKey, alice.address, 'hosts', { urls: ['https://evil.example'] }, T0 + DAY), /only the owner/)
-  })
-
-  test('with no paths, it still cannot write the profile record', () => {
-    const anywhere = permissionsRecord(alice, [allow(accessKey)], T0)
-    const forgery = accessRecord(accessKey, alice.address, 'profile', profileBody('forgery'), T0 + DAY)
-    const v = view(anywhere, forgery)
-    assert.equal(v.current.has('profile'), false)
-  })
-
-  test('once its entry is deleted, nothing it signed counts, however it is dated, on any host or none', () => {
-    const removed = permissionsRecord(alice, [], T0 + MINUTE)
-    const before = accessRecord(accessKey, alice.address, 'offer/before', offerBody('1'), T0)
-    const after = accessRecord(accessKey, alice.address, 'offer/after', offerBody('1'), T0 + 2 * MINUTE)
-    const v = view(removed, before, after)
-    assert.deepEqual([v.current.has('offer/before'), v.current.has('offer/after')], [false, false])
-  })
-
-  test('FINDING: once past, a stolen key can still add a record dated before its removal, and readers count it; the owner deletes it there', () => {
-    // Hosts and readers follow one rule (host.test.ts, view.test.ts): a past key's record counts
-    // only if dated before its until, the time of the permissions record that removed it. One
-    // dated after counts nowhere; one backdated counts, and the owner's record wins at that path,
-    // so the owner deletes it there.
-    const past = permissionsRecord(alice, [pastKey(accessKey, T0 + MINUTE, ['offer'])], T0 + MINUTE)
-    const now = accessRecord(accessKey, alice.address, 'offer/now', offerBody('1'), T0 + 2 * MINUTE)
-    const sneaked = accessRecord(accessKey, alice.address, 'offer/new', offerBody('1'), T0 + MINUTE - 1)
-    const later = T0 + 365 * DAY
-    const v = viewProfile(alice.address, [past, now, sneaked].map((r) => checkRecord(r)), later)
-    assert.deepEqual([v.current.has('offer/now'), v.current.has('offer/new')], [false, true])
-    const deleted = ownerRecord(alice, 'offer/new', null, T0 + 3 * MINUTE)
-    assert.equal(viewProfile(alice.address, [past, sneaked, deleted].map((r) => checkRecord(r)), later).current.get('offer/new')!.record.body, null)
-  })
-})
-
-describe('a stolen write key that sends', () => {
-  test('once past, it cannot send through a host that serves the sender’s old permissions record: the sender’s hosts record does not name that host', async () => {
-    const readSender = async (url: string, profile: string) => (await readAll(url, { profile })).records
-    const home = await startHost({ now: () => T0 })
-    const thief = await startHost({ now: () => T0 }) // keeps copies of Alice's old records: they are public
-    const inbox = await startHost({ now: () => T0, readSender })
-    try {
-      const listed = permissionsRecord(alice, [allow(accessKey, ['inbox'])], T0)
-      await publish([home.url], [hostsRecord(alice, [home.url], T0), listed, permissionsRecord(alice, [pastKey(accessKey, T0 + 1, ['inbox'])], T0 + 1)])
-      await publish([thief.url], [hostsRecord(alice, [home.url], T0), listed])
-      const bobInbox = await inboxKey(bob.secret)
-      const bobProfile = { ...profileBody('chemistry'), inboxKey: bobInbox.sealTo, inbox: { senders: 'anyone' } }
-      await publish([inbox.url], [ownerRecord(bob, 'profile', bobProfile, T0)])
-      const send = (host: string) => message({ key: accessKey, from: alice.address, host }, bob.address, { text: 'Send me the money.' }, T0 + 2, bobProfile)
-      const results = async (host: string) => (await deliver([inbox.url], [await send(host)]))[0]!.results[0]!.error
-      assert.equal(await results(thief.url), 'permission', 'the old record, from a host she does not name')
-      assert.equal(await results(home.url), 'permission', 'her current record says past')
-    } finally {
-      await home.close()
-      await thief.close()
-      await inbox.close()
-    }
+  test('signs nothing for the profile: its record, message, pull and blob request are each refused [signature]', () => {
+    const signature = (run: () => unknown) => assert.throws(run, (err: { code?: string }) => err.code === 'signature')
+    signature(() => checkRecord(posing({ v: 1 as const, profile: alice.address, path: 'offer/x', time: T0, body: offerBody('1') }, signingInput)))
+    const sent = posing({ v: 1 as const, to: bob.address, from: alice.address, time: T0, body: { private: 'YWdl' } }, messageSigningInput)
+    assert.equal(verifyMessage(readMessage(canonical(sent))), false)
+    signature(() => checkPull(canonical(posing({ v: 1 as const, profile: alice.address, after: 0, time: T0 }, pullSigningInput)), T0))
+    signature(() => checkBlobRequest(canonical(posing({ v: 1 as const, action: 'put' as const, ...blobNameOf(utf8('x'), 'image/png'), profile: alice.address, time: T0 }, blobSigningInput)), T0))
   })
 })
 
@@ -199,18 +142,15 @@ describe('over real hosts', () => {
 })
 
 describe('linking two profiles of one person', () => {
-  test('addresses, inbox keys and access keys: nothing public repeats across the two profiles', async () => {
+  test('addresses and inbox keys: nothing public repeats across the two profiles', async () => {
     const [inbox0, inbox1] = await Promise.all([inboxKey(alice.secret), inboxKey(aliceBuyer.secret)])
-    const accessFor = (n: number) => ({ key: makeAccessKey(sha256(utf8(`access ${n}`))).address, scope: 'write' as const, paths: ['offer'] })
     const one = [
       hostsRecord(alice, ['https://big-host.example'], T0),
       ownerRecord(alice, 'profile', { ...profileBody('statistics'), inboxKey: inbox0.sealTo }, T0),
-      permissionsRecord(alice, [accessFor(1)], T0),
     ]
     const two = [
       hostsRecord(aliceBuyer, ['https://big-host.example'], T0),
       ownerRecord(aliceBuyer, 'profile', { ...profileBody('geometry'), role: 'buyer', inboxKey: inbox1.sealTo }, T0),
-      permissionsRecord(aliceBuyer, [accessFor(2)], T0),
     ]
     const tokens = (records: object[]) => {
       const out = new Set<string>()
@@ -238,11 +178,5 @@ describe('linking two profiles of one person', () => {
     } finally {
       await host.close()
     }
-  })
-
-  test('FINDING: one access key listed by two profiles links them in public', () => {
-    const intoSeller = accessRecord(accessKey, alice.address, 'offer/x', offerBody('1'), T0)
-    const intoBuyer = accessRecord(accessKey, aliceBuyer.address, 'offer/y', offerBody('1'), T0)
-    assert.equal(intoSeller.by, intoBuyer.by, 'anyone reading both sees the same by: give each folder its own access keys')
   })
 })

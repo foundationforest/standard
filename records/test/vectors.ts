@@ -1,18 +1,18 @@
-// The spec's test vectors. The keys are keys/'s: its test seed (bytes 00 01 … 1f), its
-// tutoring/seller and tutoring/buyer profiles and their inbox keys, and its write key and read key
-// (32 bytes of 0x2a and of 0x2b), pinned in keys/test/vectors.json and not repeated here.
-// EdDSA-Poseidon here is deterministic, and the two sealed bodies are pinned as made, so these
-// never change unless the protocol does.
+// The spec's test vectors. The keys are keys/'s: its test seed (bytes 00 01 … 1f), and its
+// tutoring/seller and tutoring/buyer profiles and their inbox keys, pinned in keys/test/vectors.json
+// and not repeated here. EdDSA-Poseidon here is deterministic, and the sealed body is pinned as made,
+// so these never change unless the protocol does.
 // `node test/vectors.ts` prints them; vectors.test.ts checks them against test/vectors.json, each
 // with a second implementation.
 
+import { pathToFileURL } from 'node:url'
 import { sha256 } from '@noble/hashes/sha2.js'
 import { hex } from '../src/bytes.ts'
 import { canonical } from '../src/canonical.ts'
 import { type SignedBlobRequest, type SignedMessage, type SignedPull, blobRequest, blobSigningInput, messageId, messageSigningInput, pullRequest, pullSigningInput, signMessage, unsignedMessageOf } from '../src/message.ts'
 import { type SignedRecord, recordId, signingInput, unsignedOf } from '../src/record.ts'
-import { accessRecord, hostsRecord, ownerRecord, permissionsRecord } from '../src/write.ts'
-import { KEYS, accessKey, alice, aliceBuyer, reader } from './fixtures.ts'
+import { hostsRecord, ownerRecord } from '../src/write.ts'
+import { KEYS, alice, aliceBuyer } from './fixtures.ts'
 
 const TIME = 1_790_000_000_000 // 2026-09-21T13:33:20Z
 
@@ -48,34 +48,6 @@ const SEALED = [
   'RQ',
 ].join('')
 
-/** The write key's message's body: { text: 'Tuesday at six, yes.' } sealed to tutoring/buyer's inbox key, pinned as made. */
-const SEALED_TO_BUYER = [
-  'YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0-IG1sa2VtNzY4eDI1NTE5IEFRcW1uVXJVMGRGbDNFa1U5dFEvQ3Nwc1VHazZjbm',
-  'ZKWThoenVwaERJWGhjNHg4eUp2SFFMSUZMYU04UkF0cmxEeHluK1JucXpTa055WjhoMEhkdkdKZzBrYzRXaGdWengyUzlU',
-  'cU1Qd3Fva0tqWjFOM3ZsNGdOUU5Vby93amRLS1VtcjljdTcvUEl3UDdKbWZlVjVWQVVpYXRCamttbFNyOXZkOWRJand6OW',
-  'hlaVdOTitqR3BaeFZlbzZMKzdSeDRpSE15WGc3Vm9MV29PWG5CaWNjbEFlUEs4RWhZWllCWTVlcFFWbHRVd3duRldSUi9h',
-  'bk94ZjJ2UXBVbUsxREVYQVRyd0cxakY0d0dkeDBHOEFIWmRzdTBBYUpXa2ZWWjN5dElXQ3NYdUFFUFVlMHdGWXMwRk45Yl',
-  'NKTW9ManJJMWFldzZ2K0prSlVzZ3NjOFBHeVpMQ2w1aGYzeDBiczhLY3NsNXJlZXJ5R3RHMndTZWxpQlZwcmc5WUdUMnFI',
-  'Skg3NmhHbFFvK2FiWEw1N0JubDByNmJNL2lPVFZodDViMEppYitlaHZ2aVBZU2QwQXk1dDBtOFRnaGNOMHMzWC9EZkQ4bW',
-  '9ZN2hTUjhtMmdaVEcycGdCaTY2Z3JWeFlMOHNZZE03b1BrUEhpNUNZRzJwVDlEWGlDeGZ5SFZSTjlnbk5OeU8vZGFDbHJE',
-  'Nk5YQkZHRWlnZW1SeVZ6a1MzcDlGNzVTeUc2cEFIcHU2dWhXSzhHVTF4dWNuSEtLd1E3a3RuSmJBWUpkM3lHU2RNRkRySD',
-  'dnQ28vbVdzb2dtKy9CcGxrcHZLQThlalNDeUFkcHN3M1B4VXdYTlZEQ29mYVhrZmszQkZFMUtSR0VwdzdXQnBNcnlPRVUv',
-  'N0dnRmEvTVVFM3pyYjJ5T0NmWk0wWTdjWUpRZGgwcHB2TDBJVm5CMzR3NFNLN3ZBYW9NcmtadGtjM2J0aGoxRXcvNnNPTE',
-  'xCMngrMUhMQW9TVVNnYVpKQzQ1bDd1dWlxUGJNckViQ2VUdnZjSC95QnVxbEJNd2xEQm41R0FjRnBrN0VEdlJmamJHbmVH',
-  'L09FSG8vcUpnR3BBeURONEZGQTRQamhLVlRzWVNoSFgrckpHVGpLaUpQdit2R3RNM0hmNnRNS0wzaSs5RHNLd1RXN1BQWE',
-  'tKbnRSeHFWc1JIUjNXWGFsVFNtYlJuS29YWGNMOGlEYStrQXpFbEI4M1JDVkRwVE82dUhDekRIczN0M1oycWxaNjFjUHFp',
-  'dmpoWVBYT0JjVzQ3dnU2NkdDVEJDVlVuNzVETnExRDdTL05zcWthRXQ5NzRwdklJblRnNGNQcmtBNnhLMG00d3BiakVGOX',
-  'U2bHUwM0ZLeG93emtybGxMY0lVUTF6Q0J4WXVyQ1hXYWRJUFdEYUI1eXpHSEgwSGJvVDdXVSttK3djd3hWdlhJTjdEUFZR',
-  'YVlpNmN1eS9ndVpPbS90bW5Pb1RNNG1FNHRGam5qb1ozZGxLNTZXMlFGbkpjcUlzK3UzaWsxT3FGRTJnYk0wQnY0REJobE',
-  'gvQ3F5dlkrZDJTYmg3YklmRWIvK3RxZERoYTRFcExHMWRVRWwxaCttcDRRbjJhVi9FelFpUFdlUHhpWGpFZE82MnJ2VHdH',
-  'aytDRGVPbXRITVBwWEFVZWZ6ZVAxb0xsd05HcGVMTE1WYTNTSWhOQTZWZ0R6ZHR4cEl3a3JPeFZYdjFWZ2dCcmlLU1NUZk',
-  'g2STVWWWFoYWNGR0JBOFpaeGFWWkNreDQ1cHQ3U0UxWUd4eEcvYnVQbGNBVmk3eERia2VvK2ZzOWxTWWwvYjhkS0wrVktH',
-  'dVR5cDJUNEhzeFAxUnIyOTZrMVVnVVhvaUlWK0JZelhmdVErOE1OcVV1Q2xBdWpyc3NQMVhiY1BvNk44ek5sTzUwWjJ6WW',
-  'N4NG4xanFJYlJvTmYwUkw4Rnpub2h2SDQ3WU9LV3Fhb0VuaUFvSnlUK2N3cVVyRTJuRTVEUQpRU1diblMwaTM4QytNYzYw',
-  'Q1RvOXhtN2IxdlNvcmlaSmZ5VVlrVldvelBjCi0tLSA4UGx2NUhpM293Uzk1NTZDbE1oUnNFUUx2UHc3amVvUXY4dGgyOW',
-  'MvQjI4CkcSB58dBpLiX1WC0cSQNQeiwvMGC-RVmxav39sQseES0F348pulJO9mfwlrjvAPYJPsXYjXVajlEr0PaNvkLQ',
-].join('')
-
 const describe = (record: SignedRecord) => ({
   wire: canonical(record),
   signingInputHex: hex.encode(signingInput(unsignedOf(record))),
@@ -107,29 +79,19 @@ export async function vectors() {
   // An offer's fields are its market's, and the standard names none (README.md, Folders): `about`
   // stands in for them.
   const offer = { about: 'One hour of maths, online.' }
-  const written = { about: 'Physics, one hour.' }
   const letters = { sha256: hex.encode(sha256(LETTERS)), mimeType: 'text/plain', size: LETTERS.length }
-  const writeEntry = { key: accessKey.address, scope: 'write' as const, paths: ['offer', 'inbox'] }
-  const readEntry = { key: reader.address, sealTo: reader.sealTo, scope: 'read' as const, paths: ['inbox'] }
   return {
-    about: "Forest records vectors. The profile is keys/'s tutoring/seller profile, from its test seed, and the profile record's inboxKey field is that profile's inbox key; the write key and the read key are keys/'s, from 32 bytes of 0x2a and of 0x2b: all pinned in keys/test/vectors.json. Every signature is EdDSA-Poseidon on Baby Jubjub over SHA-256 of the signed bytes, shifted right one byte. The permissions record lists the write key for offers and the inbox, and the read key, with sealTo, for the inbox. The message is from keys/'s tutoring/buyer profile, from the same seed, to tutoring/seller; its body is sealed to tutoring/seller's inbox key. keyMessage is from tutoring/seller, signed by its write key and naming host-a, to tutoring/buyer; its body is sealed to tutoring/buyer's inbox key. Both bodies were made once and are pinned as made, since age's sealing is random. The pull is tutoring/seller's, for everything; keyPull is the same pull signed by its read key. past is a later permissions record in which the write key is past, until that record's time, and the read key still listed. blobPut is tutoring/seller's main key putting the 26 letters a to z, as text/plain, in its folder; blobDelete is its write key deleting them.",
+    about: "Forest records vectors. The profile is keys/'s tutoring/seller profile, from its test seed, and the profile record's inboxKey field is that profile's inbox key, pinned in keys/test/vectors.json. Every signature is EdDSA-Poseidon on Baby Jubjub over SHA-256 of the signed bytes, shifted right one byte, by the main key of the profile it is for. The message is from keys/'s tutoring/buyer profile, from the same seed, to tutoring/seller; its body is sealed to tutoring/seller's inbox key, made once and pinned as made, since age's sealing is random. The pull is tutoring/seller's, for everything. blobPut is tutoring/seller's main key putting the 26 letters a to z, as text/plain, in its folder; blobDelete is its main key deleting them.",
     profile: alice.address,
-    writeKey: accessKey.address,
-    readKey: reader.address,
     hosts: describe(hostsRecord(alice, [hostA, 'https://host-b.example'], TIME)),
     profileRecord: describe(ownerRecord(alice, 'profile', { market: 'tutoring', role: 'seller', inboxKey: inbox.sealTo, inbox: { senders: 'anyone' } }, TIME)),
     offer: describe(ownerRecord(alice, 'offer/maths', offer, TIME)),
-    permissions: describe(permissionsRecord(alice, [writeEntry, readEntry], TIME)),
-    written: describe(accessRecord(accessKey, alice.address, 'offer/physics', written, TIME + 60_000)),
     deleted: describe(ownerRecord(alice, 'offer/maths', null, TIME + 120_000)),
     message: describeMessage(signMessage(aliceBuyer, alice.address, { private: SEALED }, TIME + 180_000)),
-    keyMessage: describeMessage(signMessage({ key: accessKey, from: alice.address, host: hostA }, aliceBuyer.address, { private: SEALED_TO_BUYER }, TIME + 300_000)),
     pull: describePull(pullRequest(alice, 0, TIME + 240_000)),
-    keyPull: describePull(pullRequest({ key: reader, profile: alice.address }, 0, TIME + 360_000)),
-    past: describe(permissionsRecord(alice, [{ key: accessKey.address, was: 'write', until: TIME + 420_000, paths: ['offer', 'inbox'] }, readEntry], TIME + 420_000)),
     blobPut: describeBlob(blobRequest(alice, { action: 'put', ...letters }, TIME + 480_000)),
-    blobDelete: describeBlob(blobRequest({ key: accessKey, profile: alice.address }, { action: 'delete', sha256: letters.sha256 }, TIME + 540_000)),
+    blobDelete: describeBlob(blobRequest(alice, { action: 'delete', sha256: letters.sha256 }, TIME + 540_000)),
   }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) console.log(JSON.stringify(await vectors(), null, 2))
+if (import.meta.url === pathToFileURL(process.argv[1]!).href) console.log(JSON.stringify(await vectors(), null, 2))

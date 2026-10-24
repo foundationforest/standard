@@ -1,16 +1,15 @@
 // A host: plain HTTP, a SQLite file per folder, and a blob store (storage.ts). It holds no keys,
-// has no accounts and asks for no login: a record's signature is its only credential, a pull's is
-// the main key's or a read key's of the profile it pulls for, and a blob request's the folder's main
-// key's or a write key's. It is open: it takes signed records for any profile and serves them to
-// anyone; it takes messages for any profile whose profile record here declares an inbox, and serves
-// them only to that profile's main key and read keys; it takes the bytes a folder's keys put, and
-// serves them to anyone. It never reads an offer's or a review's body: the bodies it reads are the
-// hosts and permissions records', and the profile record's inbox and proofs. Given readSender, it
-// reads a sender's records from one of the sender's hosts: its permissions, to take a message a
-// write key signed, and its profile record, for an inbox with an issuer's rule, whose note proofs it
-// checks with verifyNote.
+// has no accounts and asks for no login: a record's signature is its only credential, and a pull's
+// and a blob request's are the main key's of the profile they are for. It is open: it takes signed
+// records for any profile and serves them to anyone; it takes messages for any profile whose
+// profile record here declares an inbox, and serves them only to that profile's main key; it takes
+// the bytes a folder's main key puts, and serves them to anyone. It never reads an offer's or a
+// review's body: the bodies it reads are the hosts record's, and the profile record's inbox and
+// proofs. Given readSender, it reads a sender's hosts and profile records from one of the sender's
+// hosts, for an inbox with an issuer's rule, and checks the profile record's note proofs with
+// verifyNote.
 // It keeps the newest version at each path; versions that stop being newest, and messages, go
-// after `keepDays`. A folder's blobs stay until its keys delete them.
+// after `keepDays`. A folder's blobs stay until its main key deletes them.
 //
 //   POST /v1/records                      NDJSON of canonical records; one NDJSON result each
 //   GET  /v1/records?profile=&after=      NDJSON of stored records in the order taken;
@@ -39,7 +38,7 @@ import { type CheckedMessage, type Inbox, type SignedBlobRequest, type SignedMes
 import { type NoteCheck, noteCheck, proofsOf } from './proofs.ts'
 import { type Checked, MAX_FUTURE_MS, RecordError, type SignedRecord, decodeRecord, encodeRecord, isControlPath } from './record.ts'
 import { type BlobDriver, type Row, Storage } from './storage.ts'
-import { type View, allows, allowsInbox, viewProfile } from './view.ts'
+import { type View, viewProfile } from './view.ts'
 
 export { type BlobDriver, type S3Options, rebuild } from './storage.ts'
 
@@ -66,8 +65,7 @@ const MAX_BLOB_REQUEST_BYTES = 1024
 
 /**
  * A host's own choice for content records: null takes the record, a reason refuses it. It is
- * never asked about a hosts or permissions record, so a person can always move and always remove
- * an access key.
+ * never asked about a hosts record, so a person can always move.
  */
 export type RecordChoice = (record: SignedRecord, stored: { records: number; bytes: number }) => string | null | Promise<string | null>
 /** A host's own choice for messages, from the message and what it holds for the profile it is to. */
@@ -104,10 +102,10 @@ export type HostOptions = {
   maxPageBytes?: number
   /**
    * A profile's records, each checked, as one of its hosts serves them: what readAll gives. Used to
-   * take a message a write key signed, and one to an inbox with an issuer's rule: the sender's
-   * hosts, permissions and profile records come from the host the message names, never from the
-   * message. Without it, the host takes no such message. It is read again for each request; keeping
-   * it longer is the operator's choice, made here.
+   * take a message to an inbox with an issuer's rule: the sender's hosts and profile records come
+   * from the host the message names, never from the message. Without it, the host takes no such
+   * message. It is read again for each request; keeping it longer is the operator's choice, made
+   * here.
    */
   readSender?: (host: string, profile: string) => Promise<Iterable<Checked>>
   /**
@@ -183,10 +181,6 @@ export class Host {
         results.push({ i, ok: false, error: err instanceof RecordError ? err.code : 'invalid', message: (err as Error).message })
       }
     })
-    // Hosts and permissions records first, so access keys' records sent with their permissions in
-    // one request are checked against them; the rest in the order sent.
-    const control = (c: Checked) => Number(isControlPath(c.record.path))
-    decoded.sort((a, b) => control(b.checked) - control(a.checked) || a.i - b.i)
     for (const { i, checked } of decoded) results.push({ i, id: checked.id, ...(await this.acceptOne(checked, now)) })
     return results.sort((a, b) => a.i - b.i)
   }
@@ -194,28 +188,18 @@ export class Host {
   private async acceptOne(c: Checked, now: number): Promise<Omit<Result, 'i' | 'id'>> {
     const { record } = c
     if (this.storage.hasRecord(record.profile, c.id)) return { ok: true, message: 'already here' }
-    // Kept only if it becomes the newest at its path, by the rule every reader follows (view.ts): an
-    // access key's record, only if the permissions record allows it (allows).
+    // Kept only if it becomes the newest at its path, by the rule every reader follows (view.ts).
     const view = viewProfile(record.profile, [...this.stored(record.profile), c], now)
-    if (view.current.get(record.path)?.id !== c.id) {
-      const reason = view.ignored.get(c.id)
-      if (reason === 'owner-wins') return { ok: false, error: 'permission', message: 'the owner wrote at this path' }
-      if (reason === 'not-allowed') return { ok: false, error: 'permission', message: 'the permissions record does not allow this access key here' }
-      return { ok: false, error: 'older', message: 'a newer version is already here' }
-    }
+    if (view.current.get(record.path)?.id !== c.id) return { ok: false, error: 'older', message: 'a newer version is already here' }
     if (this.recordChoice && !isControlPath(record.path)) {
       const refused = await this.recordChoice(record, this.storage.recordTotals(record.profile))
       if (refused) return { ok: false, error: 'refused', message: refused }
     }
     // From here on, no wait: its own choice may have let other requests store records for this
-    // profile, so what is current is worked out again, and an access key's record is checked again
-    // against the permissions record now current, which may have made its key past. What is current
-    // is kept; what stopped being current gets a date, and goes `keepDays` later.
+    // profile, so what is current is worked out again. What is current is kept; what stopped being
+    // current gets a date, and goes `keepDays` later.
     if (this.storage.hasRecord(record.profile, c.id)) return { ok: true, message: 'already here' }
     const settled = viewProfile(record.profile, [...this.stored(record.profile), c], now)
-    if (record.by !== undefined && !allows(settled.access, record)) {
-      return { ok: false, error: 'permission', message: 'the permissions record does not allow this access key here' }
-    }
     this.storage.addRecord(record.profile, c.id, encodeRecord(record), now, new Set([...settled.current.values()].map((s) => s.id)))
     return { ok: true }
   }
@@ -308,37 +292,24 @@ export class Host {
     if (inbox === undefined) inboxes.set(m.to, (inbox = inboxOf(this.view(m.to, now).current.get('profile')?.record.body)))
     if (inbox === null) return refuse('no_inbox', 'the profile record here declares no inbox')
     if (!verifyMessage(c)) return refuse('signature', 'the signature does not verify')
-    // from's own records, read from the host the message names, once a check needs them.
-    const readSenderView = async (): Promise<View | Answer> => {
-      if (!this.readSender) return refuse('rule_unsupported', 'this host does not read senders’ records')
-      const at = `${m.from} ${m.host}`
-      let sender = senders.get(at)
-      if (!sender) {
-        try {
-          senders.set(at, (sender = viewProfile(m.from, await this.readSender(m.host!, m.from), now)))
-        } catch (err) {
-          return refuse('lookup', `could not read the sender’s records, try again: ${(err as Error).message}`)
-        }
-      }
-      if (!sender.hosts.includes(m.host!)) return refuse('permission', 'host is not one of the hosts from’s hosts record names')
-      return sender
-    }
-    if (m.key !== undefined) {
-      // A write key: from's own hosts and permissions records list it for the inbox.
-      const sender = await readSenderView()
-      if (!('access' in sender)) return sender
-      if (!allowsInbox(sender.access, m.key, 'write')) return refuse('permission', 'from’s permissions record does not list key as a write key for the inbox')
-    }
     // An inbox's rules are for others: a message from the profile it is to skips them.
     const rules = m.from === m.to ? undefined : inbox
     if (rules === 'unsupported') return refuse('rule_unsupported', 'this host does not know the inbox’s rule')
     if (rules && rules.senders !== 'anyone') {
-      // An issuer's rule: from's profile record, read from the host the message names, carries a
-      // note proof from that issuer that holds.
-      if (!this.verifyNote) return refuse('rule_unsupported', 'this host checks no note proof')
+      // An issuer's rule: from's profile record, read from the host the message names, which from's
+      // hosts record names, carries a note proof from that issuer that holds.
+      if (!this.readSender || !this.verifyNote) return refuse('rule_unsupported', this.readSender ? 'this host checks no note proof' : 'this host does not read senders’ records')
       if (m.host === undefined) return refuse('sender', 'a message to this inbox names host, one of from’s hosts, where its profile record is read')
-      const sender = await readSenderView()
-      if (!('access' in sender)) return sender
+      const at = `${m.from} ${m.host}`
+      let sender = senders.get(at)
+      if (!sender) {
+        try {
+          senders.set(at, (sender = viewProfile(m.from, await this.readSender(m.host, m.from), now)))
+        } catch (err) {
+          return refuse('lookup', `could not read the sender’s records, try again: ${(err as Error).message}`)
+        }
+      }
+      if (!sender.hosts.includes(m.host)) return refuse('sender', 'host is not one of the hosts from’s hosts record names')
       const issuer = rules.senders.issuer
       const checks = proofsOf(sender.current.get('profile')?.record.body)
         .filter((p) => p.issuer === issuer)
@@ -366,16 +337,11 @@ export class Host {
   }
 
   /**
-   * A pull (wire text): checked at this host's clock; one a read key signed also needs this host's
-   * current permissions record for the profile to list it as a read key for the inbox
-   * [permission]. Then a page of that profile's messages after the cursor, in arrival order, paged
-   * as records are. Throws RecordError.
+   * A pull (wire text), checked at this host's clock, then a page of that profile's messages after
+   * the cursor, in arrival order, paged as records are. Throws RecordError.
    */
   pull(text: string, now = this.now()): { lines: string[]; cursor: number } {
     const request = checkPull(text, now)
-    if (request.key !== undefined && !allowsInbox(this.view(request.profile, now).access, request.key, 'read')) {
-      throw new RecordError('permission', 'the profile’s permissions record here does not list key as a read key for the inbox')
-    }
     return this.page(this.storage.messagesAfter(request.profile, request.after), request.after)
   }
 
@@ -384,35 +350,22 @@ export class Host {
 
   /**
    * A blob request off the wire, for the bytes at `name`: checked at this host's clock
-   * (checkBlobRequest), then the action asked for and the bytes it names [shape]. One a write key
-   * signed also needs this host's current permissions record for the profile to list it with scope
-   * write, whatever its paths [permission]. Throws RecordError.
+   * (checkBlobRequest), then the action asked for and the bytes it names [shape]. Throws
+   * RecordError.
    */
   private checkBlob(text: string, action: 'put' | 'delete', name: string, now: number): SignedBlobRequest {
     if (utf8(text).length > MAX_BLOB_REQUEST_BYTES) throw new RecordError('size', `a blob request is at most ${MAX_BLOB_REQUEST_BYTES} bytes`)
     const request = checkBlobRequest(text, now)
     if (request.action !== action) throw new RecordError('shape', `this is a ${action} request`)
     if (request.sha256 !== name) throw new RecordError('shape', 'the request names other bytes')
-    const refused = this.blobRefusal(request.profile, request.key, now)
-    if (refused) throw new RecordError('permission', refused)
     return request
-  }
-
-  /**
-   * Why a blob request `key` signed is refused now: this host's current permissions record for the
-   * profile does not list it with scope write, whatever its paths. Null for the main key.
-   */
-  private blobRefusal(profile: string, key: string | undefined, now: number): string | null {
-    if (key === undefined || this.view(profile, now).access.some((k) => k.key === key && k.scope === 'write')) return null
-    return 'the profile’s permissions record here does not list key as a write key'
   }
 
   /**
    * Put bytes in a folder: the signed put request (checkBlob) names them by their hash, type and
    * size [shape], and they hash to it [hash]. Bytes the folder holds already are `already here`.
    * Otherwise this host must take their size and type [refused]. Bytes another folder holds are
-   * stored once. A write key is checked again in the step that stores them, right before they
-   * become the folder's [permission].
+   * stored once.
    */
   async putBlob(name: string, type: string, request: string, bytes: Uint8Array): Promise<Answer> {
     const now = this.now()
@@ -425,25 +378,16 @@ export class Host {
     }
     if (put.mimeType !== type || put.size !== bytes.length) return { ok: false, error: 'shape', message: 'the bytes are not the type and size the request names' }
     if (hex.encode(sha256(bytes)) !== name) return { ok: false, error: 'hash', message: 'the bytes do not hash to their name' }
-    const by = put.key ?? null
-    const held = this.storage.blobOf(put.profile, name)
-    // The main key takes over bytes a write key put, so only it deletes them from then on.
-    if (held && (held.by === null || by !== null)) return { ok: true, message: 'already here' }
-    if (!held) {
-      const refused = bytes.length > this.maxBlobBytes ? `at most ${this.maxBlobBytes} bytes` : await this.blobChoice({ sha256: name, type, size: bytes.length, profile: put.profile }, this.storage.blobTotals(put.profile))
-      if (refused) return { ok: false, error: 'refused', message: refused }
-    }
-    // A write key made past while the bytes went up, or while its turn came, is refused here, with no
-    // wait between the check and the commit, as a record's is (acceptOne); bytes it alone brought go.
-    const refused = await this.storage.putBlob(put.profile, name, type, bytes.length, by, bytes, now, () => this.blobRefusal(put.profile, put.key, now))
-    if (refused) return { ok: false, error: 'permission', message: refused }
+    if (this.storage.holdsBlob(put.profile, name)) return { ok: true, message: 'already here' }
+    const refused = bytes.length > this.maxBlobBytes ? `at most ${this.maxBlobBytes} bytes` : await this.blobChoice({ sha256: name, type, size: bytes.length, profile: put.profile }, this.storage.blobTotals(put.profile))
+    if (refused) return { ok: false, error: 'refused', message: refused }
+    await this.storage.putBlob(put.profile, name, type, bytes.length, bytes, now)
     return { ok: true }
   }
 
   /**
-   * Delete bytes from a folder: the signed delete request (checkBlob). A write key, still listed in
-   * the step that deletes them, deletes only bytes it put; the main key deletes any [permission].
-   * Bytes the folder does not hold are `not here`. Once no folder holds them, they leave the store.
+   * Delete bytes from a folder: the signed delete request (checkBlob). Bytes the folder does not
+   * hold are `not here`. Once no folder holds them, they leave the store.
    */
   async deleteBlob(name: string, request: string): Promise<Answer> {
     const now = this.now()
@@ -454,13 +398,7 @@ export class Host {
       if (!(err instanceof RecordError)) throw err
       return { ok: false, error: err.code, message: err.message }
     }
-    // Whether the write key is still listed, and who put the bytes, are read in the same step that
-    // deletes them, one blob operation at a time, so a permissions record or a put that lands while
-    // this request waits its turn is seen.
-    const by = ask.key ?? null
-    const done = await this.storage.deleteBlob(ask.profile, name, (held) => this.blobRefusal(ask.profile, ask.key, now) ?? (by === null || held.by === by ? null : 'a write key deletes only bytes it put'))
-    if (done === 'not here') return { ok: true, message: 'not here' }
-    if (done !== 'deleted') return { ok: false, error: 'permission', message: done.refused }
+    if ((await this.storage.deleteBlob(ask.profile, name)) === 'not here') return { ok: true, message: 'not here' }
     return { ok: true }
   }
 

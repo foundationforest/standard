@@ -22,7 +22,6 @@ import {
   SEED_LENGTH,
   TAG,
   WORD_COUNT,
-  accessKey,
   addressOf,
   bytesMessage,
   exportWords,
@@ -39,10 +38,10 @@ import {
   payKey,
   pointOf,
   profileScalarOf,
-  readKey,
   signBytes,
   scopeOf,
   seedScalar,
+  serviceKey,
   signWithScalar,
   stampOf,
   unpackPoint,
@@ -84,7 +83,7 @@ const big = (p: string[]): Point => [BigInt(p[0]), BigInt(p[1])]
 test('the info strings and the tags are exactly the standard', () => {
   assert.equal(INFO.seed, 'forest/v1/seed')
   assert.equal(INFO.profile('tutoring/seller'), 'forest/v1/profile/tutoring/seller')
-  assert.equal(INFO.read, 'forest/v1/inbox')
+  assert.equal(INFO.inbox, 'forest/v1/inbox')
   assert.equal(INFO.pay('tutoring/seller'), 'forest/v1/pay/solana/tutoring/seller')
   assert.equal(INFO.vault, 'forest/v1/vault')
   assert.equal(INFO.seed, vectors.seedScalar.info)
@@ -98,7 +97,7 @@ test('the info strings and the tags are exactly the standard', () => {
 })
 
 test('HKDF agrees with an independent implementation', async () => {
-  for (const info of [INFO.seed, INFO.profile('tutoring/seller'), INFO.profile(''), INFO.read, INFO.pay('tutoring/seller'), INFO.vault]) {
+  for (const info of [INFO.seed, INFO.profile('tutoring/seller'), INFO.profile(''), INFO.inbox, INFO.pay('tutoring/seller'), INFO.vault]) {
     assert.equal(hex.encode(await hkdf(seed, info)), hex.encode(mix(seed, info)), info)
   }
 })
@@ -312,12 +311,12 @@ test("each profile gives the pinned inbox key, from its secret, never from the m
     const key = await mainKey(seed, expected.label)
     const { privateKey, ...inbox } = expected.inbox
     assert.deepEqual(await inboxKey(key.secret), inbox)
-    assert.equal(hex.encode(await hkdf(key.secret, INFO.read)), privateKey)
+    assert.equal(hex.encode(await hkdf(key.secret, INFO.inbox)), privateKey)
   }
 })
 
 test("the inbox key, recomputed without the library: HKDF twice, ML-KEM-768 with X25519, age's bech32", () => {
-  const privateKey = mix(mix(seed, seller.info), INFO.read)
+  const privateKey = mix(mix(seed, seller.info), INFO.inbox)
   assert.equal(hex.encode(privateKey), seller.inbox.privateKey)
   assert.equal(bech32.encodeFromBytes('AGE-SECRET-KEY-PQ-', privateKey).toUpperCase(), seller.inbox.identity)
   // What others seal to is the hybrid public key the 32 bytes expand to, in bech32 under age1pq, with
@@ -371,7 +370,7 @@ test('the seed gives the pinned vault key, recomputed without the library, and i
     assert.equal('label' in key, false, 'it belongs to no label')
     const { privateKey, ...inbox } = vectors.vault.inbox
     assert.deepEqual(await inboxKey(key.secret), inbox)
-    assert.equal(hex.encode(await hkdf(key.secret, INFO.read)), privateKey)
+    assert.equal(hex.encode(await hkdf(key.secret, INFO.inbox)), privateKey)
   }
   const raw = poseidon2([TAG.vault, S])
   assert.equal(raw.toString(), vectors.vault.raw)
@@ -445,25 +444,18 @@ test('the name is used exactly, and must be text; the seed is 32 bytes', async (
   assert.throws(() => issuerScalarOf(-1n, issuerA.name), /field element/)
 })
 
-// Access keys, and signing bytes
+// Service keys, and signing bytes
 
-test("an access key's 32 bytes are a zk-kit EdDSA-Poseidon private key: the pinned keys, and zk-kit's own", async () => {
-  const v = vectors.accessKeys
-  const w = accessKey(hex.decode(v.write.secret))
-  assert.equal(w.scalar.toString(), v.write.scalar)
-  assert.equal(w.address, v.write.address)
-  assert.deepEqual(w.publicKey, derivePublicKey(hex.decode(v.write.secret)), "zk-kit's public key for the same bytes")
-  const r = await readKey(hex.decode(v.read.secret))
-  assert.equal(r.address, v.read.address)
-  assert.equal(r.identity, v.read.identity)
-  assert.equal(r.sealTo, v.read.sealTo)
-  // The read key's identity is mixed as an inbox key is, from the same 32 bytes: no public number gives it.
-  assert.deepEqual(await inboxKey(hex.decode(v.read.secret)), { identity: v.read.identity, sealTo: v.read.sealTo })
-  assert.equal(hex.encode(mix(hex.decode(v.read.secret), INFO.read)), hex.encode(await hkdf(hex.decode(v.read.secret), INFO.read)))
-  // zk-kit signs with the same bytes; the signature holds under the access key.
+test("a service key's 32 bytes are a zk-kit EdDSA-Poseidon private key: the pinned key, and zk-kit's own", () => {
+  const v = vectors.serviceKey
+  const key = serviceKey(hex.decode(v.secret))
+  assert.equal(key.scalar.toString(), v.scalar)
+  assert.equal(key.address, v.address)
+  assert.deepEqual(key.publicKey, derivePublicKey(hex.decode(v.secret)), "zk-kit's public key for the same bytes")
+  // zk-kit signs with the same bytes; the signature holds under the service key.
   const m = 777n
-  assert.equal(verifyWithPublicKey(w.address, m, zkSign(hex.decode(v.write.secret), m)), true)
-  assert.throws(() => accessKey(new Uint8Array(31)), /32 bytes/)
+  assert.equal(verifyWithPublicKey(key.address, m, zkSign(hex.decode(v.secret), m)), true)
+  assert.throws(() => serviceKey(new Uint8Array(31)), /32 bytes/)
 })
 
 test('bytes are signed as SHA-256 of them, shifted right one byte', () => {

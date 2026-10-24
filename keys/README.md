@@ -194,41 +194,55 @@ finds the vault with the seed and one host's address.
 - Its address ties to no profile: one profile's keys say nothing about the vault's, and the vault's
   say nothing about any profile's.
 
-### Access keys
+### Service keys
 
-A person hands out access keys, never a main key. An access key is 32 random bytes the owner's
-app makes, not from the seed, and hands to an app, a server or an AI so it can act for one
-profile.
+A service key is the signing key of an index or an issuer: 32 random bytes the service makes for
+itself, from no seed. No person's key is ever one.
 
 - Its scalar is the 32 bytes made into a number by the seed scalar's steps 1 to 3 (zk-kit's
-  `deriveSecretScalar`). It signs as a main key does, and its address is spelled as one is.
-- Each has one scope, the one kind of thing it may do:
-  - **write key:** signs records into the profile's folder, at the paths it is allowed (a path is
-    where a record sits in the folder, such as `offer/maths`); the profile's messages when its
-    paths cover `inbox`; and requests to put and delete the folder's blobs, whatever its paths;
-  - **read key:** signs pulls of the profile's inbox when its paths cover `inbox`, and opens what
-    is sealed to it. Its 32 bytes also give an age identity, mixed by `forest/v1/inbox` as an
-    inbox key is from a profile's secret; others seal to its `sealTo`.
+  `deriveSecretScalar`), as zk-kit makes an EdDSA-Poseidon key of 32 private bytes. It signs as a
+  main key does, and its address is spelled as one is.
+- An index signs its roots with one ([proofs/reputation](../proofs/reputation/README.md)), and an
+  issuer's note key is made the same way ([proofs/note](../proofs/note/README.md)).
 
-The profile's permissions record, a record in its folder that only the main key writes, lists
-which access keys may act, a read key with its `sealTo`
-([records](../records/README.md#permissions)).
+### Signers
+
+A signer is a device the person owns that holds their seed, such as their phone or their laptop.
+The seed lives only on signers, and no key is ever handed out: not a main key, not an inbox key,
+and no key made for someone else.
+
+Everyone else asks a signer:
+
+- an AI app, through its connection: a relay carries what the AI asks to the signer, and the answer
+  back. Anyone can run one; the main way is the connector, which AI apps call from their cloud.
+- a person or a business, by a message to the person's inbox, signed by the main key of a profile
+  of their own ([records](../records/README.md#inbox)).
+
+The signer decides by the person's permissions, a list kept in their vault
+([records](../records/README.md#the-vault)), and asks the person about what no permission covers.
+Whatever it does, it signs with the profile's main key, so a host or a reader checks one key per
+profile.
 
 ### What an app that holds keys should know
 
 The person decides what to do with their keys, and may expose or link them if they choose. This
-is what an app should know, and what ours does:
+is what an app that holds the seed, a signer, should know, and what ours does:
 
-1. The seed stays on the device behind its unlock. The main way, and the one the Forest app uses,
-   is a passkey, the device's own unlock, so there is no password to keep; an OS keychain or a
-   hardware key are others. The recipe is the same whichever is used.
-2. The app asks for the person's device unlock whenever it uses the seed: to sign with a main key
-   or the vault key, or to make a proof. Access keys act within their permissions without it.
-3. Nothing leaves the device but access keys and signatures.
-4. Each app, server or AI the person lets act for them gets its own access key for each folder.
-5. Proofs are made in the app, never delegated.
-6. The app works with any host, and its host with any app.
-7. A server that acts for you holds access keys with write or read scope.
+1. The seed stays on the person's own devices, behind each one's unlock. The main way, and the one
+   the Forest app uses, is a passkey, the device's own unlock, so there is no password to keep; an
+   OS keychain or a hardware key are others. The recipe is the same whichever is used.
+2. The signer asks for the person's device unlock whenever the person acts with the seed: to sign
+   with a main key or the vault key, or to make a proof. What others ask, it does only within the
+   person's permissions, and it asks the person about the rest.
+3. Nothing leaves a signer but signatures and proofs: no key is handed to an app, a server, an AI
+   or another person.
+4. An AI app asks through its connection, and a person or a business by a message signed by its
+   own profile's main key; the signer acts on either only by the person's permissions.
+5. Neither the AI app nor the connector ever receives the person's own profiles' addresses, keys
+   or folders (hosts keep folders and indexes read addresses, by design). An AI asks in words; the
+   signer picks the profile, signs and publishes straight to the host; answers carry no addresses.
+6. Proofs are made on the signer, never delegated.
+7. The app works with any host, and its host with any app.
 8. The app that holds the seed is open source.
 9. The app keeps a copy of every record it signs; a host may drop one, and the copy puts it back.
 10. The app keeps the issuer's note as safely as a key, in the vault.
@@ -250,7 +264,7 @@ mixes from the seed scalar is not.
 | `issuerSecret(seed, name)` | The issuer's `name`, its `nameHash`, the person's `scalar` for it, and the `noteNumber` |
 | `issuerScalarOf(seedScalar, name)`, `stampOf(issuerScalar, label)` | The issuer secret from the seed scalar, and a stamp |
 | `vaultKey(seed)`, `vaultScalarOf(seedScalar)` | The vault key: `scalar`, `publicKey`, `address`, `secret`; and its scalar |
-| `accessKey(secret)`, `readKey(secret)` | An access key from its 32 random bytes: `secret`, `scalar`, `publicKey`, `address`; a read key adds age's `identity` and `sealTo` |
+| `serviceKey(secret)` | A service key from its 32 random bytes: `secret`, `scalar`, `publicKey`, `address` |
 | `signWithScalar(scalar, message)`, `verifyWithPublicKey(key or address, message, signature)` | A signature `{ R8, S }` on a field element, and its check |
 | `signBytes(scalar, bytes)`, `verifyBytes(key or address, bytes, signature)`, `bytesMessage(bytes)` | A signature over bytes, its check, and the field element it signs |
 | `packSignature(signature)`, `unpackSignature(bytes)` | A signature's 64 bytes, and the signature back, or null |
@@ -270,18 +284,18 @@ Node 22.18 or later runs the TypeScript directly.
 
 ### Test vectors
 
-`test/vectors.json` pins, for the seed `00 01 … 1f`: its words; its seed scalar; the three
-tags; the main keys for `tutoring/seller` and `tutoring/buyer`, each with its secret and inbox key,
-and their payment keys; for two issuers, `issuer-a.example` and `issuer-b.example`, the name hash,
-the person's secret, the note number and a stamp for each label; the vault key, with its secret and
-inbox key; one signature by the `tutoring/seller` main key; and a write key and a read key, from
-32 bytes of `0x2a` and of `0x2b`, the read key with its identity and `sealTo`. `npm test` checks
-each value and recomputes it without the library: HKDF and keccak from `@noble/hashes`, the seed
-scalar step by step without zk-kit, Baby Jubjub's points and signatures from zk-kit
-(`@zk-kit/baby-jubjub`, `@zk-kit/eddsa-poseidon`), the address packed by hand, the signature's
-equation, ed25519 from `@noble/curves`, the hybrid key others seal to from `@noble/post-quantum`,
-age's bech32 by hand, and an envelope sealed and opened through age. The note proof's tests check
-the circuit derives the same main key and stamp ([proofs/note](../proofs/note/README.md)).
+`test/vectors.json` pins, for the seed `00 01 … 1f`: its words; its seed scalar; the three tags; the
+main keys for `tutoring/seller` and `tutoring/buyer`, each with its secret and inbox key, and their
+payment keys; for two issuers, `issuer-a.example` and `issuer-b.example`, the name hash, the
+person's secret, the note number and a stamp for each label; the vault key, with its secret and
+inbox key; one signature by the `tutoring/seller` main key; and a service key, from 32 bytes of
+`0x2a`. `npm test` checks each value and recomputes it without the library: HKDF and keccak from
+`@noble/hashes`, the seed scalar step by step without zk-kit, Baby Jubjub's points and signatures
+from zk-kit (`@zk-kit/baby-jubjub`, `@zk-kit/eddsa-poseidon`), the address packed by hand, the
+signature's equation, ed25519 from `@noble/curves`, the hybrid key others seal to from
+`@noble/post-quantum`, age's bech32 by hand, and an envelope sealed and opened through age. The note
+proof's tests check the circuit derives the same main key and stamp
+([proofs/note](../proofs/note/README.md)).
 
 ## Promises
 
@@ -319,8 +333,7 @@ the circuit derives the same main key and stamp ([proofs/note](../proofs/note/RE
 ## Who decides what
 
 - **The standard:** the seed's 32 bytes, the recipe, its info strings and its tags.
-- **An app, with the person:** how it makes, keeps and unlocks the seed; backups; how a read key
-  reaches its reader.
+- **An app, with the person:** how it makes, keeps and unlocks the seed, and backups.
 - **A service:** nothing. No service holds a main key.
 
 ## FAQ

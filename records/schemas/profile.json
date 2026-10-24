@@ -42,7 +42,7 @@
   "$defs": {
     "inbox": {
       "type": "object",
-      "description": "Optional. The profile's inbox: who may deliver a message to it on its hosts. Senders seal each message to inboxKey and to every reader, so a profile with an inbox also gives inboxKey. Without this field there is no inbox, and hosts refuse deliveries. A host refuses deliveries to an inbox it cannot read: a field, a rule or a value it does not know.",
+      "description": "Optional. The profile's inbox: who may deliver a message to it on its hosts. Senders seal each message to inboxKey, so a profile with an inbox also gives inboxKey. Without this field there is no inbox, and hosts refuse deliveries. A host refuses deliveries to an inbox it cannot read: a field, a rule or a value it does not know.",
       "required": ["senders"],
       "additionalProperties": false,
       "properties": {
@@ -76,14 +76,6 @@
           "type": "integer",
           "description": "Optional. The largest message it takes, as canonical text in bytes. A host also takes messages only up to its own size.",
           "minimum": 0
-        },
-        "readers": {
-          "type": "array",
-          "description": "Optional. What read keys are sealed to (their sealTo). A sender seals every message to inboxKey and to each of these, in one envelope, so a reader listed here can act on the inbox while the person is away. Each adds about 2 KB to every message.",
-          "items": {
-            "type": "string",
-            "pattern": "^age1pq1[02-9ac-hj-np-z]{1952}$"
-          }
         }
       }
     },

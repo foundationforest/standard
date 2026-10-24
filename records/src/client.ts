@@ -213,10 +213,9 @@ export type MessagePage = { messages: CheckedMessage[]; cursor: number; refused:
 
 /**
  * One page of a profile's inbox on one host. `request` is pullRequest(owner, after, now): the
- * profile's main key, or one of its read keys, signs each pull. Each message is checked, and one
- * not to that profile, or longer than `maxBytes` (MAX_LINE_READ when omitted), is refused. It throws
- * a RecordError with the host's code (stale, signature, permission, ...) when the host refuses the
- * pull, and on a page not read within `timeout` ms. `fetch` and `redirect` are as for a read.
+ * profile's main key signs each pull. Each message is checked, and one not to that profile, or
+ * longer than `maxBytes` (MAX_LINE_READ when omitted), is refused. It throws a RecordError with the
+ * host's code (stale, signature, ...) when the host refuses the pull, and on a page not read within `timeout` ms. `fetch` and `redirect` are as for a read.
  */
 export async function pull(host: string, request: SignedPull, options: { maxBytes?: number; timeout?: number } & Reach = {}): Promise<MessagePage> {
   const res = await (options.fetch ?? fetch)(`${host}/v1/inbox/pull`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: canonical(request), signal: AbortSignal.timeout(options.timeout ?? READ_TIMEOUT_MS), ...(options.redirect && { redirect: options.redirect }) })

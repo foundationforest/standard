@@ -1,10 +1,10 @@
 // A record: one signed version of one path in one profile's folder.
 //
-//   { v: 1, profile, path, time, body | null, by?, sig }
+//   { v: 1, profile, path, time, body | null, sig }
 //
 // `sig` is EdDSA-Poseidon on Baby Jubjub, by keys/'s signBytes, over the signed bytes
-// 0xff || "forest/v1/record\n" || JCS(the rest): the main key's, or the access key's named in
-// `by`. It signs SHA-256 of those bytes, shifted right one byte, as a number, and is written as 64
+// 0xff || "forest/v1/record\n" || JCS(the rest): the profile's main key's, and no other key's. It
+// signs SHA-256 of those bytes, shifted right one byte, as a number, and is written as 64
 // bytes, R8 packed then S, in base64url. A message's and a pull's signed bytes start with their own
 // text, so no signature is ever two of them.
 
@@ -27,8 +27,6 @@ export type UnsignedRecord = {
   path: string
   time: number
   body: Body | null
-  /** Present only when an access key signed: its address. */
-  by?: string
 }
 export type SignedRecord = UnsignedRecord & { sig: string }
 /** A record that passed every check, with its id. */
@@ -46,27 +44,20 @@ function fail(code: string, message: string): never {
   throw new RecordError(code, message)
 }
 
-// Paths: 1 to 4 segments of [a-z0-9][a-z0-9._-]{0,63}. `hosts` and `permissions` are the control
-// paths only the owner writes. Everything else is content; indexes read profile, offer/<id> and
-// review/<id>.
+// Paths: 1 to 4 segments of [a-z0-9][a-z0-9._-]{0,63}. `hosts` is the control path, whose body every
+// host reads. Everything else is content; indexes read profile, offer/<id> and review/<id>.
 const SEGMENT = '[a-z0-9][a-z0-9._-]{0,63}'
 export const PATH = new RegExp(`^${SEGMENT}(/${SEGMENT}){0,3}$`)
 export const MAX_PATH = 256
 
-/** A path whose first segment is a control record's: only `hosts` and `permissions` themselves are valid. */
+/** A path whose first segment is the control record's: only `hosts` itself is valid. */
 export function isControlPath(path: string): boolean {
-  const first = path.split('/')[0]
-  return first === 'hosts' || first === 'permissions'
+  return path.split('/')[0] === 'hosts'
 }
 
 export function checkPath(path: unknown): asserts path is string {
   if (typeof path !== 'string' || path.length > MAX_PATH || !PATH.test(path)) fail('path', 'a path is segments of [a-z0-9][a-z0-9._-]')
-  if (isControlPath(path) && path.includes('/')) fail('path', 'hosts and permissions are single paths')
-}
-
-/** Does a path prefix cover a path? Segment by segment: `offer` covers `offer/x`, not `offerx`. */
-export function pathCovers(prefix: string, path: string): boolean {
-  return path === prefix || path.startsWith(prefix + '/')
+  if (isControlPath(path) && path.includes('/')) fail('path', 'hosts is a single path')
 }
 
 /** A private body: `{ private: <age file, base64url> }` and nothing else (private.ts opens it). */
@@ -74,7 +65,7 @@ export function isPrivate(body: Body | null): body is { private: string } {
   return body !== null && typeof body.private === 'string' && Object.keys(body).length === 1
 }
 
-const FIELDS = new Set(['v', 'profile', 'path', 'time', 'body', 'by', 'sig'])
+const FIELDS = new Set(['v', 'profile', 'path', 'time', 'body', 'sig'])
 const SIG = /^[A-Za-z0-9_-]{86}$/
 
 /** Everything about a record but its signature. Throws RecordError. */
@@ -94,15 +85,10 @@ export function checkShape(value: unknown, signed = true): asserts value is Sign
       fail('body', (err as Error).message)
     }
   }
-  if ('by' in r) {
-    if (!publicKeyFromAddress(r.by)) fail('key', 'by is not a usable address')
-    if (r.by === r.profile) fail('shape', 'the owner signs without by')
-    if (isControlPath(r.path as string)) fail('control', 'only the owner writes hosts and permissions')
-  }
   if (signed) {
     if (typeof r.sig !== 'string' || !SIG.test(r.sig)) fail('shape', 'sig is 64 bytes in base64url')
   } else if ('sig' in r) fail('shape', 'an unsigned record carries no sig')
-  if (isControlPath(r.path as string) && r.body !== null) checkControlBody(r.path as string, r.body as Body)
+  if (r.path === 'hosts' && r.body !== null) checkHostsBody(r.body as Body)
 }
 
 export function unsignedOf(record: SignedRecord): UnsignedRecord {
@@ -121,7 +107,7 @@ export function recordId(unsigned: UnsignedRecord): string {
 
 export function signRecord(unsigned: UnsignedRecord, signer: Key): SignedRecord {
   checkShape(unsigned, false)
-  return { ...unsigned, sig: signAs(signer, unsigned.by ?? unsigned.profile, signingInput(unsigned)) }
+  return { ...unsigned, sig: signAs(signer, unsigned.profile, signingInput(unsigned)) }
 }
 
 /** Sign `bytes` with `signer`, which must be the key `address` names. The signature in base64url. */
@@ -147,7 +133,7 @@ export function checkRecord(value: unknown): Checked {
   checkShape(value)
   const record = value
   const unsigned = unsignedOf(record)
-  if (!verifySignature(b64u.decode(record.sig), signingInput(unsigned), record.by ?? record.profile)) fail('signature', 'the signature does not verify')
+  if (!verifySignature(b64u.decode(record.sig), signingInput(unsigned), record.profile)) fail('signature', 'the signature does not verify')
   return { record, id: recordId(unsigned) }
 }
 
@@ -168,100 +154,25 @@ export function decodeRecord(text: string): Checked {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Control records. Only the owner writes these. A field a reader does not know refuses the whole
-// record, so a later limit can never be silently ignored.
+// The hosts record, the control record. A field a reader does not know refuses the whole record,
+// so a later limit can never be silently ignored.
 
 export type HostsBody = {
   /** Where this profile's records live, as https origins (http only on loopback, for tests). */
   urls: string[]
 }
 
-/**
- * What an access key is for. write: signing records where its paths allow, and messages for the
- * main key when they cover `inbox`. read: pulling the inbox when its paths cover `inbox`, and
- * opening what is sealed to it.
- */
-export type Scope = 'write' | 'read'
-export const SCOPES: readonly Scope[] = ['write', 'read']
-
-/**
- * A listed key: one that acts, with its `scope`; or a past key, a write key the owner removed,
- * with `was: "write"` in place of `scope`, and `until`. A past key can no longer act: nothing that
- * checks a scope finds one. What a past write key wrote dated before its `until` still counts, at
- * its paths.
- */
-export type AccessKey = {
-  /** Its signing key's address. */
-  key: string
-  /** What others seal to for a read key, its age post-quantum hybrid key (age1pq1…): on a read key, and only there. */
-  sealTo?: string
-  /** What it may do; on a key that acts, and only there. */
-  scope?: Scope
-  /** The scope a past key had; on a past key, and only there. */
-  was?: 'write'
-  /**
-   * The time of the permissions record that made it past, kept as it is in every later one: its
-   * records count only when dated before it. On a past key, and only there.
-   */
-  until?: number
-  /**
-   * Path prefixes it works under, segment by segment: where a write key writes, and which private
-   * records the owner's devices seal to a read key; `inbox` among them lets a write key send
-   * messages and a read key pull. Without it, every content path but those `profile` covers, and
-   * the inbox.
-   */
-  paths?: string[]
-}
-export type PermissionsBody = {
-  access: AccessKey[]
-}
-
 export const MAX_HOSTS = 8
-export const MAX_ACCESS_PATHS = 16
-/** What an envelope is sealed to: an age post-quantum hybrid key (mlkem768x25519), an inbox key's or a read key's public half. */
+/** What an envelope is sealed to: an age post-quantum hybrid key (mlkem768x25519), an inbox key's public half. */
 export const SEAL_TO = /^age1pq1[02-9ac-hj-np-z]{1952}$/
 
-const only = (body: object, fields: string[], code: string, what: string) => {
-  for (const key of Object.keys(body)) if (!fields.includes(key)) fail(code, `unknown ${what} field ${key}`)
-}
-
-/** An access key's paths: at most MAX_ACCESS_PATHS content path prefixes. Throws RecordError with `code`. */
-export function checkAccessPaths(paths: unknown, code: string): asserts paths is string[] {
-  if (!Array.isArray(paths) || paths.length > MAX_ACCESS_PATHS) fail(code, `paths is at most ${MAX_ACCESS_PATHS} prefixes`)
-  for (const p of paths as unknown[]) if (typeof p !== 'string' || !PATH.test(p) || isControlPath(p)) fail(code, 'an access path is a content path prefix')
-}
-
-export function checkControlBody(path: string, body: Body): void {
-  if (path === 'hosts') {
-    only(body, ['urls'], 'hosts', 'hosts')
-    const urls = body.urls
-    if (!Array.isArray(urls) || urls.length < 1 || urls.length > MAX_HOSTS) fail('hosts', `urls is 1 to ${MAX_HOSTS} origins`)
-    for (const url of urls as unknown[]) if (typeof url !== 'string' || normalizeOrigin(url) !== url) fail('hosts', 'each url is an origin, https (http only on loopback)')
-    if (new Set(urls as string[]).size !== (urls as string[]).length) fail('hosts', 'urls repeat')
-    return
-  }
-  only(body, ['access'], 'permissions', 'permissions')
-  const access = body.access
-  if (!Array.isArray(access)) fail('permissions', 'access is a list of keys')
-  const listed = new Set<unknown>()
-  for (const k of access as unknown[]) {
-    if (k === null || typeof k !== 'object' || Array.isArray(k)) fail('permissions', 'an access entry is an object')
-    only(k, ['key', 'sealTo', 'scope', 'was', 'until', 'paths'], 'permissions', 'access')
-    const { key, sealTo, scope, was, until, paths } = k as { [key: string]: unknown }
-    if ('was' in (k as object) ? 'scope' in (k as object) || was !== 'write' : !SCOPES.includes(scope as Scope)) {
-      fail('permissions', `scope is one of ${SCOPES.join(', ')}; a past key has was, write, in its place`)
-    }
-    if ('was' in (k as object) ? !Number.isSafeInteger(until) : 'until' in (k as object)) fail('permissions', 'a past key gives until, the time it was removed, and only a past key does')
-    if (!publicKeyFromAddress(key)) fail('permissions', 'an access key is a usable address')
-    if (scope === 'read') {
-      if (typeof sealTo !== 'string' || !SEAL_TO.test(sealTo)) fail('permissions', 'a read key gives sealTo, an age post-quantum hybrid key, age1pq1…')
-    } else if ('sealTo' in (k as object)) fail('permissions', 'only a read key gives sealTo')
-    if ('paths' in (k as object)) checkAccessPaths(paths, 'permissions')
-    for (const half of scope === 'read' ? [key, sealTo] : [key]) {
-      if (listed.has(half)) fail('permissions', 'a key is listed twice')
-      listed.add(half)
-    }
-  }
+/** A hosts record's body: 1 to MAX_HOSTS distinct origins, and no other field. Throws RecordError with code `hosts`. */
+export function checkHostsBody(body: Body): void {
+  for (const key of Object.keys(body)) if (key !== 'urls') fail('hosts', `unknown hosts field ${key}`)
+  const urls = body.urls
+  if (!Array.isArray(urls) || urls.length < 1 || urls.length > MAX_HOSTS) fail('hosts', `urls is 1 to ${MAX_HOSTS} origins`)
+  for (const url of urls as unknown[]) if (typeof url !== 'string' || normalizeOrigin(url) !== url) fail('hosts', 'each url is an origin, https (http only on loopback)')
+  if (new Set(urls as string[]).size !== (urls as string[]).length) fail('hosts', 'urls repeat')
 }
 
 /** The origin form hosts are named by, or null. https only, except http on loopback for tests. */

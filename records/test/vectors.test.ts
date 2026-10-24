@@ -7,7 +7,7 @@ import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
-import { derivePublicKey, packPublicKey, unpackPublicKey, unpackSignature, verifySignature } from '@zk-kit/eddsa-poseidon'
+import { unpackPublicKey, unpackSignature, verifySignature } from '@zk-kit/eddsa-poseidon'
 import { b64u, base58, hex } from '../src/bytes.ts'
 import { checkBlobRequest, checkPull, decodeMessage } from '../src/message.ts'
 import { openMessage } from '../src/private.ts'
@@ -16,7 +16,7 @@ import { KEYS } from './fixtures.ts'
 import { vectors } from './vectors.ts'
 
 const pinned = JSON.parse(readFileSync(new URL('./vectors.json', import.meta.url), 'utf8'))
-const RECORDS = ['hosts', 'profileRecord', 'offer', 'permissions', 'written', 'deleted', 'past'] as const
+const RECORDS = ['hosts', 'profileRecord', 'offer', 'deleted'] as const
 
 /** A packed point's 32 bytes, little-endian, as the number zk-kit takes. */
 const littleEndian = (bytes: Uint8Array) => bytes.reduceRight((n, b) => (n << 8n) | BigInt(b), 0n)
@@ -33,31 +33,9 @@ test('the vectors are what this implementation computes', async () => {
   assert.deepEqual(await vectors(), pinned)
 })
 
-test("the keys are keys/'s pinned ones; the write key and the read key, recomputed with zk-kit from their 32 bytes", () => {
+test("the profile is keys/'s pinned one, and its profile record gives its pinned inbox key", () => {
   assert.equal(pinned.profile, KEYS.mainKeys[0].address)
   assert.equal(decodeRecord(pinned.profileRecord.wire).record.body!.inboxKey, KEYS.mainKeys[0].inbox.sealTo)
-  const address = (byte: number) => {
-    let n = packPublicKey(derivePublicKey(new Uint8Array(32).fill(byte)))
-    const bytes = new Uint8Array(32)
-    for (let i = 0; i < 32; i++, n >>= 8n) bytes[i] = Number(n & 0xffn)
-    return base58.encode(bytes)
-  }
-  assert.deepEqual([address(0x2a), address(0x2b)], [pinned.writeKey, pinned.readKey])
-  assert.deepEqual([pinned.writeKey, pinned.readKey], [KEYS.accessKeys.write.address, KEYS.accessKeys.read.address])
-  assert.deepEqual(decodeRecord(pinned.permissions.wire).record.body, {
-    access: [
-      { key: pinned.writeKey, scope: 'write', paths: ['offer', 'inbox'] },
-      { key: pinned.readKey, sealTo: KEYS.accessKeys.read.sealTo, scope: 'read', paths: ['inbox'] },
-    ],
-  })
-})
-
-test('the past permissions record keeps the write key, now past until its own time, and the read key as it was', () => {
-  const past = decodeRecord(pinned.past.wire).record
-  assert.deepEqual(past.body!.access, [
-    { key: pinned.writeKey, was: 'write', until: past.time, paths: ['offer', 'inbox'] },
-    { key: pinned.readKey, sealTo: KEYS.accessKeys.read.sealTo, scope: 'read', paths: ['inbox'] },
-  ])
 })
 
 test('each record checks with a second EdDSA-Poseidon and a second SHA-256', () => {
@@ -68,9 +46,8 @@ test('each record checks with a second EdDSA-Poseidon and a second SHA-256', () 
     const input = hex.decode(v.signingInputHex)
     startsWith(input, 'forest/v1/record\n')
     assert.equal(createHash('sha256').update(input).digest('hex'), v.id)
-    assert.ok(zkVerifies(input, record.by ?? record.profile, record.sig), name)
+    assert.ok(zkVerifies(input, record.profile, record.sig), name)
   }
-  assert.equal(decodeRecord(pinned.written.wire).record.by, pinned.writeKey, 'the write key signed what it wrote')
 })
 
 test("the message checks with a second EdDSA-Poseidon and a second SHA-256, is from keys/'s tutoring/buyer, and opens with tutoring/seller's pinned inbox key", async () => {
@@ -85,43 +62,25 @@ test("the message checks with a second EdDSA-Poseidon and a second SHA-256, is f
   assert.deepEqual((await openMessage(v.wire, KEYS.mainKeys[0].inbox.identity)).body, { text: 'Is Tuesday at six free?' })
 })
 
-test("the write key's message checks with a second EdDSA-Poseidon by the write key, is for keys/'s tutoring/seller on host-a, and opens with tutoring/buyer's pinned inbox key", async () => {
-  const v = pinned.keyMessage as { wire: string; signingInputHex: string; id: string }
-  const { message, id } = decodeMessage(v.wire)
-  assert.equal(id, v.id)
-  const input = hex.decode(v.signingInputHex)
-  startsWith(input, 'forest/v1/message\n')
-  assert.equal(createHash('sha256').update(input).digest('hex'), v.id)
-  assert.deepEqual([message.from, message.key, message.host, message.to], [KEYS.mainKeys[0].address, pinned.writeKey, 'https://host-a.example', KEYS.mainKeys[1].address])
-  assert.ok(zkVerifies(input, message.key!, message.sig))
-  assert.ok(!zkVerifies(input, message.from, message.sig), 'the main key did not sign it')
-  const opened = await openMessage(v.wire, KEYS.mainKeys[1].inbox.identity)
-  assert.deepEqual([opened.body, opened.key], [{ text: 'Tuesday at six, yes.' }, pinned.writeKey])
-})
-
-test('each blob request checks with a second SHA-256 and EdDSA-Poseidon: a put by the main key, a delete by its write key', () => {
+test('each blob request checks with a second SHA-256 and EdDSA-Poseidon: a put and a delete, each by the main key', () => {
   const letters = createHash('sha256').update('abcdefghijklmnopqrstuvwxyz').digest('hex')
-  for (const [name, signer, action] of [['blobPut', pinned.profile, 'put'], ['blobDelete', pinned.writeKey, 'delete']] as const) {
+  for (const [name, action] of [['blobPut', 'put'], ['blobDelete', 'delete']] as const) {
     const v = pinned[name] as { wire: string; signingInputHex: string }
     const request = checkBlobRequest(v.wire, JSON.parse(v.wire).time)
     const input = hex.decode(v.signingInputHex)
     startsWith(input, 'forest/v1/blob\n')
     assert.deepEqual([request.action, request.profile, request.sha256], [action, KEYS.mainKeys[0].address, letters])
-    assert.equal(request.key ?? request.profile, signer)
-    assert.ok(zkVerifies(input, signer, request.sig), name)
+    assert.ok(zkVerifies(input, pinned.profile, request.sig), name)
   }
   assert.deepEqual(JSON.parse(pinned.blobPut.wire).mimeType, 'text/plain')
   assert.deepEqual(JSON.parse(pinned.blobPut.wire).size, 26)
 })
 
-test('each pull checks with a second EdDSA-Poseidon: by the profile it pulls, and by its read key', () => {
-  for (const [name, signer] of [['pull', pinned.profile], ['keyPull', pinned.readKey]] as const) {
-    const v = pinned[name] as { wire: string; signingInputHex: string }
-    const pull = checkPull(v.wire, JSON.parse(v.wire).time)
-    const input = hex.decode(v.signingInputHex)
-    startsWith(input, 'forest/v1/pull\n')
-    assert.equal(pull.profile, KEYS.mainKeys[0].address)
-    assert.equal(pull.key ?? pull.profile, signer)
-    assert.ok(zkVerifies(input, signer, pull.sig), name)
-  }
+test('the pull checks with a second EdDSA-Poseidon, by the profile it pulls', () => {
+  const v = pinned.pull as { wire: string; signingInputHex: string }
+  const pull = checkPull(v.wire, JSON.parse(v.wire).time)
+  const input = hex.decode(v.signingInputHex)
+  startsWith(input, 'forest/v1/pull\n')
+  assert.equal(pull.profile, KEYS.mainKeys[0].address)
+  assert.ok(zkVerifies(input, pull.profile, pull.sig))
 })

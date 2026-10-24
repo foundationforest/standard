@@ -7,7 +7,7 @@ The standard is the only part of Forest everyone shares: the rules and math ever
 - An **issuer** signs a note to a person's seed.
 - A **host** stores a profile's folder of signed records and its sealed inbox.
 - An **index** reads hosts and payment receipts, checks proofs, and scores profiles and offers.
-- An **app** (or an AI acting through scoped access keys) creates records and reads the network for the person.
+- An **app** creates records and reads the network for the person. One that holds the person's seed, on a device they own, is a **signer**; an AI or another person acts for them by asking a signer, never with a key of their own.
 
 One seed gives one profile per label; an issuer decides how many notes each human gets; how many issuers count is each index's.
 
@@ -30,7 +30,7 @@ A **label** is any text; markets set the convention, `<market>/<role>`, such as 
 |---|---|---|---|
 | [`keys/`](keys/README.md) | The recipe that mixes every main key, payment address, inbox key and issuer secret from the person's seed | a library | on the person's device |
 | [`proofs/`](proofs/README.md) | The zero-knowledge proofs a device makes and anyone can check: [`note/`](proofs/note/README.md) (proving a profile's key and stamp come from a seed an issuer signed a note to) and [`reputation/`](proofs/reputation/README.md) (proving a score across hidden profiles from an index's tree) | circuits and client libraries | made on the device; checked by anyone in milliseconds |
-| [`records/`](records/README.md) | How a profile speaks: versioned folder entries (`profile`, `hosts`, `permissions`, the market's content paths, and private records), scoped `write` and `read` access keys for AI and apps, the sealed `inbox`, the `vault`, the blobs a folder holds (photos and videos its keys put and delete), and the reference host | a library and reference host | wherever an app, AI, host or index runs |
+| [`records/`](records/README.md) | How a profile speaks: versioned folder entries (`profile`, `hosts`, the market's content paths, and private records), all signed by its main key, the sealed `inbox`, the `vault`, the blobs a folder holds (photos and videos its main key puts and deletes), and the reference host | a library and reference host | wherever an app, AI, host or index runs |
 | [`escrows/`](escrows/README.md) | On-chain lockboxes that release money when a side gives it to the other, both sides agree, a chosen arbiter decides, or the schedule set at the start says so (one directory per chain; only [`solana/`](escrows/solana/README.md) has one) | an on-chain program and client library | on chain when a deal uses escrow |
 
 ## Who decides what
@@ -39,13 +39,13 @@ A **label** is any text; markets set the convention, `<market>/<role>`, such as 
 - **A market** (in [markets](https://github.com/foundationforest/markets)) defines its roles, its content paths and their bodies, and may suggest an offer field that carries an escrow's terms.
 - **A service** (issuer, host, index, fee payer) sets its own prices and rules. An index decides which issuers it trusts, how many count, and how it weights evidence.
 - **An app** chooses how it holds the seed and which services it uses by default, together with the person.
-- **The person** decides which markets to enter, which AI or app gets scoped access keys, and when to carry a score across profiles.
+- **The person** decides which markets to enter, which AI, app or person may ask their signers to act for them, and for what, and when to carry a score across profiles.
 
 ## For builders
 
 - **Verify a profile.** Read the profile's record at `profile` from its folder on any host. It holds the profile's `market`, `role`, `inboxKey` (what others seal to), seed-derived `pay` address, and its `proofs` array. The array takes any circuit's proofs, and a reader skips the ones it does not know: `note` and `reputation` are ours, and anyone can add one. Verify each `note` proof against the issuer's key to see which issuers signed a note to the seed behind the profile.
 - **Find a profile's folder.** A profile's address is the public half of its main key (`Baby Jubjub`). Ask any host you know for its records, and check its signed `hosts` record to see every host that mirrors the folder.
-- **Delegate to an AI.** The person's app writes scoped `write` and `read` keys into the folder's `permissions` record and hands the private halves to the AI. With a `write` key, the AI signs offers, reviews and outgoing messages without ever touching the person's seed or main key. With a `read` key, the AI pulls and opens the paths it was granted (such as `inbox`).
+- **Act for a person.** Ask one of their signers, the devices that hold their seed: an AI app through its connection, a person or a business by a message signed by its own profile's main key. The signer acts by the person's permissions and signs with the profile's main key; no key is ever handed out (`keys/`, Signers).
 - **Write offers and reviews.** Their paths and bodies are defined by the market the profile lives in ([markets](https://github.com/foundationforest/markets)); the standard names none of them. A photo or a video is a blob the folder holds, put and deleted by its keys; where a record points at one is the market's.
 
 ## Privacy
@@ -57,7 +57,7 @@ What Forest does:
 - No blockchain is touched to create a seed, get an issuer note, open a profile, post an offer, send a message or write a review. Only payments and escrows touch a chain.
 
 What others can still see:
-- Everything in a profile's public records (`profile`, `hosts`, `permissions` and the market's content paths) is open for any index or person to read.
+- Everything in a profile's public records (`profile`, `hosts` and the market's content paths) is open for any index or person to read.
 - On-chain payments and escrow receipts are public on the payment chain. Moving money directly between two of your own profiles' `pay` addresses links them on chain.
 - A host sees when a folder is written or read and the network address of the connection, unless a VPN or relay is used.
 - An issuer sees the person's note number, a stable number for them at that issuer.
@@ -78,7 +78,7 @@ What others can still see:
 
 ## What it is built from
 
-- **Keys, records and encryption:** Baby Jubjub EdDSA-Poseidon (main key, access key and note signatures), Ed25519 (Solana payment addresses), RFC 8785 canonical JSON, and post-quantum `age` envelopes.
+- **Keys, records and encryption:** Baby Jubjub EdDSA-Poseidon (main key, service key and note signatures), Ed25519 (Solana payment addresses), RFC 8785 canonical JSON, and post-quantum `age` envelopes.
 - **Proofs:** Circom, `circomlib` (Poseidon and Baby Jubjub), `zk-kit` and Semaphore's Lean Incremental Merkle Tree, Perpetual Powers of Tau, and `snarkjs` (Groth16).
 - **Escrows:** Anchor and SPL Token on Solana (`escrows/solana/`).
 
