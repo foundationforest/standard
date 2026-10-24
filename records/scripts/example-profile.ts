@@ -10,7 +10,7 @@
 
 import { readFileSync, writeFileSync } from 'node:fs'
 import { sha256 } from '@noble/hashes/sha2.js'
-import { fieldHash, inboxKey, issuerSecret, mainKey, packSignature, payKey, scopeOf, seedScalar, serviceKey, signBytes, stampOf } from '@foundationforest/keys'
+import { fieldHash, inboxKey, issuerSecret, mainKey, packSignature, payAddresses, scopeOf, seedScalar, serviceKey, signBytes, stampOf } from '@foundationforest/keys'
 import { noteNumberOf, proofBytes, proveNote, signNote, toBytes32 } from '@foundationforest/note'
 import { type Leaf, proveReputation, signedBytes } from '@foundationforest/reputation'
 import { b64u, hex } from '../src/bytes.ts'
@@ -54,7 +54,7 @@ const reputation = await proveReputation({
 const profile = {
   market: 'tutoring',
   role: 'seller',
-  pay: (await payKey(seed, LABEL)).address,
+  pay: await payAddresses(seed, LABEL),
   inboxKey: (await inboxKey(me.secret)).sealTo,
   inbox: { senders: 'anyone', maxBytes: 16384 },
   proofs: [

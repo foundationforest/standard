@@ -43,7 +43,7 @@ A **label** is any text; markets set the convention, `<market>/<role>`, such as 
 
 ## For builders
 
-- **Verify a profile.** Read the profile's record at `profile` from its folder on any host. It holds the profile's `market`, `role`, `inboxKey` (what others seal to), seed-derived `pay` address, and its `proofs` array. The array takes any circuit's proofs, and a reader skips the ones it does not know: `note` and `reputation` are ours, and anyone can add one. Verify each `note` proof against the issuer's key to see which issuers signed a note to the seed behind the profile.
+- **Verify a profile.** Read the profile's record at `profile` from its folder on any host. It holds the profile's `market`, `role`, `inboxKey` (what others seal to), seed-derived `pay` addresses (`solana` and `evm`, one per address type), and its `proofs` array. The array takes any circuit's proofs, and a reader skips the ones it does not know: `note` and `reputation` are ours, and anyone can add one. Verify each `note` proof against the issuer's key to see which issuers signed a note to the seed behind the profile.
 - **Find a profile's folder.** A profile's address is the public half of its main key (`Baby Jubjub`). Ask any host you know for its records, and check its signed `hosts` record to see every host that mirrors the folder.
 - **Act for a person.** Ask one of their signers, the devices that hold their seed: an AI app through its connection, a person or a business by a message signed by its own profile's main key. The signer acts by the person's permissions and signs with the profile's main key; no key is ever handed out (`keys/`, Signers).
 - **Write offers and reviews.** Their paths and bodies are defined by the market the profile lives in ([markets](https://github.com/foundationforest/markets)); the standard names none of them. A photo or a video is a blob the folder holds, put and deleted by its keys; where a record points at one is the market's.
@@ -78,7 +78,7 @@ What others can still see:
 
 ## What it is built from
 
-- **Keys, records and encryption:** Baby Jubjub EdDSA-Poseidon (main key, service key and note signatures), Ed25519 (Solana payment addresses), RFC 8785 canonical JSON, and post-quantum `age` envelopes.
+- **Keys, records and encryption:** Baby Jubjub EdDSA-Poseidon (main key, service key and note signatures), Ed25519 (Solana payment addresses), secp256k1 and keccak256 with EIP-55 (EVM payment addresses), RFC 8785 canonical JSON, and post-quantum `age` envelopes.
 - **Proofs:** Circom, `circomlib` (Poseidon and Baby Jubjub), `zk-kit` and Semaphore's Lean Incremental Merkle Tree, Perpetual Powers of Tau, and `snarkjs` (Groth16).
 - **Escrows:** Anchor and SPL Token on Solana (`escrows/solana/`).
 

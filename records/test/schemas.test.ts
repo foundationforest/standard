@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs'
 import { describe, test } from 'node:test'
 import { Ajv2020 } from 'ajv/dist/2020.js'
 import formats from 'ajv-formats'
-import { inboxKey, payKey, pointOf, serviceKey } from '@foundationforest/keys'
+import { inboxKey, isEvmAddress, payAddresses, pointOf, serviceKey } from '@foundationforest/keys'
 import { verifyNote } from '@foundationforest/note'
 import { verifyReputation } from '@foundationforest/reputation'
 import { checkValue } from '../src/canonical.ts'
@@ -73,10 +73,17 @@ describe('schemas', () => {
     for (const role of [7, null, 'x'.repeat(65)]) assert.ok(!fits('profile', edit('profile', ['role'], role)), String(role))
   })
 
-  test('a profile’s pay address is keys/’s payKey for its label: an ed25519 key on Solana, in base58', async () => {
-    assert.equal(example('profile').pay, (await payKey(SEED, 'tutoring/seller')).address)
+  test('a profile’s pay is keys/’s payAddresses for its label: its Solana address in base58 and its EVM address in EIP-55, both there', async () => {
+    const pay = example('profile').pay
+    assert.deepEqual(pay, await payAddresses(SEED, 'tutoring/seller'))
+    assert.equal(isEvmAddress(pay.evm), true)
     assert.ok(fits('profile', edit('profile', ['pay'], undefined)), 'optional')
-    for (const bad of ['x', alice.address.replace(/^./, '0'), 'I'.repeat(44), 'a'.repeat(45), 7]) assert.ok(!fits('profile', edit('profile', ['pay'], bad)), String(bad))
+    assert.ok(fits('profile', edit('profile', ['pay', 'bitcoin'], 'bc1q…')), 'a type a reader does not know is ignored, not refused')
+    assert.ok(!fits('profile', edit('profile', ['pay'], pay.solana)), 'no longer one address')
+    for (const type of ['solana', 'evm']) assert.ok(!fits('profile', edit('profile', ['pay', type], undefined)), `both types: no ${type}`)
+    for (const bad of ['x', alice.address.replace(/^./, '0'), 'I'.repeat(44), 'a'.repeat(45), 7]) assert.ok(!fits('profile', edit('profile', ['pay', 'solana'], bad)), String(bad))
+    for (const bad of [pay.evm.slice(2), pay.evm.slice(0, -1), pay.evm + '0', '0x' + 'g'.repeat(40), 7]) assert.ok(!fits('profile', edit('profile', ['pay', 'evm'], bad)), String(bad))
+    assert.equal(isEvmAddress(pay.evm.toLowerCase()), false, 'the schema takes any case; the one spelling is keys/’s isEvmAddress')
   })
 
   test('a profile’s inboxKey is its inbox key, an age post-quantum hybrid key', async () => {

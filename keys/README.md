@@ -55,7 +55,7 @@ The table uses words from the rest of the standard:
 | the seed scalar | Poseidon, the profile tag and the label's scope | a main key: one profile's name and signature |
 | the seed | HKDF, `forest/v1/profile/<label>` | that profile's secret, which its inbox key comes from |
 | a profile's secret | HKDF, `forest/v1/inbox` | that profile's inbox key, which opens what is sealed to it |
-| the seed | HKDF, `forest/v1/pay/solana/<label>` | that profile's payment key, its Solana address |
+| the seed | HKDF, `forest/v1/pay/<type>/<label>` | that profile's payment key for one address type, `solana` or `evm`, and its address |
 | the seed scalar | Poseidon, the issuer tag and the issuer's name hash | the person's secret for one issuer, which their note number and stamps come from |
 | the seed scalar | Poseidon, the vault tag | the vault key: the main key of the person's vault |
 | the seed | HKDF, `forest/v1/vault` | the vault's secret, which its inbox key comes from |
@@ -144,13 +144,22 @@ records ([records](../records/README.md)).
 
 ### Payment keys
 
-A profile's payment key holds and moves its money on Solana. A main key, on Baby Jubjub, is not a
-Solana account, so each profile has one of each.
+A profile's payment keys hold and move its money: one for each address type, `solana` and `evm`.
+A main key, on Baby Jubjub, is no chain's account, so each profile has its main key and a payment
+key of each type.
 
-- It is HKDF of the seed with `forest/v1/pay/solana/<label>`, the label used exactly as given: one
-  per label, unrelated to the main key and to every other profile's.
-- The 32 bytes are an ed25519 private key (RFC 8032), in the form Solana tooling takes for a
-  keypair. Its address is the public key in base58: the profile's `pay` address.
+- Each is HKDF of the seed with `forest/v1/pay/<type>/<label>`, the label used exactly as given:
+  one per type and label, unrelated to the main key, to the other type's and to every other
+  profile's. The `solana` text is the one Forest has always mixed its Solana key with, so those
+  addresses are as they were.
+- `solana`: the 32 bytes are an ed25519 private key (RFC 8032), in the form Solana tooling takes
+  for a keypair. Its address is the public key in base58.
+- `evm`: the 32 bytes, read big-endian, are a secp256k1 private key; bytes that are no such key (0,
+  or the curve's order or more, about a 2^-128 chance) are refused, never adjusted. Its address is
+  the last 20 bytes of keccak256 of the uncompressed public key without its leading `04`, written in
+  EIP-55's mixed-case checksum: that is its one spelling, and any other, all lower case included, is
+  refused (`isEvmAddress`).
+- The profile's `pay` is both addresses, `{ solana, evm }` (`payAddresses`).
 
 ### The issuer secret
 
@@ -260,7 +269,8 @@ mixes from the seed scalar is not.
 | `mainKey(seed, label)` | The main key: `label`, `scope`, `scalar`, `publicKey`, `address`, and the profile's `secret` |
 | `profileScalarOf(seedScalar, label)` | A main key's scalar, from the seed scalar |
 | `inboxKey(secret)` | The inbox key, from a profile's `secret` or the vault's: age's `identity`, and `sealTo`, what others seal to |
-| `payKey(seed, label)` | The payment key: `label`, `privateKey`, `publicKey`, `address` |
+| `payKey(seed, label, type)`, `payAddresses(seed, label)`, `PAY_TYPES` | A payment key of one type: `label`, `type`, `privateKey`, `publicKey`, `address`; the profile's address of each type; and the types |
+| `evmAddressOf(publicKey)`, `isEvmAddress(text)` | A secp256k1 key's EVM address, in EIP-55; and whether text is one, in that spelling |
 | `issuerSecret(seed, name)` | The issuer's `name`, its `nameHash`, the person's `scalar` for it, and the `noteNumber` |
 | `issuerScalarOf(seedScalar, name)`, `stampOf(issuerScalar, label)` | The issuer secret from the seed scalar, and a stamp |
 | `vaultKey(seed)`, `vaultScalarOf(seedScalar)` | The vault key: `scalar`, `publicKey`, `address`, `secret`; and its scalar |
@@ -286,16 +296,16 @@ Node 22.18 or later runs the TypeScript directly.
 
 `test/vectors.json` pins, for the seed `00 01 … 1f`: its words; its seed scalar; the three tags; the
 main keys for `tutoring/seller` and `tutoring/buyer`, each with its secret and inbox key, and their
-payment keys; for two issuers, `issuer-a.example` and `issuer-b.example`, the name hash, the
-person's secret, the note number and a stamp for each label; the vault key, with its secret and
-inbox key; one signature by the `tutoring/seller` main key; and a service key, from 32 bytes of
-`0x2a`. `npm test` checks each value and recomputes it without the library: HKDF and keccak from
-`@noble/hashes`, the seed scalar step by step without zk-kit, Baby Jubjub's points and signatures
-from zk-kit (`@zk-kit/baby-jubjub`, `@zk-kit/eddsa-poseidon`), the address packed by hand, the
-signature's equation, ed25519 from `@noble/curves`, the hybrid key others seal to from
-`@noble/post-quantum`, age's bech32 by hand, and an envelope sealed and opened through age. The note
-proof's tests check the circuit derives the same main key and stamp
-([proofs/note](../proofs/note/README.md)).
+payment keys of both types; for two issuers, `issuer-a.example` and `issuer-b.example`, the name
+hash, the person's secret, the note number and a stamp for each label; the vault key, with its
+secret and inbox key; one signature by the `tutoring/seller` main key; and a service key, from 32
+bytes of `0x2a`. `npm test` checks each value and recomputes it without the library: HKDF and keccak
+from `@noble/hashes`, the seed scalar step by step without zk-kit, Baby Jubjub's points and
+signatures from zk-kit (`@zk-kit/baby-jubjub`, `@zk-kit/eddsa-poseidon`), the address packed by
+hand, the signature's equation, ed25519 from `@noble/curves`, secp256k1 from Node's own crypto with
+keccak256 and EIP-55 by hand, the hybrid key others seal to from `@noble/post-quantum`, age's bech32
+by hand, and an envelope sealed and opened through age. The note proof's tests check the circuit
+derives the same main key and stamp ([proofs/note](../proofs/note/README.md)).
 
 ## Promises
 
@@ -313,11 +323,11 @@ proof's tests check the circuit derives the same main key and stamp
 
 - **It trusts the app that holds the seed** to keep it, and show it to no one else.
 - **It trusts its pieces, used unchanged:** Web Crypto (HKDF-SHA256, and its random source for new
-  seeds), `@noble/hashes` 2.4.0 (keccak256, SHA-256, SHA-512), `@noble/curves` 2.4.0 (ed25519, and
-  the Edwards curve arithmetic Baby Jubjub runs on, with circomlib's numbers), `@scure/base` 2.4.0
-  (base58, bech32), `@scure/bip39` 2.4.0, `age-encryption` 0.3.1 (whose hybrid runs on
-  `@noble/post-quantum`), `@zk-kit/eddsa-poseidon` 1.0.4 (`deriveSecretScalar`) and `poseidon-lite`
-  0.3.0.
+  seeds), `@noble/hashes` 2.4.0 (keccak256, SHA-256, SHA-512), `@noble/curves` 2.4.0 (ed25519,
+  secp256k1, and the Edwards curve arithmetic Baby Jubjub runs on, with circomlib's numbers),
+  `@scure/base` 2.4.0 (base58, bech32), `@scure/bip39` 2.4.0, `age-encryption` 0.3.1 (whose hybrid
+  runs on `@noble/post-quantum`), `@zk-kit/eddsa-poseidon` 1.0.4 (`deriveSecretScalar`) and
+  `poseidon-lite` 0.3.0.
 - **An issuer's name is its own to keep unique.** Two issuers under one name get the same note
   number from each person, so they can match their people.
 - **No recovery.** Lose the seed, and every profile and every stamp is gone. Nobody can reset
@@ -350,13 +360,13 @@ Then that app has everything the seed opens, and nothing takes it back:
 There is no rotation, so the only way out is a new seed and new profiles, moving the money first if
 there is still time. An app that holds the seed is trusted with all of that.
 
-**Why is a main key on Baby Jubjub, with a payment key beside it?**
+**Why is a main key on Baby Jubjub, with payment keys beside it?**
 So a proof can derive it. The note proof shows that a profile's key comes from the same seed as
 a note an issuer signed, and the reputation proof that a profile's key comes from the same seed as
 the profiles it counts: both work the key out from the seed scalar inside the proof. Baby Jubjub
 is the curve a proof does that on cheaply; ed25519 inside a proof costs far more. Solana's accounts
-are ed25519, so the money sits under a payment key of its own, mixed from the seed apart from the
-main key.
+are ed25519 and EVM chains' secp256k1, so the money sits under payment keys of their own, one for
+each address type, mixed from the seed apart from the main key.
 
 **Why are bytes signed as their SHA-256, and not their Poseidon?**
 A record, a message or a pull is text of any length, and EdDSA-Poseidon signs one field element.

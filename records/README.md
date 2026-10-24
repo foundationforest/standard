@@ -8,7 +8,7 @@ Part of Forest's standard: [the top README](../README.md). The profile record's 
 How a Forest profile says things, and how anyone reads them. Everything a profile says (its profile
 record, which shows it; its offers; its reviews of others) is a record: a small signed JSON value at
 a path in the profile's folder. A profile record shows the profile's market and role, and may carry
-its payment address, its inbox and its proofs. Hosts keep folders and serve them to anyone. Any
+its payment addresses, its inbox and its proofs. Hosts keep folders and serve them to anyone. Any
 app, index (a service that reads records and scores profiles) or AI reads them and checks every
 signature itself, so a host can withhold a record but never forge one. Beside each folder a host
 keeps the profile's inbox, where anyone may leave a sealed message, and its blobs: photos and
@@ -26,15 +26,15 @@ A profile is one main key, mixed from the person's seed (32 bytes every key come
 `<market>/<role>`, such as `tutoring/seller` ([keys/](../keys/README.md)). The main key is a key on
 Baby Jubjub, the curve the proofs work on, and its address is its name on the network: the public
 key packed into 32 bytes, in base58. Its inbox key, mixed from the profile's secret, opens what is
-sealed to it, and its payment key, an ed25519 key of its own, is its Solana address. Nothing else
-is needed: no account, no sign-up, no directory.
+sealed to it, and its payment keys, one for each address type, give its Solana and EVM addresses.
+Nothing else is needed: no account, no sign-up, no directory.
 
 Its folder is everything signed for it, one current record per path:
 
 | Path | What it holds |
 |---|---|
 | `hosts` | where the folder lives |
-| `profile` | the profile record: market, role, payment address, inbox, proofs |
+| `profile` | the profile record: market, role, payment addresses, inbox, proofs |
 
 - Every record in it is signed by the profile's main key, and by no other key.
 - `hosts` is the control path, the one record every host reads. Every other path is content.
@@ -92,7 +92,8 @@ signers, the devices that hold the seed, which signs with the main key
 ([keys](../keys/README.md#signers)). The signed bytes of each begin with `0xff`, then each with its
 own text (`forest/v1/record\n`, `forest/v1/message\n`, `forest/v1/pull\n`, `forest/v1/blob\n`), so
 no signature is ever two of them, nor an index's (`forest/v1/reputation\n`,
-[proofs/reputation](../proofs/reputation/README.md)). Payments are the payment key's, on Solana.
+[proofs/reputation](../proofs/reputation/README.md)). Payments are the payment keys', on their
+chains.
 
 **Which record counts.** A reader's view of a profile is a pure function of the records it holds
 and its clock `now`:
