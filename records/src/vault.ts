@@ -3,7 +3,7 @@
 // the seed, so a new device finds the vault with the seed and one host's address. The folder holds
 // its hosts record and one private record at `vault`, sealed to the vault's own inbox key alone
 // (vaultRecord and openVault in private.ts). Inside: the labels of the person's profiles and where
-// each lives, their issuers' stamps, the person's permissions, and apps' settings.
+// each lives, their verifiers' stamps, the person's permissions, and apps' settings.
 //
 // An app keeps every field it does not know, at the top and inside `settings`, so two apps, or an
 // older and a newer one, share one vault without erasing each other's. A permission keeps its
@@ -20,8 +20,8 @@ export const VAULT_PATH = 'vault'
 /** One of the person's profiles: its label, and the hosts its folder lived on when written. */
 export type VaultProfile = { label: string; hosts: string[] }
 
-/** An issuer's stamp: the issuer's name, as keys/'s recipe takes it, and the signed stamp, as JSON (proofs/stamp/client's stampToJson). */
-export type IssuerStamp = { issuer: string; stamp: { [key: string]: Json } }
+/** A verifier's stamp: the verifier's name, as keys/'s recipe takes it, and the signed stamp, as JSON (proofs/stamp/client's stampToJson). */
+export type VerifierStamp = { verifier: string; stamp: { [key: string]: Json } }
 
 /** What a permission lets its who ask a signer to do, in the standard's words. A market names its own beside them. */
 export const ACTIONS = ['post', 'message', 'read', 'pay'] as const
@@ -51,13 +51,13 @@ export type Permission = { who: Who; profiles: 'all' | string[]; can: string[]; 
 export type Vault = {
   /** The person's profiles, each label once. */
   profiles?: VaultProfile[]
-  stamps?: IssuerStamp[]
+  stamps?: VerifierStamp[]
   /** The person's permissions: what others may ask their signers to do. */
   permissions?: Permission[]
   /** Apps' settings: any fields, each an app's own. */
   settings?: { [key: string]: Json }
   /** Fields an app does not know: kept as they are. */
-  [field: string]: Json | VaultProfile[] | IssuerStamp[] | Permission[] | undefined
+  [field: string]: Json | VaultProfile[] | VerifierStamp[] | Permission[] | undefined
 }
 
 function fail(message: string): never {
@@ -87,9 +87,9 @@ export function checkVault(value: unknown): asserts value is Vault {
   if ('stamps' in value) {
     if (!Array.isArray(value.stamps)) fail('stamps is a list')
     for (const n of value.stamps as unknown[]) {
-      if (!isObject(n)) fail('an issuer stamp is an object')
-      for (const key of Object.keys(n)) if (key !== 'issuer' && key !== 'stamp') fail(`unknown issuer stamp field ${key}`)
-      if (typeof n.issuer !== 'string' || !n.issuer) fail("an issuer stamp names its issuer, by the name keys/'s recipe takes")
+      if (!isObject(n)) fail('a stamp is an object')
+      for (const key of Object.keys(n)) if (key !== 'verifier' && key !== 'stamp') fail(`unknown stamp field ${key}`)
+      if (typeof n.verifier !== 'string' || !n.verifier) fail("a stamp names its verifier, by the name keys/'s recipe takes")
       if (!isObject(n.stamp)) fail('a stamp is an object')
     }
   }

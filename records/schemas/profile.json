@@ -44,7 +44,7 @@
     },
     "proofs": {
       "type": "array",
-      "description": "Optional. Proofs the profile shows, each one data anyone checks with its circuit's verifier (proofs/), for this profile's key.",
+      "description": "Optional. Proofs the profile shows, each one data anyone checks with its circuit's proof check (proofs/), for this profile's key.",
       "items": {
         "$ref": "#/$defs/proof"
       },
@@ -59,19 +59,19 @@
       "additionalProperties": false,
       "properties": {
         "senders": {
-          "description": "Who may deliver: anyone, or a profile whose profile record carries a stamp proof from this issuer, under any label.",
+          "description": "Who may deliver: anyone, or a profile whose profile record carries a stamp proof from this verifier, under any label.",
           "oneOf": [
             {
               "const": "anyone"
             },
             {
               "type": "object",
-              "required": ["issuer"],
+              "required": ["verifier"],
               "additionalProperties": false,
               "properties": {
-                "issuer": {
+                "verifier": {
                   "type": "string",
-                  "description": "The issuer's key: its address, a packed point on Baby Jubjub in base58.",
+                  "description": "The verifier's key: its address, a packed point on Baby Jubjub in base58.",
                   "minLength": 32,
                   "maxLength": 44,
                   "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$"
@@ -131,23 +131,23 @@
     },
     "stamp": {
       "type": "object",
-      "description": "A stamp proof (proofs/stamp/): the issuer with this key and this name signed a stamp for the person whose seed gives this profile's key for this label, and this is their tag for the label at that issuer. Everything verifyStamp takes but the profile's key, which is the profile's own address.",
-      "required": ["circuit", "issuer", "issuerName", "label", "tag", "proof"],
+      "description": "A stamp proof (proofs/stamp/): the verifier with this key and this name signed a stamp for the person whose seed gives this profile's key for this label, and this is their tag for the label at that verifier. Everything checkStamp takes but the profile's key, which is the profile's own address.",
+      "required": ["circuit", "verifier", "verifierName", "label", "tag", "proof"],
       "additionalProperties": false,
       "properties": {
         "circuit": {
           "const": "stamp"
         },
-        "issuer": {
+        "verifier": {
           "type": "string",
-          "description": "The issuer's key: its address, a packed point on Baby Jubjub in base58.",
+          "description": "The verifier's key: its address, a packed point on Baby Jubjub in base58.",
           "minLength": 32,
           "maxLength": 44,
           "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$"
         },
-        "issuerName": {
+        "verifierName": {
           "type": "string",
-          "description": "The name the issuer publishes as its own, exactly as keys/'s recipe takes it: the proof's name hash is made from it.",
+          "description": "The name the verifier publishes as its own, exactly as keys/'s recipe takes it: the proof's name hash is made from it.",
           "minLength": 1,
           "maxLength": 256
         },
@@ -159,7 +159,7 @@
         },
         "tag": {
           "type": "string",
-          "description": "The person's tag for the label at the issuer: 32 bytes big-endian, lowercase hex.",
+          "description": "The person's tag for the label at the verifier: 32 bytes big-endian, lowercase hex.",
           "pattern": "^[0-9a-f]{64}$"
         },
         "proof": {
@@ -171,7 +171,7 @@
     },
     "reputation": {
       "type": "object",
-      "description": "A reputation proof (proofs/reputation/): the count-weighted score of profiles in an index's tree that come from the same seed as this one, which profiles hidden. It holds only for this profile's key, which the proof derives from that seed. What the score means is what the index says its root holds. Everything verifyReputation takes but the profile's key, which is the profile's own address.",
+      "description": "A reputation proof (proofs/reputation/): the count-weighted score of profiles in an index's tree that come from the same seed as this one, which profiles hidden. It holds only for this profile's key, which the proof derives from that seed. What the score means is what the index says its root holds. Everything checkReputation takes but the profile's key, which is the profile's own address.",
       "required": ["circuit", "index", "root", "time", "signature", "score", "proof"],
       "additionalProperties": false,
       "properties": {

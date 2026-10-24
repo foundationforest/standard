@@ -2,7 +2,7 @@
   "name": "@foundationforest/stamp-circuit",
   "version": "0.0.0",
   "private": true,
-  "description": "The stamp proof: a stamp an issuer signed for the stamp number the person's seed gives, a tag for one label, and the main key the same seed gives for that label, naming neither the stamp nor the person. The circuit, its setup, and its tests through the stamp client.",
+  "description": "The stamp proof: a stamp a verifier signed for the stamp number the person's seed gives, a tag for one label, and the main key the same seed gives for that label, naming neither the stamp nor the person. The circuit, its setup, and its tests through the stamp client.",
   "license": "Apache-2.0",
   "type": "module",
   "engines": {

@@ -2,7 +2,7 @@
   "name": "@foundationforest/stamp",
   "version": "0.0.0",
   "private": true,
-  "description": "The stamp proof's client: the stamp an issuer signs, the stamp proof a device makes from it for one profile, and the check any reader makes.",
+  "description": "The stamp proof's client: the stamp a verifier signs, the stamp proof a device makes from it for one profile, and the check any reader makes.",
   "license": "Apache-2.0",
   "type": "module",
   "engines": {

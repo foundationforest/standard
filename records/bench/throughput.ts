@@ -8,7 +8,7 @@ import { bytesMessage, serviceKey, unpackSignature } from '@foundationforest/key
 import { b64u } from '../src/bytes.ts'
 import { canonical } from '../src/canonical.ts'
 import { Host } from '../src/host.ts'
-import { checkRecord, decodeRecord, encodeRecord, signingInput, unsignedOf, verifySignature } from '../src/record.ts'
+import { checkRecord, checkSignature, decodeRecord, encodeRecord, signingInput, unsignedOf } from '../src/record.ts'
 import { viewProfile } from '../src/view.ts'
 import { ownerRecord } from '../src/write.ts'
 
@@ -35,11 +35,11 @@ console.log(`machine: ${cpus()[0]?.model ?? 'unknown'}, node ${process.version};
 
 rate('canonical text of a record', 20_000, () => canonical(record))
 rate('sign a record (EdDSA-Poseidon on Baby Jubjub)', 1_000, (i) => ownerRecord(key, 'offer/maths', offer, 1_790_000_000_000 + i))
-rate('verify, Forest strict (key in the subgroup, R8 on curve)', 1_000, () => verifySignature(sig, message, key.address))
+rate('check, Forest strict (key in the subgroup, R8 on curve)', 1_000, () => checkSignature(sig, message, key.address))
 const signature = unpackSignature(sig)!
 const hm = bytesMessage(message)
-rate('verify, zk-kit (@zk-kit/eddsa-poseidon), for comparison', 10, () => zkVerify(hm, signature, key.publicKey))
-rate('read one record off the wire (parse, canonical, strict verify)', 1_000, () => decodeRecord(wire))
+rate('check, zk-kit (@zk-kit/eddsa-poseidon), for comparison', 10, () => zkVerify(hm, signature, key.publicKey))
+rate('read one record off the wire (parse, canonical, strict check)', 1_000, () => decodeRecord(wire))
 
 // A host taking records: 500 profiles, a profile record and 4 offers each, in batches of 100.
 const host = new Host({ now: () => 1_790_000_000_000 })

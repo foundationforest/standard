@@ -73,7 +73,7 @@ describe('canonical text', () => {
 describe('records', () => {
   const record = ownerRecord(alice, 'offer/maths', offerBody('30'), T0)
 
-  test('an owner record verifies, and its id is the hash of what was signed', () => {
+  test('an owner record checks, and its id is the hash of what was signed', () => {
     const { id } = checkRecord(record)
     assert.equal(id, recordId(unsignedOf(record)))
     const wire = encodeRecord(record)

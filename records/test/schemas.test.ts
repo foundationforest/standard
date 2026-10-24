@@ -1,8 +1,9 @@
-// The profile record's schema (schemas/profile.json), checked with a standard JSON Schema validator:
-// the example and the bodies the other tests publish fit it; each of its rules still refuses what it
-// refused; the example is a body a record can carry. An offer's and a review's body is the market's,
-// so the standard has no schema for them. The example's proofs are checked with their own verifiers
-// (proofs/stamp/client, proofs/reputation/client), for the profile's own address.
+// The profile record's schema (schemas/profile.json), checked with a standard JSON Schema
+// validator: the example and the bodies the other tests publish fit it; each of its rules still
+// refuses what it refused; the example is a body a record can carry. An offer's and a review's body
+// is the market's, so the standard has no schema for them. The example's proofs are checked with
+// their own proof checks (proofs/stamp/client, proofs/reputation/client), for the profile's own
+// address.
 
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
@@ -10,8 +11,8 @@ import { describe, test } from 'node:test'
 import { Ajv2020 } from 'ajv/dist/2020.js'
 import formats from 'ajv-formats'
 import { inboxKey, isEvmAddress, payAddresses, pointOf, serviceKey } from '@foundationforest/keys'
-import { verifyStamp } from '@foundationforest/stamp'
-import { verifyReputation } from '@foundationforest/reputation'
+import { checkStamp } from '@foundationforest/stamp'
+import { checkReputation } from '@foundationforest/reputation'
 import { checkValue } from '../src/canonical.ts'
 import { inboxOf } from '../src/message.ts'
 import { proofsOf, reputationCheck, stampCheck } from '../src/proofs.ts'
@@ -93,15 +94,15 @@ describe('schemas', () => {
     for (const bad of ['age1pq1' + 'q'.repeat(60), alice.address, 'AGE1' + 'Q'.repeat(58), 'age1' + 'b'.repeat(58)]) assert.ok(!fits('profile', edit('profile', ['inboxKey'], bad)), bad)
   })
 
-  test('a profile’s inbox: open to anyone or to an issuer’s stamp proofs, once, a size; nothing else', async () => {
+  test('a profile’s inbox: open to anyone or to a verifier’s stamp proofs, once, a size; nothing else', async () => {
     const reader = (await inboxKey(new Uint8Array(32).fill(5))).sealTo
-    const issuer = example('profile').proofs[at('stamp')].issuer
-    for (const inbox of [{ senders: 'anyone' }, { senders: { issuer } }, { senders: 'anyone', once: true, maxBytes: 4000 }]) {
+    const verifier = example('profile').proofs[at('stamp')].verifier
+    for (const inbox of [{ senders: 'anyone' }, { senders: { verifier } }, { senders: 'anyone', once: true, maxBytes: 4000 }]) {
       assert.ok(fits('profile', edit('profile', ['inbox'], inbox)), JSON.stringify(inbox))
       assert.ok(inboxOf(edit('profile', ['inbox'], inbox)) !== 'unsupported', 'and a host reads it')
     }
     assert.ok(fits('profile', edit('profile', ['inbox'], undefined)), 'optional: no field, no inbox')
-    for (const inbox of [{}, 'anyone', { senders: 'everyone' }, { senders: { issuer: 'x' } }, { senders: { issuer: pointOf(issuer).map((n) => n.toString(16).padStart(64, '0')).join('') } }, { senders: { issuer: issuer + '0' } }, { senders: { issuer: pointOf(issuer).map(String) } }, { senders: { issuer, label: 'x' } }, { senders: { deposit: '5' } }, { senders: 'anyone', once: false }, { senders: 'anyone', maxBytes: -1 }, { senders: 'anyone', deposit: '5' }, { senders: 'anyone', readers: [reader] }, { senders: 'anyone', readers: [] }]) {
+    for (const inbox of [{}, 'anyone', { senders: 'everyone' }, { senders: { verifier: 'x' } }, { senders: { verifier: pointOf(verifier).map((n) => n.toString(16).padStart(64, '0')).join('') } }, { senders: { verifier: verifier + '0' } }, { senders: { verifier: pointOf(verifier).map(String) } }, { senders: { verifier, label: 'x' } }, { senders: { deposit: '5' } }, { senders: 'anyone', once: false }, { senders: 'anyone', maxBytes: -1 }, { senders: 'anyone', deposit: '5' }, { senders: 'anyone', readers: [reader] }, { senders: 'anyone', readers: [] }]) {
       assert.ok(!fits('profile', edit('profile', ['inbox'], inbox)), JSON.stringify(inbox))
       assert.equal(inboxOf(edit('profile', ['inbox'], inbox)), 'unsupported', 'and a host refuses deliveries to it')
     }
@@ -122,20 +123,20 @@ describe('schemas', () => {
     }
   })
 
-  test('the example’s reputation proof holds for the profile’s address, as verifyReputation takes it; each field keeps its shape', async () => {
+  test('the example’s reputation proof holds for the profile’s address, as checkReputation takes it; each field keeps its shape', async () => {
     const i = at('reputation')
     const shown = example('profile').proofs[i]
     const set = (field: string, value: unknown) => edit('profile', ['proofs', i, field], value)
     assert.equal(shown.index, serviceKey(new Uint8Array(32).fill(0x2c)).address, 'the example index’s key (scripts/example-profile.ts)')
     const check = reputationCheck(shown, alice.address)!
-    assert.equal(await verifyReputation(check), true)
-    assert.equal(await verifyReputation({ ...check, profile: aliceBuyer.address }), false, 'nor on another profile')
-    assert.equal(await verifyReputation({ ...check, score: check.score + 1n }), false, 'nor with another score')
+    assert.equal(await checkReputation(check), true)
+    assert.equal(await checkReputation({ ...check, profile: aliceBuyer.address }), false, 'nor on another profile')
+    assert.equal(await checkReputation({ ...check, score: check.score + 1n }), false, 'nor with another score')
     assert.equal(reputationCheck({ ...shown, root: 'x' }, alice.address), null)
 
     assert.ok(fits('profile', set('label', 'online-tutors/seller')), 'a label, when the proof shows one market')
     for (const field of ['index', 'root', 'time', 'signature', 'score', 'proof']) assert.ok(!fits('profile', set(field, undefined)), field)
-    assert.ok(!fits('profile', set('extra', 1)), 'a reputation proof carries nothing its verifier does not take')
+    assert.ok(!fits('profile', set('extra', 1)), 'a reputation proof carries nothing its proof check does not take')
     const bad: { [field: string]: unknown[] } = {
       index: ['x', alice.address.replace(/^./, '0'), 'I'.repeat(44)],
       root: [shown.root.toUpperCase(), shown.root.slice(1), '0x' + shown.root.slice(2), BigInt('0x' + shown.root).toString()],
@@ -152,29 +153,29 @@ describe('schemas', () => {
     assert.ok(fits('profile', set('time', 2 ** 53 - 1)), 'the latest time')
   })
 
-  test('the example’s stamp proof holds for the profile’s address, as verifyStamp takes it; each field keeps its shape', async () => {
+  test('the example’s stamp proof holds for the profile’s address, as checkStamp takes it; each field keeps its shape', async () => {
     const i = at('stamp')
     const shown = example('profile').proofs[i]
     const set = (field: string, value: unknown) => edit('profile', ['proofs', i, field], value)
     assert.equal(`${example('profile').market}/${example('profile').role}`, shown.label, 'the profile’s own label')
     const check = stampCheck(shown, alice.address)!
-    assert.equal(await verifyStamp(check), true)
+    assert.equal(await checkStamp(check), true)
     for (const [why, changed] of [
       ['another profile', { profile: aliceBuyer.address }],
-      ['another issuer name', { issuerName: 'issuer-b.example' }],
+      ['another verifier name', { verifierName: 'issuer-b.example' }],
       ['another label', { label: 'tutoring/buyer' }],
     ] as const) {
-      assert.equal(await verifyStamp({ ...check, ...changed }), false, why)
+      assert.equal(await checkStamp({ ...check, ...changed }), false, why)
     }
     assert.equal(stampCheck({ ...shown, tag: shown.tag.toUpperCase() }, alice.address), null)
-    assert.equal(stampCheck({ ...shown, issuer: shown.issuer.slice(1) }, alice.address), null, 'an issuer that is no address')
+    assert.equal(stampCheck({ ...shown, verifier: shown.verifier.slice(1) }, alice.address), null, 'a verifier that is no address')
 
-    for (const field of ['issuer', 'issuerName', 'label', 'tag', 'proof']) assert.ok(!fits('profile', set(field, undefined)), field)
-    assert.ok(!fits('profile', set('extra', 1)), 'nothing verifyStamp does not take')
+    for (const field of ['verifier', 'verifierName', 'label', 'tag', 'proof']) assert.ok(!fits('profile', set(field, undefined)), field)
+    assert.ok(!fits('profile', set('extra', 1)), 'nothing checkStamp does not take')
     assert.ok(!fits('profile', set('month', 202609)), 'the month a proof once showed, too')
     const bad: { [field: string]: unknown[] } = {
-      issuer: [pointOf(shown.issuer).map((n) => n.toString(16).padStart(64, '0')).join(''), shown.issuer + '0', 'x', 7, pointOf(shown.issuer).map(String)],
-      issuerName: ['', 'x'.repeat(257), 1],
+      verifier: [pointOf(shown.verifier).map((n) => n.toString(16).padStart(64, '0')).join(''), shown.verifier + '0', 'x', 7, pointOf(shown.verifier).map(String)],
+      verifierName: ['', 'x'.repeat(257), 1],
       label: ['', 'x'.repeat(129), 1],
       tag: [shown.tag.toUpperCase(), shown.tag.slice(1), shown.tag + '0', '0x' + shown.tag.slice(2)],
       proof: [shown.proof.slice(1), shown.proof + 'A', shown.proof.replace(/^./, '+')],

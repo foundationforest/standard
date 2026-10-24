@@ -10,7 +10,7 @@ inbox, pull, vault, blob, payment key, escrow, receipt, deal, index, fee payer, 
 Plain words, no em-dashes.
 
 The test for what goes in this repo: the standard holds formats (what bytes mean), recipes (how a
-number is derived) and checks (what a verifier runs); meanings and choices live outside it.
+number is derived) and checks (what a reader runs); meanings and choices live outside it.
 Use cases are phrased "anyone can; the main way is X", never "X is one option" and never "X is
 the rule".
 

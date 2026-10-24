@@ -9,7 +9,7 @@
 // text, so no signature is ever two of them.
 
 import { sha256 } from '@noble/hashes/sha2.js'
-import { type Point, packSignature, publicKeyOf, signBytes, unpackSignature, verifyBytes } from '@foundationforest/keys/curve'
+import { type Point, checkBytes, packSignature, publicKeyOf, signBytes, unpackSignature } from '@foundationforest/keys/curve'
 import { b64u, concat, hex, utf8 } from './bytes.ts'
 import { type Json, canonical, checkValue, parseCanonical } from './canonical.ts'
 import { type Key, publicKeyFromAddress } from './keys.ts'
@@ -123,9 +123,9 @@ export function signAs(signer: Key, address: string, bytes: Uint8Array): string 
  * the subgroup order; the key is a point of the prime-order subgroup; and the signature holds for
  * SHA-256 of the signed bytes, shifted right one byte. The equation itself puts R8 in the subgroup.
  */
-export function verifySignature(sig: Uint8Array, message: Uint8Array, publicKey: Point | string): boolean {
+export function checkSignature(sig: Uint8Array, message: Uint8Array, publicKey: Point | string): boolean {
   const signature = unpackSignature(sig)
-  return signature !== null && verifyBytes(publicKey, message, signature)
+  return signature !== null && checkBytes(publicKey, message, signature)
 }
 
 /** Shape and signature. Returns the record with its id. Throws RecordError. How large a record to take is each host's own choice, and each reader's. */
@@ -133,7 +133,7 @@ export function checkRecord(value: unknown): Checked {
   checkShape(value)
   const record = value
   const unsigned = unsignedOf(record)
-  if (!verifySignature(b64u.decode(record.sig), signingInput(unsigned), record.profile)) fail('signature', 'the signature does not verify')
+  if (!checkSignature(b64u.decode(record.sig), signingInput(unsigned), record.profile)) fail('signature', 'the signature does not hold')
   return { record, id: recordId(unsigned) }
 }
 

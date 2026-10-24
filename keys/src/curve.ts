@@ -158,7 +158,7 @@ export function signWithScalar(scalar: bigint, message: bigint): Signature {
  * `S·Base8 = R8 + 8·hm·A`. Both sides but R8 are in the subgroup, so the equation holds only when
  * R8 is too.
  */
-export function verifyWithPublicKey(publicKey: Point | string, message: bigint, signature: Signature): boolean {
+export function checkWithPublicKey(publicKey: Point | string, message: bigint, signature: Signature): boolean {
   try {
     if (!isFieldElement(message) || typeof signature !== 'object' || signature === null) return false
     const { R8, S } = signature
@@ -189,8 +189,8 @@ export function signBytes(scalar: bigint, bytes: Uint8Array): Signature {
 }
 
 /** Does this signature hold for these bytes, under this key or the key this address names? */
-export function verifyBytes(publicKey: Point | string, bytes: Uint8Array, signature: Signature): boolean {
-  return verifyWithPublicKey(publicKey, bytesMessage(bytes), signature)
+export function checkBytes(publicKey: Point | string, bytes: Uint8Array, signature: Signature): boolean {
+  return checkWithPublicKey(publicKey, bytesMessage(bytes), signature)
 }
 
 function assertScalar(scalar: bigint): void {

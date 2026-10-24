@@ -23,7 +23,7 @@ const littleEndian = (bytes: Uint8Array) => bytes.reduceRight((n, b) => (n << 8n
 /** The number a signature signs: SHA-256 of the signed bytes, big-endian, shifted right one byte. */
 const signed = (input: Uint8Array) => BigInt('0x' + createHash('sha256').update(input).digest('hex')) >> 8n
 /** Does zk-kit say `address`'s key signed `input`? */
-const zkVerifies = (input: Uint8Array, address: string, sig: string) => {
+const zkChecks = (input: Uint8Array, address: string, sig: string) => {
   const key = unpackPublicKey(littleEndian(base58.decode(address)))
   return verifySignature(signed(input), unpackSignature(Buffer.from(b64u.decode(sig))), key)
 }
@@ -46,7 +46,7 @@ test('each record checks with a second EdDSA-Poseidon and a second SHA-256', () 
     const input = hex.decode(v.signingInputHex)
     startsWith(input, 'forest/v1/record\n')
     assert.equal(createHash('sha256').update(input).digest('hex'), v.id)
-    assert.ok(zkVerifies(input, record.profile, record.sig), name)
+    assert.ok(zkChecks(input, record.profile, record.sig), name)
   }
 })
 
@@ -58,7 +58,7 @@ test("the message checks with a second EdDSA-Poseidon and a second SHA-256, is f
   startsWith(input, 'forest/v1/message\n')
   assert.equal(createHash('sha256').update(input).digest('hex'), v.id)
   assert.deepEqual([message.from, message.to], [KEYS.mainKeys[1].address, KEYS.mainKeys[0].address])
-  assert.ok(zkVerifies(input, message.from, message.sig))
+  assert.ok(zkChecks(input, message.from, message.sig))
   assert.deepEqual((await openMessage(v.wire, KEYS.mainKeys[0].inbox.identity)).body, { text: 'Is Tuesday at six free?' })
 })
 
@@ -70,7 +70,7 @@ test('each blob request checks with a second SHA-256 and EdDSA-Poseidon: a put a
     const input = hex.decode(v.signingInputHex)
     startsWith(input, 'forest/v1/blob\n')
     assert.deepEqual([request.action, request.profile, request.sha256], [action, KEYS.mainKeys[0].address, letters])
-    assert.ok(zkVerifies(input, pinned.profile, request.sig), name)
+    assert.ok(zkChecks(input, pinned.profile, request.sig), name)
   }
   assert.deepEqual(JSON.parse(pinned.blobPut.wire).mimeType, 'text/plain')
   assert.deepEqual(JSON.parse(pinned.blobPut.wire).size, 26)
@@ -82,5 +82,5 @@ test('the pull checks with a second EdDSA-Poseidon, by the profile it pulls', ()
   const input = hex.decode(v.signingInputHex)
   startsWith(input, 'forest/v1/pull\n')
   assert.equal(pull.profile, KEYS.mainKeys[0].address)
-  assert.ok(zkVerifies(input, pull.profile, pull.sig))
+  assert.ok(zkChecks(input, pull.profile, pull.sig))
 })

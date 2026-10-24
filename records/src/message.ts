@@ -6,7 +6,7 @@
 //
 // `sig` is EdDSA-Poseidon on Baby Jubjub, as a record's, over 0xff || "forest/v1/message\n" ||
 // JCS(the rest), by `from`. `host`, one of `from`'s hosts, says where a receiving host reads
-// `from`'s profile record, for an inbox with an issuer's rule. A pull request,
+// `from`'s profile record, for an inbox with a verifier's rule. A pull request,
 // `{ v: 1, profile, after, time, sig }`, is signed the same way by the profile's main key, over
 // 0xff || "forest/v1/pull\n" || JCS(the rest). A blob request,
 // `{ v: 1, action, profile, sha256, mimeType?, size?, time, sig }`, puts bytes in a folder or
@@ -20,7 +20,7 @@ import { sha256 } from '@noble/hashes/sha2.js'
 import { b64u, concat, hex, utf8 } from './bytes.ts'
 import { type Json, canonical, parseCanonical } from './canonical.ts'
 import { type Key, publicKeyFromAddress } from './keys.ts'
-import { type Body, MAX_FUTURE_MS, RecordError, SEAL_TO, normalizeOrigin, signAs, verifySignature } from './record.ts'
+import { type Body, MAX_FUTURE_MS, RecordError, SEAL_TO, checkSignature, normalizeOrigin, signAs } from './record.ts'
 
 export const MESSAGE_PREFIX = concat(Uint8Array.of(0xff), utf8('forest/v1/message\n'))
 export const PULL_PREFIX = concat(Uint8Array.of(0xff), utf8('forest/v1/pull\n'))
@@ -36,7 +36,7 @@ export type UnsignedMessage = {
   from: string
   time: number
   body: SealedBody
-  /** One of from's hosts, where a receiving host reads from's profile record: needed only for an inbox with an issuer's rule. */
+  /** One of from's hosts, where a receiving host reads from's profile record: needed only for an inbox with a verifier's rule. */
   host?: string
 }
 export type SignedMessage = UnsignedMessage & { sig: string }
@@ -116,7 +116,7 @@ export function messageId(unsigned: UnsignedMessage): string {
   return hex.encode(sha256(messageSigningInput(unsigned)))
 }
 
-/** The sender's own key, naming `host`, one of its hosts, where an inbox with an issuer's rule reads its profile record. */
+/** The sender's own key, naming `host`, one of its hosts, where an inbox with a verifier's rule reads its profile record. */
 export type HostSender = { from: Key; host: string }
 /** Who signs a message: the sender's own key (a main key, or any key), with one of its hosts or not. */
 export type Sender = Key | HostSender
@@ -151,14 +151,14 @@ export function readMessage(text: string): CheckedMessage {
 }
 
 /** Whether `from` signed the message. Strict, as a record's. */
-export function verifyMessage({ message }: CheckedMessage): boolean {
-  return verifySignature(b64u.decode(message.sig), messageSigningInput(unsignedMessageOf(message)), message.from)
+export function checkMessage({ message }: CheckedMessage): boolean {
+  return checkSignature(b64u.decode(message.sig), messageSigningInput(unsignedMessageOf(message)), message.from)
 }
 
 /** Read one message off the wire: every check, the signature included. Throws RecordError. */
 export function decodeMessage(text: string): CheckedMessage {
   const checked = readMessage(text)
-  if (!verifyMessage(checked)) fail('signature', 'the signature does not verify')
+  if (!checkMessage(checked)) fail('signature', 'the signature does not hold')
   return checked
 }
 
@@ -201,7 +201,7 @@ export function checkPull(text: string, now: number): SignedPull {
   checkPullShape(value)
   if (Math.abs(value.time - now) > MAX_FUTURE_MS) fail('stale', 'a pull is signed within ten minutes of the host’s clock')
   const { sig, ...unsigned } = value
-  if (!verifySignature(b64u.decode(sig), pullSigningInput(unsigned), value.profile)) fail('signature', 'the profile’s main key did not sign this pull')
+  if (!checkSignature(b64u.decode(sig), pullSigningInput(unsigned), value.profile)) fail('signature', 'the profile’s main key did not sign this pull')
   return value
 }
 
@@ -265,7 +265,7 @@ export function checkBlobRequest(text: string, now: number): SignedBlobRequest {
   checkBlobShape(value)
   if (Math.abs(value.time - now) > MAX_FUTURE_MS) fail('stale', 'a blob request is signed within ten minutes of the host’s clock')
   const { sig, ...unsigned } = value
-  if (!verifySignature(b64u.decode(sig), blobSigningInput(unsigned as UnsignedBlobRequest), value.profile)) fail('signature', 'the profile’s main key did not sign this request')
+  if (!checkSignature(b64u.decode(sig), blobSigningInput(unsigned as UnsignedBlobRequest), value.profile)) fail('signature', 'the profile’s main key did not sign this request')
   return value
 }
 
@@ -275,9 +275,9 @@ export function checkBlobRequest(text: string, now: number): SignedBlobRequest {
 export type Inbox = {
   /**
    * Who may deliver: anyone, or a profile whose profile record carries a stamp proof from this
-   * issuer, under any label. The issuer is named by its key's address.
+   * verifier, under any label. The verifier is named by its key's address.
    */
-  senders: 'anyone' | { issuer: string }
+  senders: 'anyone' | { verifier: string }
   /** One message from each sender, ever. */
   once?: true
   /** The largest message it takes, as canonical text in bytes. */
@@ -298,7 +298,7 @@ export function inboxOf(body: Body | null | undefined): Inbox | null | 'unsuppor
   const { senders, once, maxBytes } = inbox
   let rule: Inbox['senders']
   if (senders === 'anyone') rule = 'anyone'
-  else if (isObject(senders) && Object.keys(senders).length === 1 && publicKeyFromAddress(senders.issuer)) rule = { issuer: senders.issuer as string }
+  else if (isObject(senders) && Object.keys(senders).length === 1 && publicKeyFromAddress(senders.verifier)) rule = { verifier: senders.verifier as string }
   else return 'unsupported'
   if ('once' in inbox && once !== true) return 'unsupported'
   if ('maxBytes' in inbox && (!Number.isSafeInteger(maxBytes) || (maxBytes as number) < 0)) return 'unsupported'

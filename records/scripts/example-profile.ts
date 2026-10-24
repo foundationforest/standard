@@ -1,7 +1,8 @@
 // The example profile record's proofs (schemas/examples/profile.json): a stamp proof and a
-// reputation proof for keys/'s test person, tutoring/seller, made with the circuits' setups. A proof
-// is made with fresh randomness, so running this again gives other proofs for the same statements;
-// the example keeps the ones made once, and test/schemas.test.ts checks them with both verifiers.
+// reputation proof for keys/'s test person, tutoring/seller, made with the circuits' setups. A
+// proof is made with fresh randomness, so running this again gives other proofs for the same
+// statements; the example keeps the ones made once, and test/schemas.test.ts checks them with both
+// proof checks.
 //
 //   node scripts/example-profile.ts
 //
@@ -10,7 +11,7 @@
 
 import { readFileSync, writeFileSync } from 'node:fs'
 import { sha256 } from '@noble/hashes/sha2.js'
-import { fieldHash, inboxKey, issuerSecret, mainKey, packSignature, payAddresses, scopeOf, seedScalar, serviceKey, signBytes, tagOf } from '@foundationforest/keys'
+import { fieldHash, inboxKey, mainKey, packSignature, payAddresses, scopeOf, seedScalar, serviceKey, signBytes, tagOf, verifierSecret } from '@foundationforest/keys'
 import { proofBytes, proveStamp, signStamp, stampNumberOf, toBytes32 } from '@foundationforest/stamp'
 import { type Leaf, proveReputation, signedBytes } from '@foundationforest/reputation'
 import { b64u, hex } from '../src/bytes.ts'
@@ -18,25 +19,25 @@ import { b64u, hex } from '../src/bytes.ts'
 const KEYS = JSON.parse(readFileSync(new URL('../../keys/test/vectors.json', import.meta.url), 'utf8'))
 const seed = hex.decode(KEYS.seed)
 const LABEL = 'tutoring/seller'
-const ISSUER = 'issuer-a.example'
+const VERIFIER = 'issuer-a.example'
 const setup = (proof: string, file: string) => new URL(`../../proofs/${proof}/circuit/setup/${file}`, import.meta.url).pathname
 
 const S = await seedScalar(seed)
 const me = await mainKey(seed, LABEL)
 
-// The stamp proof: an example issuer signed the person a stamp, with example facts. The two texts
-// below keep the bytes they had when the example was made, old words and all: the example issuer's
-// key and the facts come from them.
-const issuerPrivate = sha256(new TextEncoder().encode(`forest example issuer: ${ISSUER}`))
-const stamp = signStamp(issuerPrivate, {
-  stampNumber: stampNumberOf(S, ISSUER),
-  facts: fieldHash('forest example attributes', ISSUER),
+// The stamp proof: an example verifier signed the person a stamp, with example facts. The two texts
+// below keep the bytes they had when the example was made, old words and all: the example
+// verifier's key and the facts come from them.
+const verifierPrivate = sha256(new TextEncoder().encode(`forest example issuer: ${VERIFIER}`))
+const stamp = signStamp(verifierPrivate, {
+  stampNumber: stampNumberOf(S, VERIFIER),
+  facts: fieldHash('forest example attributes', VERIFIER),
 })
-const stampProof = await proveStamp({ seedScalar: S, issuerName: ISSUER, stamp, label: LABEL, artifacts: { wasm: setup('stamp', 'note.wasm'), zkey: setup('stamp', 'note.zkey') } })
+const stampProof = await proveStamp({ seedScalar: S, verifierName: VERIFIER, stamp, label: LABEL, artifacts: { wasm: setup('stamp', 'note.wasm'), zkey: setup('stamp', 'note.zkey') } })
 
 // The reputation proof: the person's tutoring/buyer and cleaning/seller profiles in an example
 // index's tree, among made-up leaves, shown on tutoring/seller.
-const at = (await issuerSecret(seed, ISSUER)).scalar
+const at = (await verifierSecret(seed, VERIFIER)).scalar
 const mine: Leaf[] = [
   { tag: tagOf(at, 'tutoring/buyer'), scope: scopeOf('tutoring/buyer'), score: 90n, count: 7n },
   { tag: tagOf(at, 'cleaning/seller'), scope: scopeOf('cleaning/seller'), score: 80n, count: 3n },
@@ -47,7 +48,7 @@ const index = serviceKey(new Uint8Array(32).fill(0x2c)) // the example index's k
 const time = 1_790_812_800_000
 const reputation = await proveReputation({
   seedScalar: S,
-  sources: [{ label: 'tutoring/buyer', issuerName: ISSUER }, { label: 'cleaning/seller', issuerName: ISSUER }],
+  sources: [{ label: 'tutoring/buyer', verifierName: VERIFIER }, { label: 'cleaning/seller', verifierName: VERIFIER }],
   leaves,
   profileLabel: LABEL,
   artifacts: { wasm: setup('reputation', 'reputation.wasm'), zkey: setup('reputation', 'reputation.zkey') },
@@ -71,8 +72,8 @@ const profile = {
     },
     {
       circuit: 'stamp',
-      issuer: stampProof.issuer,
-      issuerName: ISSUER,
+      verifier: stampProof.verifier,
+      verifierName: VERIFIER,
       label: LABEL,
       tag: hex.encode(toBytes32(stampProof.tag)),
       proof: b64u.encode(proofBytes(stampProof.proof)),
@@ -80,5 +81,5 @@ const profile = {
   ],
 }
 writeFileSync(new URL('../schemas/examples/profile.json', import.meta.url), JSON.stringify(profile, null, 2) + '\n')
-console.log(`the example profile record for ${me.address}: a reputation score of ${reputation.score}, and a stamp proof from ${ISSUER}`)
+console.log(`the example profile record for ${me.address}: a reputation score of ${reputation.score}, and a stamp proof from ${VERIFIER}`)
 process.exit(0)

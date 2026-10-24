@@ -15,7 +15,8 @@ import { startHost } from './helpers.ts'
 const vault = await vaultKey(SEED)
 const vaultInbox = await inboxKey(vault.secret)
 const code = (c: string) => (err: unknown) => err instanceof RecordError && err.code === c
-// A stamp an example issuer signed for keys/'s test person, as proofs/stamp/client's stampToJson writes it.
+// A stamp an example verifier signed for keys/'s test person, as proofs/stamp/client's stampToJson
+// writes it.
 const stamp = stampToJson(
   signStamp(new Uint8Array(32).fill(0x31), {
     stampNumber: stampNumberOf(await seedScalar(SEED), 'issuer-a.example'),
@@ -44,7 +45,7 @@ describe('the vault', () => {
   })
 
   test('a bad entry is refused, before it is sealed and after it is opened', async () => {
-    checkVault({ profiles: [{ label: 'tutoring/seller', hosts: ['https://a.example'] }], stamps: [{ issuer: 'issuer-a.example', stamp }], settings: {} })
+    checkVault({ profiles: [{ label: 'tutoring/seller', hosts: ['https://a.example'] }], stamps: [{ verifier: 'issuer-a.example', stamp }], settings: {} })
     const bad: [string, unknown][] = [
       ['an array', []],
       ['profiles is a list', { profiles: {} }],
@@ -53,8 +54,8 @@ describe('the vault', () => {
       ['a host that is no origin', { profiles: [{ label: 'a', hosts: ['https://a.example/path'] }] }],
       ['a host twice', { profiles: [{ label: 'a', hosts: ['https://a.example', 'https://a.example'] }] }],
       ['a profile field nobody knows', { profiles: [{ label: 'a', hosts: ['https://a.example'], since: 1 }] }],
-      ['an issuer stamp with no issuer', { stamps: [{ issuer: '', stamp }] }],
-      ['a stamp that is no object', { stamps: [{ issuer: 'issuer-a.example', stamp: 'x' }] }],
+      ['a verifier stamp with no verifier', { stamps: [{ verifier: '', stamp }] }],
+      ['a stamp that is no object', { stamps: [{ verifier: 'issuer-a.example', stamp: 'x' }] }],
       ['settings is an object', { settings: [] }],
     ]
     for (const [why, v] of bad) assert.throws(() => checkVault(v), code('vault'), why)
@@ -76,7 +77,7 @@ describe('the vault', () => {
       // The first device keeps the rest in the vault, on a third host.
       const kept: Vault = {
         profiles: [{ label: 'tutoring/seller', hosts: [a.url] }, { label: 'tutoring/buyer', hosts: [b.url] }],
-        stamps: [{ issuer: 'issuer-a.example', stamp }],
+        stamps: [{ verifier: 'issuer-a.example', stamp }],
         bookmarks: [{ url: 'https://shop.example', since: T0 }],
         settings: { indexes: ['https://index.example'], theme: 'dark' },
       }
@@ -96,7 +97,7 @@ describe('the vault', () => {
         assert.deepEqual(view.current.get('profile')?.record.body?.subjects, ['maths'], p.label)
       }
       assert.ok((await readProfile([a.url], seller.address, now())).current.has('offer/maths'), 'the offers come back from their hosts')
-      assert.deepEqual(found.vault.stamps, [{ issuer: 'issuer-a.example', stamp }])
+      assert.deepEqual(found.vault.stamps, [{ verifier: 'issuer-a.example', stamp }])
       assert.deepEqual(found.vault.bookmarks, [{ url: 'https://shop.example', since: T0 }], 'a field an app added comes back as it was')
 
       // A later write, from either device, after the one read: the newer vault counts.

@@ -1,5 +1,5 @@
 // Field elements as 32 big-endian bytes, and the hashes that turn text into them, which are keys/'s:
-// a label's scope and an issuer's name hash come from the same recipe that mixes the keys.
+// a label's scope and a verifier's name hash come from the same recipe that mixes the keys.
 
 export { BN254_R, fieldHash, isFieldElement, nameHashOf, scopeOf } from '@foundationforest/keys'
 

@@ -8,13 +8,13 @@ import { sha256 } from '@noble/hashes/sha2.js'
 import { Base8, addPoint, mulPointEscalar } from '@zk-kit/baby-jubjub'
 import { verifySignature as zkVerify } from '@zk-kit/eddsa-poseidon'
 import { poseidon5 } from 'poseidon-lite/poseidon5'
-import { BN254_R, SUBGROUP_ORDER, bytesMessage, inboxKey, packSignature, unpackSignature, verifyWithPublicKey } from '@foundationforest/keys'
+import { BN254_R, SUBGROUP_ORDER, bytesMessage, checkWithPublicKey, inboxKey, packSignature, unpackSignature } from '@foundationforest/keys'
 import { b64u, base58, concat, hex, utf8 } from '../src/bytes.ts'
 import { canonical } from '../src/canonical.ts'
 import { publish, readAll, readProfile } from '../src/client.ts'
 import type { Host } from '../src/host.ts'
-import { BLOB_PREFIX, MESSAGE_PREFIX, PULL_PREFIX, blobNameOf, blobSigningInput, checkBlobRequest, checkPull, messageSigningInput, pullSigningInput, readMessage, verifyMessage } from '../src/message.ts'
-import { SIGN_PREFIX, checkRecord, encodeRecord, signAs, signingInput, unsignedOf, verifySignature } from '../src/record.ts'
+import { BLOB_PREFIX, MESSAGE_PREFIX, PULL_PREFIX, blobNameOf, blobSigningInput, checkBlobRequest, checkMessage, checkPull, messageSigningInput, pullSigningInput, readMessage } from '../src/message.ts'
+import { SIGN_PREFIX, checkRecord, checkSignature, encodeRecord, signAs, signingInput, unsignedOf } from '../src/record.ts'
 import { viewProfile } from '../src/view.ts'
 import { hostsRecord, ownerRecord } from '../src/write.ts'
 import { MINUTE, SEED, T0, alice, aliceBuyer, bob, offerBody, profileBody, stranger } from './fixtures.ts'
@@ -32,22 +32,22 @@ describe('nobody forges; a signature means one thing everywhere', () => {
   const sig = b64u.decode(record.sig)
 
   test("a valid signature: ours and zk-kit's agree", () => {
-    assert.equal(verifySignature(sig, message, alice.address), true)
+    assert.equal(checkSignature(sig, message, alice.address), true)
     assert.equal(zkVerify(bytesMessage(message), unpackSignature(sig)!, alice.publicKey), true)
   })
 
   test('a second spelling of the same signature (S + l) is refused, and could not make a new id anyway', () => {
     const S = fromLe(sig.subarray(32))
     const malleated = concat(sig.subarray(0, 32), le(S + L))
-    assert.equal(verifySignature(malleated, message, alice.address), false)
+    assert.equal(checkSignature(malleated, message, alice.address), false)
     assert.equal(zkVerify(bytesMessage(message), { R8: unpackSignature(sig)!.R8, S: S + L }, alice.publicKey), false)
     assert.throws(() => checkRecord({ ...record, sig: b64u.encode(malleated) }), /signature/)
   })
 
-  test("a small-order key: (R8 = identity, S = 0) verifies any message for it under zk-kit's check; Forest refuses the key outright", (t) => {
+  test("a small-order key: (R8 = identity, S = 0) passes zk-kit's check for any message; Forest refuses the key outright", (t) => {
     const universal = { R8: [0n, 1n] as [bigint, bigint], S: 0n }
-    assert.equal(verifyWithPublicKey(ORDER_2, bytesMessage(message), universal), false)
-    assert.equal(verifySignature(packSignature(universal), message, ORDER_2), false)
+    assert.equal(checkWithPublicKey(ORDER_2, bytesMessage(message), universal), false)
+    assert.equal(checkSignature(packSignature(universal), message, ORDER_2), false)
     t.diagnostic(`zk-kit's verifySignature accepts the universal signature for the key of order 2: ${zkVerify(bytesMessage(message), universal, ORDER_2)}`)
     // A record for a small-order key cannot even be read: its profile is no usable address.
     const packed = le(ORDER_2[1])
@@ -65,7 +65,7 @@ describe('nobody forges; a signature means one thing everywhere', () => {
     const hm = poseidon5([R8[0], R8[1], mixed[0], mixed[1], m])
     const forged = { R8, S: (r + 8n * hm * alice.scalar) % L }
     assert.equal(zkVerify(m, forged, mixed), true, 'zk-kit takes it: it checks only that a key is on the curve')
-    assert.equal(verifyWithPublicKey(mixed, m, forged), false, 'Forest takes no key outside the subgroup')
+    assert.equal(checkWithPublicKey(mixed, m, forged), false, 'Forest takes no key outside the subgroup')
   })
 
   test('the signed bytes of a record, a message, a pull, a blob request and an index root each start with their own text', () => {
@@ -90,7 +90,7 @@ describe('a key that is not the main key', () => {
     const signature = (run: () => unknown) => assert.throws(run, (err: { code?: string }) => err.code === 'signature')
     signature(() => checkRecord(posing({ v: 1 as const, profile: alice.address, path: 'offer/x', time: T0, body: offerBody('1') }, signingInput)))
     const sent = posing({ v: 1 as const, to: bob.address, from: alice.address, time: T0, body: { private: 'YWdl' } }, messageSigningInput)
-    assert.equal(verifyMessage(readMessage(canonical(sent))), false)
+    assert.equal(checkMessage(readMessage(canonical(sent))), false)
     signature(() => checkPull(canonical(posing({ v: 1 as const, profile: alice.address, after: 0, time: T0 }, pullSigningInput)), T0))
     signature(() => checkBlobRequest(canonical(posing({ v: 1 as const, action: 'put' as const, ...blobNameOf(utf8('x'), 'image/png'), profile: alice.address, time: T0 }, blobSigningInput)), T0))
   })

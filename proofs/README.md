@@ -7,8 +7,8 @@ Part of Forest's standard: [the top README](../README.md).
 The zero-knowledge proofs a person's device makes and anyone can check. A zero-knowledge proof
 shows that something is true of the person's secrets without showing the secrets.
 
-- [`stamp/`](stamp/README.md): an issuer signed a stamp to the seed behind a profile, and this is
-  the profile's tag for its label at that issuer.
+- [`stamp/`](stamp/README.md): a verifier signed a stamp to the seed behind a profile, and this is
+  the profile's tag for its label at that verifier.
 - [`reputation/`](reputation/README.md): a score across the person's profiles, from the tree an
   index publishes, without saying which profiles.
 

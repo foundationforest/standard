@@ -12,8 +12,8 @@ import { groth16 } from 'snarkjs'
 import {
   type Point,
   addressOf,
+  checkBytes,
   isFieldElement,
-  issuerScalarOf,
   nameHashOf,
   pointOf,
   profileScalarOf,
@@ -21,7 +21,7 @@ import {
   scopeOf,
   tagOf,
   unpackSignature,
-  verifyBytes,
+  verifierScalarOf,
 } from '@foundationforest/keys'
 import { type SnarkjsProof, proofFromBytes, toBytes32 } from '@foundationforest/stamp'
 import { REPUTATION_KEY } from './reputation-key.ts'
@@ -37,7 +37,7 @@ export const SIGNED_PREFIX = 'forest/v1/reputation\n'
 
 /** One profile in an index's tree. */
 export type Leaf = {
-  /** The profile's tag at the issuer its stamp proof names. */
+  /** The profile's tag at the verifier its stamp proof names. */
   tag: bigint
   /** The scope of the profile's label (`scopeOf`). */
   scope: bigint
@@ -47,8 +47,8 @@ export type Leaf = {
   count: bigint
 }
 
-/** One of the person's profiles to count: its label, and the issuer whose tag the index's leaf carries. */
-export type Source = { label: string; issuerName: string }
+/** One of the person's profiles to count: its label, and the verifier whose tag the index's leaf carries. */
+export type Source = { label: string; verifierName: string }
 
 /** Where a leaf sits: Semaphore's Merkle proof, as the circuit reads it. */
 export type Path = { length: number; index: number; siblings: bigint[] }
@@ -138,7 +138,7 @@ export function signedBytes(root: bigint, time: bigint | number): Uint8Array {
 export function circuitInput(input: {
   /** The seed scalar: `keys/`'s `seedScalar(seed)`. */
   seedScalar: bigint
-  /** The person's profiles to count, one to eight, each with the issuer its leaf's tag is at. */
+  /** The person's profiles to count, one to eight, each with the verifier its leaf's tag is at. */
   sources: Source[]
   /** The index's published leaves, in its order. */
   leaves: Leaf[]
@@ -156,12 +156,12 @@ export function circuitInput(input: {
   const tree = buildTree(input.leaves)
   const byTag = new Map(input.leaves.map((leaf) => [leaf.tag, leaf]))
 
-  const slots = sources.map(({ label, issuerName }) => {
-    const tag = tagOf(issuerScalarOf(seedScalar, issuerName), label)
+  const slots = sources.map(({ label, verifierName }) => {
+    const tag = tagOf(verifierScalarOf(seedScalar, verifierName), label)
     const leaf = byTag.get(tag)
     const path = tree.pathOf(tag)
-    if (leaf === undefined || path === undefined) throw new Error(`the tree has no leaf for ${label} at ${issuerName}`)
-    return { leaf, path, nameHash: nameHashOf(issuerName) }
+    if (leaf === undefined || path === undefined) throw new Error(`the tree has no leaf for ${label} at ${verifierName}`)
+    return { leaf, path, nameHash: nameHashOf(verifierName) }
   })
 
   const countSum = slots.reduce((n, s) => n + s.leaf.count, 0n)
@@ -176,6 +176,8 @@ export function circuitInput(input: {
   return {
     input: {
       seedScalar,
+      // Each slot's verifier's name hash, under the circuit's name for it: reputation.circom keeps
+      // its bytes.
       issuerNameHashes: all.map((s) => s.nameHash),
       used: all.map((_, i) => (i < slots.length ? 1 : 0)),
       // The circuit's signal for the leaves' tags is named stamps: reputation.circom keeps its bytes.
@@ -220,14 +222,14 @@ export { proofBytes, proofFromBytes } from '@foundationforest/stamp'
 
 /**
  * Does this proof hold, under a root this index signed with this time, on this profile? Checks the
- * index's signature (keys/'s verifyBytes over signedBytes), that every public value is in range,
+ * index's signature (keys/'s checkBytes over signedBytes), that every public value is in range,
  * and the proof with the committed verification key for this profile's key and, if one is given,
  * this shown label. The key is derived inside the proof from the same seed as every counted
  * profile, so a proof holds only on a profile of the prover's own. How old a time to accept, and
  * which indexes to trust, is the reader's choice. Anything that is not a good proof for these
  * inputs is false.
  */
-export async function verifyReputation(input: {
+export async function checkReputation(input: {
   /** The proof as snarkjs writes it, `proveReputation`'s `proof`, or its 256 bytes (`proofBytes`). */
   proof: SnarkjsProof | Uint8Array
   root: bigint
@@ -245,7 +247,7 @@ export async function verifyReputation(input: {
 }): Promise<boolean> {
   try {
     const signature = unpackSignature(input.signature)
-    if (signature === null || !verifyBytes(input.index, signedBytes(input.root, input.time), signature)) return false
+    if (signature === null || !checkBytes(input.index, signedBytes(input.root, input.time), signature)) return false
     if (input.score < 0n || input.score >= BOUND) return false
     const profile = typeof input.profile === 'string' ? pointOf(input.profile) : pointOf(addressOf(input.profile))
     const scope = input.label === undefined ? 0n : scopeOf(input.label)

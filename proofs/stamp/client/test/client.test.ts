@@ -36,14 +36,14 @@ test("the verification key is the circuit's committed one, value for value", () 
   assert.equal(STAMP_KEY.nPublic, 7)
 })
 
-test("the circuit's constants are keys/'s: the issuer and profile prefixes, and Base8", () => {
+test("the circuit's constants are keys/'s: the verifier and profile prefixes, and Base8", () => {
   // note.circom keeps its bytes, the names of its constants among them: ISSUER_TAG and PROFILE_TAG
   // are the prefixes.
-  assert.ok(circuit.includes(`var ISSUER_TAG = ${PREFIX.issuer};`), 'the issuer prefix')
+  assert.ok(circuit.includes(`var ISSUER_TAG = ${PREFIX.verifier};`), 'the verifier prefix')
   assert.ok(circuit.includes(`var PROFILE_TAG = ${PREFIX.profile};`), 'the profile prefix')
   const [x, y] = publicKeyOf(1n)
   assert.ok(circuit.includes(`${x},\n        ${y}\n    ];`), 'Base8, the point a scalar of 1 gives')
-  assert.equal(PREFIX.issuer, hash('forest/v1/issuer'))
+  assert.equal(PREFIX.verifier, hash('forest/v1/issuer'))
   assert.equal(PREFIX.profile, hash('forest/v1/profile'))
 })
 
@@ -58,7 +58,7 @@ test('a label gives a scope and a name a name hash, each a field element, and th
   }
   assert.equal(fieldHash('', 'forest/v1/note'), hash('forest/v1/note'))
   assert.throws(() => scopeOf('a\ud800'), /label must be text/)
-  assert.throws(() => nameHashOf(7 as unknown as string), /issuer name must be text/)
+  assert.throws(() => nameHashOf(7 as unknown as string), /verifier name must be text/)
 })
 
 test('a number as 32 big-endian bytes, and back', () => {

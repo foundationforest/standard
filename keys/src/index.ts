@@ -3,7 +3,7 @@
 
 export { INFO, SEED_LENGTH, hkdf } from './hkdf.ts'
 export { newSeed, exportWords, importWords, WORD_COUNT } from './words.ts'
-export { BN254_R, ISSUER_NS, PREFIX, SCOPE_NS, fieldHash, isFieldElement, nameHashOf, scopeOf } from './field.ts'
+export { BN254_R, PREFIX, SCOPE_NS, VERIFIER_NS, fieldHash, isFieldElement, nameHashOf, scopeOf } from './field.ts'
 export { seedScalar } from './scalar.ts'
 export {
   BASE8,
@@ -20,13 +20,13 @@ export {
   signWithScalar,
   unpackPoint,
   unpackSignature,
-  verifyBytes,
-  verifyWithPublicKey,
+  checkBytes,
+  checkWithPublicKey,
   type Point,
   type Signature,
 } from './curve.ts'
 export { mainKey, inboxKey, profileScalarOf, type MainKey, type InboxKey } from './profile.ts'
 export { PAY_TYPES, evmAddressOf, isEvmAddress, payAddresses, payKey, type PayAddresses, type PayKey, type PayType } from './pay.ts'
-export { issuerSecret, issuerScalarOf, tagOf, type IssuerSecret } from './issuer.ts'
+export { verifierSecret, verifierScalarOf, tagOf, type VerifierSecret } from './verifier.ts'
 export { vaultKey, vaultScalarOf, type VaultKey } from './vault.ts'
 export { serviceKey, type ServiceKey } from './service.ts'

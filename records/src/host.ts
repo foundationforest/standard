@@ -6,8 +6,8 @@
 // the bytes a folder's main key puts, and serves them to anyone. It never reads an offer's or a
 // review's body: the bodies it reads are the hosts record's, and the profile record's inbox and
 // proofs. Given readSender, it reads a sender's hosts and profile records from one of the sender's
-// hosts, for an inbox with an issuer's rule, and checks the profile record's stamp proofs with
-// verifyStamp.
+// hosts, for an inbox with a verifier's rule, and checks the profile record's stamp proofs with
+// checkStamp.
 // It keeps the newest version at each path; versions that stop being newest, and messages, go
 // after `keepDays`. A folder's blobs stay until its main key deletes them.
 //
@@ -34,7 +34,7 @@ import { sha256 } from '@noble/hashes/sha2.js'
 import { hex, utf8 } from './bytes.ts'
 import { READ_TIMEOUT_MS } from './client.ts'
 import { publicKeyFromAddress } from './keys.ts'
-import { type CheckedMessage, type Inbox, type SignedBlobRequest, type SignedMessage, checkBlobRequest, checkPull, inboxOf, readMessage, verifyMessage } from './message.ts'
+import { type CheckedMessage, type Inbox, type SignedBlobRequest, type SignedMessage, checkBlobRequest, checkMessage, checkPull, inboxOf, readMessage } from './message.ts'
 import { type StampCheck, proofsOf, stampCheck } from './proofs.ts'
 import { type Checked, MAX_FUTURE_MS, RecordError, type SignedRecord, decodeRecord, encodeRecord, isControlPath } from './record.ts'
 import { type BlobDriver, type Row, Storage } from './storage.ts'
@@ -102,18 +102,18 @@ export type HostOptions = {
   maxPageBytes?: number
   /**
    * A profile's records, each checked, as one of its hosts serves them: what readAll gives. Used to
-   * take a message to an inbox with an issuer's rule: the sender's hosts and profile records come
+   * take a message to an inbox with a verifier's rule: the sender's hosts and profile records come
    * from the host the message names, never from the message. Without it, the host takes no such
    * message. It is read again for each request; keeping it longer is the operator's choice, made
    * here.
    */
   readSender?: (host: string, profile: string) => Promise<Iterable<Checked>>
   /**
-   * Whether a stamp proof holds: proofs/stamp/client's verifyStamp, given a stamp proof on the sender's
-   * profile record as stampCheck makes it. Used for an inbox with an issuer's rule. Without it, the
-   * host takes messages only for inboxes open to anyone.
+   * Whether a stamp proof holds: proofs/stamp/client's checkStamp, given a stamp proof on the
+   * sender's profile record as stampCheck makes it. Used for an inbox with a verifier's rule.
+   * Without it, the host takes messages only for inboxes open to anyone.
    */
-  verifyStamp?: (input: StampCheck) => Promise<boolean>
+  checkStamp?: (input: StampCheck) => Promise<boolean>
   messageChoice?: MessageChoice
   /** The largest blob it reads; DEFAULT_MAX_BLOB_BYTES when omitted. */
   maxBlobBytes?: number
@@ -140,7 +140,7 @@ export class Host {
   private readonly messageChoice?: MessageChoice
   private readonly blobChoice: BlobChoice
   private readonly readSender?: HostOptions['readSender']
-  private readonly verifyStamp?: HostOptions['verifyStamp']
+  private readonly checkStamp?: HostOptions['checkStamp']
   private readonly timeout: number
   private server?: Server
   private pruning?: NodeJS.Timeout
@@ -157,7 +157,7 @@ export class Host {
     this.messageChoice = options.messageChoice
     this.blobChoice = options.blobChoice ?? defaultBlobChoice
     this.readSender = options.readSender
-    this.verifyStamp = options.verifyStamp
+    this.checkStamp = options.checkStamp
     this.timeout = options.timeout ?? READ_TIMEOUT_MS
     this.storage = new Storage(options.dir, options.blobs)
   }
@@ -291,14 +291,14 @@ export class Host {
     let inbox = inboxes.get(m.to)
     if (inbox === undefined) inboxes.set(m.to, (inbox = inboxOf(this.view(m.to, now).current.get('profile')?.record.body)))
     if (inbox === null) return refuse('no_inbox', 'the profile record here declares no inbox')
-    if (!verifyMessage(c)) return refuse('signature', 'the signature does not verify')
+    if (!checkMessage(c)) return refuse('signature', 'the signature does not hold')
     // An inbox's rules are for others: a message from the profile it is to skips them.
     const rules = m.from === m.to ? undefined : inbox
     if (rules === 'unsupported') return refuse('rule_unsupported', 'this host does not know the inbox’s rule')
     if (rules && rules.senders !== 'anyone') {
-      // An issuer's rule: from's profile record, read from the host the message names, which from's
-      // hosts record names, carries a stamp proof from that issuer that holds.
-      if (!this.readSender || !this.verifyStamp) return refuse('rule_unsupported', this.readSender ? 'this host checks no stamp proof' : 'this host does not read senders’ records')
+      // A verifier's rule: from's profile record, read from the host the message names, which
+      // from's hosts record names, carries a stamp proof from that verifier that holds.
+      if (!this.readSender || !this.checkStamp) return refuse('rule_unsupported', this.readSender ? 'this host checks no stamp proof' : 'this host does not read senders’ records')
       if (m.host === undefined) return refuse('sender', 'a message to this inbox names host, one of from’s hosts, where its profile record is read')
       const at = `${m.from} ${m.host}`
       let sender = senders.get(at)
@@ -310,18 +310,18 @@ export class Host {
         }
       }
       if (!sender.hosts.includes(m.host)) return refuse('sender', 'host is not one of the hosts from’s hosts record names')
-      const issuer = rules.senders.issuer
+      const verifier = rules.senders.verifier
       const checks = proofsOf(sender.current.get('profile')?.record.body)
-        .filter((p) => p.issuer === issuer)
+        .filter((p) => p.verifier === verifier)
         .map((p) => stampCheck(p, m.from))
         .filter((p): p is StampCheck => p !== null)
       let held = false
       try {
-        for (const check of checks) if ((held = await this.verifyStamp(check))) break
+        for (const check of checks) if ((held = await this.checkStamp(check))) break
       } catch (err) {
         return refuse('lookup', `the stamp proof could not be checked, try again: ${(err as Error).message}`)
       }
-      if (!held) return refuse('sender', 'from’s profile record carries no stamp proof from the inbox’s issuer that holds')
+      if (!held) return refuse('sender', 'from’s profile record carries no stamp proof from the inbox’s verifier that holds')
     }
     if (rules?.once && this.storage.hasOnce(m.to, m.from)) return refuse('once', 'this inbox takes one message from each sender')
     if (rules?.maxBytes !== undefined && utf8(line).length > rules.maxBytes) return refuse('too_big', `this inbox takes messages of at most ${rules.maxBytes} bytes`)

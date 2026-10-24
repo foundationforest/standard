@@ -31,8 +31,8 @@ import {
   importWords,
   inboxKey,
   isEvmAddress,
-  issuerScalarOf,
-  issuerSecret,
+  verifierScalarOf,
+  verifierSecret,
   mainKey,
   nameHashOf,
   newSeed,
@@ -51,8 +51,8 @@ import {
   unpackPoint,
   unpackSignature,
   vaultKey,
-  verifyBytes,
-  verifyWithPublicKey,
+  checkBytes,
+  checkWithPublicKey,
   type Point,
 } from '../src/index.ts'
 
@@ -60,7 +60,7 @@ const vectors = JSON.parse(readFileSync(new URL('./vectors.json', import.meta.ur
 const seed = hex.decode(vectors.seed)
 const otherSeed = new Uint8Array(32).fill(7)
 const [seller, buyer] = vectors.mainKeys
-const [issuerA, issuerB] = vectors.issuers
+const [verifierA, verifierB] = vectors.verifiers
 const S = BigInt(vectors.seedScalar.scalar)
 const utf8 = (text: string) => new TextEncoder().encode(text)
 // HKDF-SHA256 from a second implementation: empty salt, 32 bytes.
@@ -203,7 +203,7 @@ test('the label is used exactly: another case, another space, another profile', 
 test('keys of one seed have nothing to do with keys of another seed', async () => {
   assert.notEqual((await mainKey(seed, 'tutoring/seller')).address, (await mainKey(otherSeed, 'tutoring/seller')).address)
   for (const type of PAY_TYPES) assert.notEqual((await payKey(seed, 'tutoring/seller', type)).address, (await payKey(otherSeed, 'tutoring/seller', type)).address)
-  assert.notEqual((await issuerSecret(seed, issuerA.name)).stampNumber, (await issuerSecret(otherSeed, issuerA.name)).stampNumber)
+  assert.notEqual((await verifierSecret(seed, verifierA.name)).stampNumber, (await verifierSecret(otherSeed, verifierA.name)).stampNumber)
 })
 
 test('a main key needs a 32-byte seed and a label that is text', async () => {
@@ -251,8 +251,8 @@ test('the main key signs: the pinned signature, again the same, and it holds', (
   const sig = signWithScalar(scalar, message)
   assert.deepEqual(sig, { R8: big(v.R8), S: BigInt(v.S) })
   assert.deepEqual(signWithScalar(scalar, message), sig, 'deterministic')
-  assert.equal(verifyWithPublicKey(big(seller.publicKey), message, sig), true)
-  assert.equal(verifyWithPublicKey(seller.address, message, sig), true, 'from its address')
+  assert.equal(checkWithPublicKey(big(seller.publicKey), message, sig), true)
+  assert.equal(checkWithPublicKey(seller.address, message, sig), true, 'from its address')
   assert.equal(verifySignature(message, sig, big(seller.publicKey)), true, "zk-kit's own check")
 })
 
@@ -296,13 +296,13 @@ test('a signature holds for its message and key only', () => {
   const scalar = BigInt(seller.scalar)
   const message = 12345n
   const sig = signWithScalar(scalar, message)
-  assert.equal(verifyWithPublicKey(seller.address, message + 1n, sig), false, 'another message')
-  assert.equal(verifyWithPublicKey(buyer.address, message, sig), false, 'another key')
-  assert.equal(verifyWithPublicKey(seller.address, message, { ...sig, S: sig.S + 1n }), false, 'S changed')
-  assert.equal(verifyWithPublicKey(seller.address, message, { ...sig, S: sig.S + subOrder }), false, 'S plus l')
-  assert.equal(verifyWithPublicKey(seller.address, message, { ...sig, R8: [sig.R8[0], sig.R8[1] + 1n] }), false, 'R8 off the curve')
-  assert.equal(verifyWithPublicKey('not an address', message, sig), false, 'no key')
-  assert.equal(verifyWithPublicKey(seller.address, BN254_R, sig), false, 'a message past the field')
+  assert.equal(checkWithPublicKey(seller.address, message + 1n, sig), false, 'another message')
+  assert.equal(checkWithPublicKey(buyer.address, message, sig), false, 'another key')
+  assert.equal(checkWithPublicKey(seller.address, message, { ...sig, S: sig.S + 1n }), false, 'S changed')
+  assert.equal(checkWithPublicKey(seller.address, message, { ...sig, S: sig.S + subOrder }), false, 'S plus l')
+  assert.equal(checkWithPublicKey(seller.address, message, { ...sig, R8: [sig.R8[0], sig.R8[1] + 1n] }), false, 'R8 off the curve')
+  assert.equal(checkWithPublicKey('not an address', message, sig), false, 'no key')
+  assert.equal(checkWithPublicKey(seller.address, BN254_R, sig), false, 'a message past the field')
   assert.notDeepEqual(signWithScalar(scalar, message + 1n).R8, sig.R8, 'another message, another nonce')
   assert.throws(() => signWithScalar(0n, message), /scalar/)
   assert.throws(() => signWithScalar(subOrder, message), /scalar/)
@@ -445,12 +445,12 @@ test("the vault key is no profile's, and another seed gives another", async () =
   await assert.rejects(vaultKey(new Uint8Array(31)), /seed must be 32 bytes/)
 })
 
-// Issuer secrets, stamp numbers and tags
+// Verifier secrets, stamp numbers and tags
 
-test('each issuer gives the pinned name hash, secret, stamp number and tags, and gives them again', async () => {
-  for (const expected of vectors.issuers) {
+test('each verifier gives the pinned name hash, secret, stamp number and tags, and gives them again', async () => {
+  for (const expected of vectors.verifiers) {
     for (let round = 0; round < 2; round++) {
-      const { name, nameHash, scalar, stampNumber } = await issuerSecret(seed, expected.name)
+      const { name, nameHash, scalar, stampNumber } = await verifierSecret(seed, expected.name)
       assert.equal(name, expected.name)
       assert.equal(nameHash.toString(), expected.nameHash)
       assert.equal(scalar.toString(), expected.scalar)
@@ -460,14 +460,14 @@ test('each issuer gives the pinned name hash, secret, stamp number and tags, and
   }
 })
 
-test('the issuer secret, the stamp number and a tag, recomputed without the library', () => {
-  for (const expected of vectors.issuers) {
+test('the verifier secret, the stamp number and a tag, recomputed without the library', () => {
+  for (const expected of vectors.verifiers) {
     const nameHash = field('forest/v1/issuer/' + expected.name)
     assert.equal(nameHash.toString(), expected.nameHash)
     assert.equal(nameHashOf(expected.name), nameHash)
-    const scalar = poseidon3([PREFIX.issuer, S, nameHash])
+    const scalar = poseidon3([PREFIX.verifier, S, nameHash])
     assert.equal(scalar.toString(), expected.scalar)
-    assert.equal(issuerScalarOf(S, expected.name), scalar)
+    assert.equal(verifierScalarOf(S, expected.name), scalar)
     assert.equal(poseidon1([scalar]).toString(), expected.stampNumber)
     for (const [label, tag] of Object.entries(expected.tags)) {
       assert.equal(poseidon2([field('forest/v1/label/' + label), scalar]).toString(), tag)
@@ -476,27 +476,27 @@ test('the issuer secret, the stamp number and a tag, recomputed without the libr
   }
 })
 
-test('two issuers, two unrelated stamp numbers and tags; and none of it is a key', async () => {
-  const a = await issuerSecret(seed, issuerA.name)
-  const b = await issuerSecret(seed, issuerB.name)
+test('two verifiers, two unrelated stamp numbers and tags; and none of it is a key', async () => {
+  const a = await verifierSecret(seed, verifierA.name)
+  const b = await verifierSecret(seed, verifierB.name)
   assert.notEqual(a.stampNumber, b.stampNumber)
   assert.notEqual(tagOf(a.scalar, 'tutoring/seller'), tagOf(b.scalar, 'tutoring/seller'))
-  const all = [issuerA.scalar, issuerB.scalar, seller.scalar, buyer.scalar, vectors.vault.scalar, vectors.seedScalar.scalar, seller.raw, buyer.raw]
+  const all = [verifierA.scalar, verifierB.scalar, seller.scalar, buyer.scalar, vectors.vault.scalar, vectors.seedScalar.scalar, seller.raw, buyer.raw]
   assert.equal(new Set(all).size, all.length)
 })
 
 test('the name is used exactly, and must be text; the seed is 32 bytes', async () => {
   const names = new Set<string>()
   for (const name of ['issuer-a.example', 'Issuer-A.example', 'issuer-a.example ', '']) {
-    names.add((await issuerSecret(seed, name)).stampNumber.toString())
+    names.add((await verifierSecret(seed, name)).stampNumber.toString())
   }
   assert.equal(names.size, 4)
   for (const name of ['issuer-\ud800a.example', 7, undefined]) {
-    await assert.rejects(issuerSecret(seed, name as string), /issuer name must be text/, String(name))
+    await assert.rejects(verifierSecret(seed, name as string), /verifier name must be text/, String(name))
   }
-  await assert.rejects(issuerSecret(seed.subarray(1), issuerA.name), /seed must be 32 bytes/)
+  await assert.rejects(verifierSecret(seed.subarray(1), verifierA.name), /seed must be 32 bytes/)
   assert.throws(() => tagOf(BN254_R, 'tutoring/seller'), /field element/)
-  assert.throws(() => issuerScalarOf(-1n, issuerA.name), /field element/)
+  assert.throws(() => verifierScalarOf(-1n, verifierA.name), /field element/)
 })
 
 // Service keys, and signing bytes
@@ -509,7 +509,7 @@ test("a service key's 32 bytes are a zk-kit EdDSA-Poseidon private key: the pinn
   assert.deepEqual(key.publicKey, derivePublicKey(hex.decode(v.secret)), "zk-kit's public key for the same bytes")
   // zk-kit signs with the same bytes; the signature holds under the service key.
   const m = 777n
-  assert.equal(verifyWithPublicKey(key.address, m, zkSign(hex.decode(v.secret), m)), true)
+  assert.equal(checkWithPublicKey(key.address, m, zkSign(hex.decode(v.secret), m)), true)
   assert.throws(() => serviceKey(new Uint8Array(31)), /32 bytes/)
 })
 
@@ -521,9 +521,9 @@ test('bytes are signed as SHA-256 of them, shifted right one byte', () => {
   const scalar = BigInt(seller.scalar)
   const sig = signBytes(scalar, bytes)
   assert.deepEqual(sig, signWithScalar(scalar, digest))
-  assert.equal(verifyBytes(seller.address, bytes, sig), true)
+  assert.equal(checkBytes(seller.address, bytes, sig), true)
   assert.equal(verifySignature(digest, sig, big(seller.publicKey)), true, "zk-kit's own check")
   const other = bytes.slice()
   other[0]! ^= 1
-  assert.equal(verifyBytes(seller.address, other, sig), false)
+  assert.equal(checkBytes(seller.address, other, sig), false)
 })
