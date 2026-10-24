@@ -30,19 +30,19 @@ circom 2.2.3, Groth16 on BN254, and the Poseidon and Merkle pieces Semaphore use
 An index reads profiles' records from hosts and scores profiles as it chooses
 ([records](../../records/README.md)); it publishes its scores as a tree. The tree is a standard: any
 index may publish one, and a proof names the root it used, the one number the whole tree hashes down
-to. The circuit proves a weighted average over any tree of `(stamp, scope, score, count)` leaves an
+to. The circuit proves a weighted average over any tree of `(tag, scope, score, count)` leaves an
 index signs; a proof means only what that index says that root holds.
 
-- **A leaf** is `Poseidon(stamp, scope, score, count)`, circomlib's Poseidon with four inputs:
-  - `stamp`: the profile's stamp at an issuer ([keys](../../keys/README.md#stamps)), as its note
-    proof shows it ([note](../note/README.md#the-note-and-the-note-proof)): an issuer signed a note
+- **A leaf** is `Poseidon(tag, scope, score, count)`, circomlib's Poseidon with four inputs:
+  - `tag`: the profile's tag at a verifier ([keys](../../keys/README.md#tags)), as its stamp proof
+    shows it ([stamp](../stamp/README.md#the-stamp-and-the-stamp-proof)): a verifier signed a stamp
     to the seed behind the profile.
   - `scope`: the profile's label as a number, exactly as `keys/` makes it
     ([keys](../../keys/README.md#the-recipe)).
   - `score` and `count`: each a whole number below 2^32 whose meaning is the index's (a rating and
     the number of reviews behind it, for instance). The circuit outputs the scores' average, each
     weighted by its count; any other aggregate is a new circuit.
-- **One leaf per stamp.**
+- **One leaf per tag.**
 - **The tree** is Semaphore's lean incremental Merkle tree over Poseidon of pairs, with the leaves
   in the index's order: it hashes the leaves in pairs, level by level, up to one number, the root,
   so a short path shows that a leaf is in it. The circuit fixes its depth at 20, so a tree holds at
@@ -65,27 +65,30 @@ circuit and a new setup.
 
 | | Signals |
 |---|---|
-| Private | `seedScalar`, the number `keys/`'s `seedScalar` gives; for each slot, `used`, the issuer's name hash, the leaf's stamp, scope, score and count, and its path's length, position and siblings; `profileScope`, the scope of the label of the profile the proof is shown on |
+| Private | `seedScalar`, the number `keys/`'s `seedScalar` gives; for each slot, `used`, the verifier's name hash, the leaf's tag (the signal `stamps`), scope, score and count, and its path's length, position and siblings; `profileScope`, the scope of the label of the profile the proof is shown on |
 | Public, in this order | `score`, the output, the weighted average; `root`; `profileX`, `profileY`, the key of the profile the proof is shown on; `scope`, the label shown, or 0 |
 
+The signals keep the names the circuit was set up with, since it keeps its bytes: `stamps` holds
+the leaves' tags, and `issuerNameHashes` each slot's verifier's name hash.
+
 `profileX` and `profileY` are the key of the profile the proof is shown on, worked out inside the
-proof from the same seed scalar as every counted profile's stamp, the way the note proof works it
-out ([note](../note/README.md#the-note-and-the-note-proof)). So the proof holds only on a
+proof from the same seed scalar as every counted profile's tag, the way the stamp proof works it
+out ([stamp](../stamp/README.md#the-stamp-and-the-stamp-proof)). So the proof holds only on a
 profile of the person whose seed is behind the counted profiles: it cannot be lent to anyone else,
 nor copied to another profile.
 
 Inside the proof:
 
-1. Each used slot's stamp is `Poseidon(scope, issuer secret)`, with the issuer secret
-   `Poseidon(issuer tag, seedScalar, the slot's name hash)`. Only the person whose seed it is can
-   count those profiles, and each slot may name its own issuer.
+1. Each used slot's tag is `Poseidon(scope, verifier secret)`, with the verifier secret
+   `Poseidon(verifier prefix, seedScalar, the slot's name hash)`. Only the person whose seed it is
+   can count those profiles, and each slot may name its own verifier.
 2. Each used slot's leaf is in the tree with that root. The root is never 0.
 3. A blank slot is all zeros, and every score and count is below 2^32.
 4. No two used slots share a scope, so a profile counts once.
 5. A shown scope is the scope of every used slot, so a shown label means exactly one profile.
 6. The output is `floor(sum(score * count) / sum(count))`, over a count of at least one. With
    one profile, it is that profile's score.
-7. `Poseidon(profile tag, seedScalar, profileScope)` is split into its bits by `Num2Bits_strict`,
+7. `Poseidon(profile prefix, seedScalar, profileScope)` is split into its bits by `Num2Bits_strict`,
    and its lowest 250 bits times `Base8` must be `(profileX, profileY)`: the profile it is shown on
    is the person's own.
 
@@ -115,28 +118,28 @@ enough.
 ### Use it
 
 `client/src/` talks to no network: the caller passes the index's leaves, root, time and signature.
-The stamp, the scope and the profile's key come from `keys/`, unchanged.
+The tag, the scope and the profile's key come from `keys/`, unchanged.
 
 | Function | Gives |
 |---|---|
-| `buildTree(leaves)` | For an index: the root to sign. Refuses an empty tree, more than 2^20 leaves, a field out of range, or two leaves for one stamp |
+| `buildTree(leaves)` | For an index: the root to sign. Refuses an empty tree, more than 2^20 leaves, a field out of range, or two leaves for one tag |
 | `signedBytes(root, time)` | The bytes an index signs |
-| `proveReputation({ seedScalar, sources, leaves, profileLabel, show?, artifacts })` | The proof, on the device: one to eight of the person's profiles, each a `{ label, issuerName }` found in the leaves by its stamp at that issuer, shown on the profile with `profileLabel`; `show` shows the label, only with one |
-| `verifyReputation({ proof, root, score, profile, label?, index, time, signature })` | Whether the index (its address or key) signed the root with that time (its 64-byte signature), and the proof holds for that score, shown label and `profile`, the address or key of the profile that shows it |
-| `proofBytes(proof)`, `proofFromBytes(bytes)` | The proof as the 256 bytes a profile record carries ([records](../../records/README.md)), and back; `verifyReputation` takes either |
+| `proveReputation({ seedScalar, sources, leaves, profileLabel, show?, artifacts })` | The proof, on the device: one to eight of the person's profiles, each a `{ label, verifierName }` found in the leaves by its tag at that verifier, shown on the profile with `profileLabel`; `show` shows the label, only with one |
+| `checkReputation({ proof, root, score, profile, label?, index, time, signature })` | Whether the index (its address or key) signed the root with that time (its 64-byte signature), and the proof holds for that score, shown label and `profile`, the address or key of the profile that shows it |
+| `proofBytes(proof)`, `proofFromBytes(bytes)` | The proof as the 256 bytes a profile record carries ([records](../../records/README.md)), and back; `checkReputation` takes either |
 | `circuitInput({...})` | The circuit's input, for a caller that drives snarkjs itself |
 
 ```ts
 import { seedScalar } from '@foundationforest/keys'
-import { proveReputation, verifyReputation } from '@foundationforest/reputation'
+import { checkReputation, proveReputation } from '@foundationforest/reputation'
 
-// On the device: three profiles' score, from two issuers, shown on a new profile of the same seed.
+// On the device: three profiles' score, from two verifiers, shown on a new profile of the same seed.
 const r = await proveReputation({
   seedScalar: await seedScalar(seed),
   sources: [
-    { label: 'tutoring/seller', issuerName: 'issuer-a.example' },
-    { label: 'tutoring/buyer', issuerName: 'issuer-a.example' },
-    { label: 'cleaning/seller', issuerName: 'issuer-b.example' },
+    { label: 'tutoring/seller', verifierName: 'issuer-a.example' },
+    { label: 'tutoring/buyer', verifierName: 'issuer-a.example' },
+    { label: 'cleaning/seller', verifierName: 'issuer-b.example' },
   ],
   leaves,                      // the index's published leaves, in its order
   profileLabel: 'tutoring/new', // the profile the proof is shown on
@@ -148,7 +151,7 @@ const r = await proveReputation({
 
 // Any reader, with the index's key, the time and signature it published with the root, and the
 // address of the profile that shows the proof:
-const ok = await verifyReputation({ proof: r.proof, root: r.root, score: r.score, profile: address,
+const ok = await checkReputation({ proof: r.proof, root: r.root, score: r.score, profile: address,
   index, time, signature })
 ```
 
@@ -171,12 +174,11 @@ setup/setup.sh                            # a new setup: new files, every hash n
 
 The client's tests check the tree, the bytes an index signs, the inputs the client refuses, and that
 the proof names `keys/`'s main key. The circuit's tests build a tree of made-up leaves around
-`keys/`'s test person, prove with one profile and with three from two issuers, shown on another
-profile of the person's own. A wrong seed scalar, a slot with the wrong issuer, a leaf not in the
-tree, a profile counted twice (also as two issuers' leaves), a label shown with two profiles, and a
-main key that is not the prover's for its label are refused; a changed output, root or time
-fails to verify, and so does a proof shown on someone else's profile or on another of the
-person's own.
+`keys/`'s test person, prove with one profile and with three from two verifiers, shown on another
+profile of the person's own. A wrong seed scalar, a slot with the wrong verifier, a leaf not in the
+tree, a profile counted twice (also as two verifiers' leaves), a label shown with two profiles, and
+a main key that is not the prover's for its label are refused; a changed output, root or time fails
+its check, and so does a proof shown on someone else's profile or on another of the person's own.
 
 ### What one proof costs
 
@@ -192,7 +194,7 @@ Measured in Node 22 on a 4-core machine, with 8 slots at depth 20:
 
 ## Promises
 
-- A proof counts only profiles whose stamps come from the prover's own seed.
+- A proof counts only profiles whose tags come from the prover's own seed.
 - A profile counts at most once in a proof.
 - A proof lands only on a profile of the prover's own: its key comes from the same seed as the
   profiles it counts.
@@ -200,7 +202,7 @@ Measured in Node 22 on a 4-core machine, with 8 slots at depth 20:
 - The score is the count-weighted average of the scores of the profiles counted, rounded down, and
   nothing else.
 - Nothing else about those profiles is in the proof: not which leaves, nor how many, nor their
-  issuers.
+  verifiers.
 
 ## Limits
 
@@ -208,9 +210,9 @@ Measured in Node 22 on a 4-core machine, with 8 slots at depth 20:
   is public: when few leaves have that score, and that label, the one left names the profile. The
   app should say so before a proof is shown.
 - **One seed per proof.** A person with two seeds cannot count one seed's profiles on the other's.
-- **The profile it lands on need not hold a note.** The proof shows that profile is the person's
-  own, not that an issuer signed its seed a note; a reader that wants both reads its note proofs too
-  ([note](../note/README.md)).
+- **The profile it lands on need not hold a stamp.** The proof shows that profile is the person's
+  own, not that a verifier signed its seed a stamp; a reader that wants both reads its stamp proofs
+  too ([stamp](../stamp/README.md)).
 - **Building the tree takes time.** About twelve minutes for a million leaves at the speed above. An
   app that asks the index for its path instead tells the index which profiles are its.
 - **Not audited.**
@@ -240,10 +242,10 @@ setup.
 profile to count puts it in the score. The counts only weigh one profile against another inside
 the proof, and a second output would say more about the person than the average does.
 
-**Why does each slot name its own issuer, and the proof none?** A person's profiles may hold notes
-from different issuers, and one seed is behind them all, so the proof counts them together. Which
-issuers' stamps a tree holds is the index's choice, made when it read each profile's note proofs,
-so a reader trusts the index for it; naming the issuers would tell a reader more about the
+**Why does each slot name its own verifier, and the proof none?** A person's profiles may hold
+stamps from different verifiers, and one seed is behind them all, so the proof counts them together.
+Which verifiers' tags a tree holds is the index's choice, made when it read each profile's stamp
+proofs, so a reader trusts the index for it; naming the verifiers would tell a reader more about the
 person than the score does.
 
 **Why is it checked off chain?** Nothing on chain needs a reputation, and a program that cannot

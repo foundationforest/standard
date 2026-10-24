@@ -1,27 +1,27 @@
-// The proofs a profile record carries (README.md, Proofs), as their verifiers take them. Records
-// checks no proof itself: a note proof's verifier is proofs/note/client's verifyNote, a reputation
-// proof's proofs/reputation/client's verifyReputation. These turn a profile record's proof into what
+// The proofs a profile record carries (README.md, Proofs), as their proof checks take them. Records
+// checks no proof itself: a stamp proof's check is proofs/stamp/client's checkStamp, a reputation
+// proof's proofs/reputation/client's checkReputation. These turn a profile record's proof into what
 // each one takes, for the profile that carries it, or null when the proof is not that shape. A host
-// that keeps inboxes with an issuer's rule is given verifyNote (HostOptions); a reader calls them
+// that keeps inboxes with a verifier's rule is given checkStamp (HostOptions); a reader calls them
 // itself.
 
 import { b64u, hex } from './bytes.ts'
 import { publicKeyFromAddress } from './keys.ts'
 import type { Body } from './record.ts'
 
-/** What verifyNote takes, for one note proof on a profile record. */
-export type NoteCheck = {
+/** What checkStamp takes, for one stamp proof on a profile record. */
+export type StampCheck = {
   proof: Uint8Array
-  /** The issuer's key: its address. */
-  issuer: string
-  issuerName: string
+  /** The verifier's key: its address. */
+  verifier: string
+  verifierName: string
   label: string
   /** The profile that carries the proof: its address. */
   profile: string
-  stamp: Uint8Array
+  tag: Uint8Array
 }
 
-/** What verifyReputation takes, for one reputation proof on a profile record. */
+/** What checkReputation takes, for one reputation proof on a profile record. */
 export type ReputationCheck = {
   proof: Uint8Array
   root: bigint
@@ -47,23 +47,23 @@ export function proofsOf(body: Body | null | undefined): Array<{ [key: string]: 
   return (proofs as unknown[]).filter((p): p is { [key: string]: unknown; circuit: string } => isObject(p) && typeof p.circuit === 'string')
 }
 
-/** A note proof on a profile record as verifyNote takes it, for the profile `profile`; null if it is not one. */
-export function noteCheck(proof: unknown, profile: string): NoteCheck | null {
-  if (!isObject(proof) || proof.circuit !== 'note') return null
-  const { issuer, issuerName, label, stamp } = proof
-  if (!publicKeyFromAddress(issuer) || typeof issuerName !== 'string' || typeof label !== 'string') return null
-  if (typeof stamp !== 'string' || !HEX64.test(stamp) || typeof proof.proof !== 'string' || !PROOF.test(proof.proof)) return null
+/** A stamp proof on a profile record as checkStamp takes it, for the profile `profile`; null if it is not one. */
+export function stampCheck(proof: unknown, profile: string): StampCheck | null {
+  if (!isObject(proof) || proof.circuit !== 'stamp') return null
+  const { verifier, verifierName, label, tag } = proof
+  if (!publicKeyFromAddress(verifier) || typeof verifierName !== 'string' || typeof label !== 'string') return null
+  if (typeof tag !== 'string' || !HEX64.test(tag) || typeof proof.proof !== 'string' || !PROOF.test(proof.proof)) return null
   return {
     proof: b64u.decode(proof.proof),
-    issuer: issuer as string,
-    issuerName,
+    verifier: verifier as string,
+    verifierName,
     label,
     profile,
-    stamp: hex.decode(stamp),
+    tag: hex.decode(tag),
   }
 }
 
-/** A reputation proof on a profile record as verifyReputation takes it, for the profile `profile`; null if it is not one. */
+/** A reputation proof on a profile record as checkReputation takes it, for the profile `profile`; null if it is not one. */
 export function reputationCheck(proof: unknown, profile: string): ReputationCheck | null {
   if (!isObject(proof) || proof.circuit !== 'reputation') return null
   const { root, score, label, index, time, signature } = proof

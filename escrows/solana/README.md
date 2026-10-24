@@ -12,11 +12,12 @@ other, both sides agree, the arbiter named at the start decides, or the schedule
 says so. Every escrow that held the money leaves a receipt at its address, for good: its account,
 saying how the deal ended.
 
-It runs on devnet at `FA6ZodkyhMDj9yjzY27dk8JDCtcHnJx8mr45Mx9TfKg8`, still upgradable
-([record](devnet/devnet.json)). It cannot change once deployed to Solana's mainnet, because money
-sits inside it and nobody, the Open Forest Foundation included, may change the rules around money
-already there: a new version is a new program beside it, at a new address, never an upgrade, and
-the old ones keep working.
+It runs on devnet at `FA6ZodkyhMDj9yjzY27dk8JDCtcHnJx8mr45Mx9TfKg8` ([record](devnet/devnet.json)),
+where it can no longer be upgraded in place: its upgrade key came from a devnet phrase that is lost,
+so a new version goes to a new address, as on mainnet. It cannot change once deployed to Solana's
+mainnet, because money sits inside it and nobody, the Open Forest Foundation included, may change
+the rules around money already there: a new version is a new program beside it, at a new address,
+never an upgrade, and the old ones keep working.
 
 - `program/`: the program (Anchor 1.2), its LiteSVM tests and its fuzzer.
 - `client/`: builds every instruction and reads every account and event. It talks to no network
@@ -276,7 +277,7 @@ cd escrows/solana/program/tests-litesvm && cargo test              # classic and
 cd escrows/solana/program && cargo build-sbf --arch v0 && cd trident-tests \
   && TRIDENT_WITH_EXIT_CODE=1 cargo run --release --bin fuzz_escrow   # 99: an invariant broke
 npm ci && cd escrows/solana/client && npm run check && npm test    # no chain needed
-FOREST_DEVNET_SEED=<phrase> escrows/solana/devnet/deploy.sh        # devnet: deploy, or upgrade in place
+FOREST_DEVNET_SEED=<phrase> escrows/solana/devnet/deploy.sh        # devnet: deploy at a new id
 cd escrows/solana/client && FOREST_DEVNET_KEYS=<dir> node scripts/devnet.ts
 ```
 
@@ -313,7 +314,7 @@ to about 20,000 compute units with the keys.
 ### What cannot change
 
 None of this can change once the program is deployed to Solana's mainnet; a new version is a new
-program beside it. On devnet the program is still upgradable.
+program beside it. On devnet too, a new version goes to a new address.
 
 - **The account.** 304 bytes after the discriminator, laid out in `program/src/state.rs` (and
   written again in `program/tests-litesvm/src/lib.rs` and `client/src/program.ts`): version, id,
@@ -347,22 +348,24 @@ keypair for it exists. Each deploy uses its own.
 
 ### Devnet
 
-On devnet the program is built as SBPF v3 and stays upgradable: its upgrade authority is the
-devnet deploy key. `devnet/deploy.sh` builds a copy of the source with the devnet id put in, deploys a
-fresh id or upgrades it in place, checks the deployed bytes against the build, and records
-everything public in [`devnet/devnet.json`](devnet/devnet.json); its header holds the recipe for
-every devnet key it needs. `client/scripts/devnet.ts` runs seven deals there, recorded in the same
-file. In the classic test dollar (`testDollar`): an invoice paid in one tap; half taken back inside
-a window; a stop, the default refused, then a 60/40 split both sign; the default sent from the end
-time by a key that is neither party; and a plain transfer after the end time, the mark and the
-default refused, closed back to the payer. In a Token-2022 dollar made with Open USD's extensions:
-the one tap, and the stop then the split. The devnet keys labelled `buyer` and `seller` act as
-payer and recipient, and `payer` as the sponsor: the labels are the key recipe's.
+On devnet the program is built as SBPF v3. Its upgrade authority is the devnet deploy key, which
+came from a devnet phrase that is lost, so it can no longer be upgraded in place: a new version goes
+to a new address, as on mainnet. `devnet/deploy.sh` builds a copy of the source with the devnet id
+put in, deploys a fresh id (an id holding other bytes is refused), checks the deployed bytes against
+the build, and records everything public in [`devnet/devnet.json`](devnet/devnet.json); its header
+holds the recipe for every devnet key it needs. `client/scripts/devnet.ts` runs seven deals there,
+recorded in the same file. In the classic test dollar (`testDollar`): an invoice paid in one tap;
+half taken back inside a window; a stop, the default refused, then a 60/40 split both sign; the
+default sent from the end time by a key that is neither party; and a plain transfer after the end
+time, the mark and the default refused, closed back to the payer. In a Token-2022 dollar made with
+Open USD's extensions: the one tap, and the stop then the split. The devnet keys labelled `buyer`
+and `seller` act as payer and recipient, and `payer` as the sponsor: the labels are the key
+recipe's.
 
-The program was upgraded in place from version 2. Its version 2 receipts stay at their addresses,
-and this version refuses every instruction on them (`beforeSchedules` in the record). There is no
-smoke test: read a receipt with `solana account <address> --url devnet`, and decode it with
-`decodeEscrow`.
+The program was upgraded in place from version 2 while the phrase was known. Its version 2 receipts
+stay at their addresses, and this version refuses every instruction on them (`beforeSchedules` in
+the record). There is no smoke test: read a receipt with `solana account <address> --url devnet`,
+and decode it with `decodeEscrow`.
 
 ## Promises
 

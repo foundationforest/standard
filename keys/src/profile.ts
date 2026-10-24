@@ -1,4 +1,4 @@
-// A profile's keys: the main key, one per label, mixed from the seed scalar so the note proof can
+// A profile's keys: the main key, one per label, mixed from the seed scalar so the stamp proof can
 // derive it too; the profile's secret, mixed from the seed; and its inbox key, mixed from that
 // secret. See README.md, "The recipe".
 
@@ -6,7 +6,7 @@ import { bech32 } from '@scure/base'
 import { identityToRecipient } from 'age-encryption'
 import { poseidon3 } from 'poseidon-lite/poseidon3'
 import { type Point, addressOf, keyScalar, publicKeyOf } from './curve.ts'
-import { TAG, isFieldElement, scopeOf } from './field.ts'
+import { PREFIX, isFieldElement, scopeOf } from './field.ts'
 import { INFO, SEED_LENGTH, assertBytes, assertText, hkdf } from './hkdf.ts'
 import { seedScalar } from './scalar.ts'
 
@@ -18,7 +18,7 @@ export type MainKey = {
   label: string
   /** The label as a number, `scopeOf(label)`. */
   scope: bigint
-  /** The scalar that signs: the lowest 250 bits of `Poseidon(profile tag, seed scalar, scope)`. */
+  /** The scalar that signs: the lowest 250 bits of `Poseidon(profile prefix, seed scalar, scope)`. */
   scalar: bigint
   /** `scalar · Base8`. */
   publicKey: Point
@@ -29,20 +29,20 @@ export type MainKey = {
 }
 
 /**
- * The key that opens envelopes sealed to a profile: age's post-quantum hybrid identity, ML-KEM-768
- * with X25519 (mlkem768x25519).
+ * The key that opens envelopes encrypted to a profile: age's post-quantum hybrid identity,
+ * ML-KEM-768 with X25519 (mlkem768x25519).
  */
 export type InboxKey = {
-  /** age's hybrid identity, `AGE-SECRET-KEY-PQ-1…`: it opens what is sealed to this profile. */
+  /** age's hybrid identity, `AGE-SECRET-KEY-PQ-1…`: it opens what is encrypted to this profile. */
   identity: string
-  /** What others seal to, `age1pq1…`. The profile's address does not give it. */
-  sealTo: string
+  /** What others encrypt to, `age1pq1…`. The profile's address does not give it. */
+  encryptTo: string
 }
 
-/** A profile's scalar from the seed scalar and its label. The note circuit computes the same. */
+/** A profile's scalar from the seed scalar and its label. The stamp circuit computes the same. */
 export function profileScalarOf(seed: bigint, label: string): bigint {
   if (!isFieldElement(seed)) throw new RangeError('a seed scalar is a field element')
-  return keyScalar(poseidon3([TAG.profile, seed, scopeOf(label)]))
+  return keyScalar(poseidon3([PREFIX.profile, seed, scopeOf(label)]))
 }
 
 /**
@@ -61,11 +61,11 @@ export async function mainKey(seed: Uint8Array, label: string): Promise<MainKey>
 /**
  * An inbox key, from a profile's 32-byte secret or the vault's. The 32 mixed bytes are used
  * unchanged as age's hybrid identity (its seed, which age expands into the ML-KEM-768 and X25519
- * keys); age's own library computes what others seal to (identityToRecipient).
+ * keys); age's own library computes what others encrypt to (identityToRecipient).
  */
 export async function inboxKey(secret: Uint8Array): Promise<InboxKey> {
   assertBytes('secret', secret, 32)
-  const bytes = await hkdf(secret, INFO.read)
+  const bytes = await hkdf(secret, INFO.inbox)
   const identity = bech32.encodeFromBytes('AGE-SECRET-KEY-PQ-', bytes).toUpperCase()
-  return { identity, sealTo: await identityToRecipient(identity) }
+  return { identity, encryptTo: await identityToRecipient(identity) }
 }

@@ -1,6 +1,6 @@
 // Text as a number a circuit takes: keccak256 of the bytes, shifted right one byte so it is below
-// BN254's scalar order. A label becomes its scope this way, an issuer's name its name hash, and
-// each fixed tag that keeps one Poseidon mix apart from another its value.
+// BN254's scalar order. A label becomes its scope this way, a verifier's name its name hash, and
+// each fixed prefix that keeps one Poseidon mix apart from another its value.
 
 import { keccak_256 } from '@noble/hashes/sha3.js'
 import { assertText, utf8 } from './hkdf.ts'
@@ -8,10 +8,13 @@ import { assertText, utf8 } from './hkdf.ts'
 /** BN254's scalar field order. Every number a circuit takes is below it. */
 export const BN254_R = 21888242871839275222246405745257275088548364400416034343698204186575808495617n
 
-/** What a label is hashed after. Fixed: a change gives every profile a new key and stamp. */
+/** What a label is hashed after. Fixed: a change gives every profile a new key and tag. */
 export const SCOPE_NS = 'forest/v1/label/'
-/** What an issuer's name is hashed after. */
-export const ISSUER_NS = 'forest/v1/issuer/'
+/**
+ * What a verifier's name is hashed after. The text keeps its bytes, the old word issuer among them:
+ * every name hash, and so every tag, is made with it.
+ */
+export const VERIFIER_NS = 'forest/v1/issuer/'
 
 /**
  * `keccak256(namespace || parts...) >> 8`. A namespaced string lets a label or a name be any
@@ -30,9 +33,12 @@ export function fieldHash(namespace: string, ...parts: (string | Uint8Array)[]):
   return value >> 8n
 }
 
-/** The tags that start each Poseidon mix of the seed scalar, so no mix gives another's number. */
-export const TAG = {
-  issuer: fieldHash('forest/v1/issuer'),
+/**
+ * The prefixes that start each Poseidon mix of the seed scalar, so no mix gives another's number.
+ * The verifier's keeps its text's bytes, the old word issuer among them, as the circuits do.
+ */
+export const PREFIX = {
+  verifier: fieldHash('forest/v1/issuer'),
   profile: fieldHash('forest/v1/profile'),
   vault: fieldHash('forest/v1/vault'),
 } as const
@@ -43,10 +49,10 @@ export function scopeOf(label: string): bigint {
   return fieldHash(SCOPE_NS, label)
 }
 
-/** An issuer's name as a number: `keccak256("forest/v1/issuer/" || name) >> 8`. */
+/** A verifier's name as a number: `keccak256("forest/v1/issuer/" || name) >> 8`. */
 export function nameHashOf(name: string): bigint {
-  assertText('issuer name', name)
-  return fieldHash(ISSUER_NS, name)
+  assertText('verifier name', name)
+  return fieldHash(VERIFIER_NS, name)
 }
 
 export function isFieldElement(value: unknown): value is bigint {

@@ -2,7 +2,7 @@
   "name": "@foundationforest/keys",
   "version": "0.0.0",
   "private": true,
-  "description": "Forest keys: a seed of 24 words, and the keys mixed from it: the seed scalar the circuits take, one main key per label on Baby Jubjub (its name and signature), one Solana payment key per label, each profile's inbox key, the person's secret and note number for each issuer, and the vault key; access keys from their random bytes; and EdDSA-Poseidon signatures.",
+  "description": "Forest keys: a seed of 24 words, and the keys mixed from it: the seed scalar the circuits take, one main key per label on Baby Jubjub (its name and signature), one pay key per label for each address type (Solana, EVM), each profile's inbox key, the person's secret and stamp number for each verifier, and the vault key; service keys from their random bytes; and EdDSA-Poseidon signatures.",
   "license": "Apache-2.0",
   "type": "module",
   "exports": {

@@ -117,13 +117,11 @@ const FOLDER_SCHEMA = `
   -- the inbox says so, so who wrote to whom is not kept past the messages for other inboxes. Kept
   -- for as long as the folder is: this host never deletes a current record.
   CREATE TABLE once (sender TEXT PRIMARY KEY) WITHOUT ROWID;
-  -- The bytes this folder holds, by hash: put by its main key (by is null) or by a write key (by
-  -- is its address), and kept until a key that may deletes them.
+  -- The bytes this folder holds, by hash: put by its main key, and kept until it deletes them.
   CREATE TABLE blobs (
     sha256 TEXT PRIMARY KEY,
     type TEXT NOT NULL,
     size INTEGER NOT NULL,
-    by TEXT,
     arrived INTEGER NOT NULL   -- this host's clock
   ) WITHOUT ROWID;
   PRAGMA user_version = 1;
@@ -382,9 +380,9 @@ export class Storage {
   // ----------------------------------------------------------------------------------------
   // Blobs
 
-  /** Whether a folder holds these bytes, and who put them: null for its main key, else the write key's address. */
-  blobOf(folder: string, sha256: string): { by: string | null } | undefined {
-    return this.folder(folder)?.q('SELECT by FROM blobs WHERE sha256 = ?').get(sha256) as { by: string | null } | undefined
+  /** Whether a folder holds these bytes. */
+  holdsBlob(folder: string, sha256: string): boolean {
+    return this.folder(folder)?.q('SELECT 1 FROM blobs WHERE sha256 = ?').get(sha256) !== undefined
   }
 
   blobTotals(folder: string): { blobs: number; bytes: number } {
@@ -392,48 +390,28 @@ export class Storage {
   }
 
   /**
-   * Put bytes in a folder, `by` the write key that signed, or null for the main key, which takes over
-   * bytes a write key put, unless `refuse` gives a reason, asked in the same step right before the
-   * folder holds them. The bytes are stored once, whichever folders hold them. host.sqlite's index
-   * first: a crash in between keeps bytes until the next prune puts the index right, and never
-   * deletes bytes a folder holds. Returns the reason, or null once the folder holds them.
+   * Put bytes in a folder. The bytes are stored once, whichever folders hold them. host.sqlite's
+   * index first: a crash in between keeps bytes until the next prune puts the index right, and
+   * never deletes bytes a folder holds.
    */
-  putBlob(folder: string, sha256: string, type: string, size: number, by: string | null, bytes: Uint8Array, now: number, refuse: () => string | null): Promise<string | null> {
+  putBlob(folder: string, sha256: string, type: string, size: number, bytes: Uint8Array, now: number): Promise<void> {
     return this.oneAtATime(sha256, async () => {
-      const stored = this.host.q('SELECT 1 FROM blobs WHERE sha256 = ?').get(sha256) !== undefined
-      if (!stored) {
+      if (this.host.q('SELECT 1 FROM blobs WHERE sha256 = ?').get(sha256) === undefined) {
         await this.blobs.put(sha256, type, bytes)
         this.host.q('INSERT OR IGNORE INTO blobs (sha256, type) VALUES (?, ?)').run(sha256, type)
       }
-      const refused = refuse()
-      if (refused) {
-        // Bytes this put stored, that no folder holds, go now rather than at the next prune: until
-        // then the host would serve them.
-        if (!stored && this.host.q('SELECT 1 FROM owners WHERE sha256 = ?').get(sha256) === undefined) {
-          this.host.q('DELETE FROM blobs WHERE sha256 = ?').run(sha256)
-          await this.blobs.delete(sha256)
-        }
-        return refused
-      }
       this.host.q('INSERT OR IGNORE INTO owners (sha256, folder) VALUES (?, ?)').run(sha256, folder)
-      this.folder(folder, true)!
-        .q('INSERT INTO blobs (sha256, type, size, by, arrived) VALUES (?, ?, ?, ?, ?) ON CONFLICT (sha256) DO UPDATE SET by = NULL WHERE excluded.by IS NULL')
-        .run(sha256, type, size, by, now)
-      return null
+      this.folder(folder, true)!.q('INSERT OR IGNORE INTO blobs (sha256, type, size, arrived) VALUES (?, ?, ?, ?)').run(sha256, type, size, now)
     })
   }
 
   /**
-   * Delete bytes from a folder, unless `refuse` gives a reason, asked with who put them in the same
-   * step that deletes them; once no folder holds them, from the store. The folder's file first,
+   * Delete bytes from a folder; once no folder holds them, from the store. The folder's file first,
    * then the index, then the store: a crash in between leaves bytes the next prune deletes.
    */
-  deleteBlob(folder: string, sha256: string, refuse: (held: { by: string | null }) => string | null): Promise<'deleted' | 'not here' | { refused: string }> {
+  deleteBlob(folder: string, sha256: string): Promise<'deleted' | 'not here'> {
     return this.oneAtATime(sha256, async () => {
-      const held = this.blobOf(folder, sha256)
-      if (!held) return 'not here'
-      const refused = refuse(held)
-      if (refused) return { refused }
+      if (!this.holdsBlob(folder, sha256)) return 'not here'
       this.folder(folder)!.q('DELETE FROM blobs WHERE sha256 = ?').run(sha256)
       this.host.q('DELETE FROM owners WHERE sha256 = ? AND folder = ?').run(sha256, folder)
       if (this.host.q('SELECT 1 FROM owners WHERE sha256 = ?').get(sha256) !== undefined) return 'deleted'

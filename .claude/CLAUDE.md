@@ -3,14 +3,21 @@ Read `README.md` and the README of the directory you work in before any task.
 
 ## Words
 
-Use these words: seed, seed scalar, main key, profile, profile record, address, label, scope, stamp,
-issuer, note, note number, attributes, note proof, reputation proof, record, folder, host, access
-key, write key, read key, permissions, private, envelope, sealed (an envelope), message, inbox key,
-inbox, pull, vault, blob, payment key, escrow, receipt, deal, index, fee payer, app, market, role.
-Plain words, no em-dashes.
+Use these words: seed, seed scalar, main key, profile, profile record, address, label, scope,
+prefix, tag, verifier, verified, stamp, stamp number, facts, stamp proof, reputation proof, check,
+record, folder, host, service key, signer, connection, connector, permissions, private, envelope,
+encrypted (an envelope), message, inbox key, inbox, pull, vault, blob, pay address, pay key, escrow,
+receipt, deal, index, fee payer, app, market, role. Plain words, no em-dashes.
+
+- Check, never verify: a reader checks a proof or a signature. The tooling keeps its own names
+  (snarkjs's verifier, `verification-key.json`), and prose calls that part the proof check.
+- Never "account" for a person: a person has a seed and profiles.
+- A string baked into a recipe or a circuit keeps its bytes even when its words are old
+  (`forest/v1/issuer`, `forest/v1/note`, the circuits' signal names): rename the code around it,
+  never the string, and say why in a comment beside it.
 
 The test for what goes in this repo: the standard holds formats (what bytes mean), recipes (how a
-number is derived) and checks (what a verifier runs); meanings and choices live outside it.
+number is derived) and checks (what a reader runs); meanings and choices live outside it.
 Use cases are phrased "anyone can; the main way is X", never "X is one option" and never "X is
 the rule".
 
@@ -23,7 +30,7 @@ What an app that holds keys should know: `keys/README.md`. Never copy it here.
   effect of a task.
 - Content shapes are never defined in this repo: what an offer, a review or a market holds is
   `foundationforest/markets`'s.
-- The repo is `keys/`, `proofs/` (`note/`, `reputation/`), `records/`, `escrows/` (`solana/`),
+- The repo is `keys/`, `proofs/` (`stamp/`, `reputation/`), `records/`, `escrows/` (`solana/`),
   `README.md` and `LICENSE`, with `.github/`, `.claude/CLAUDE.md`, and the npm workspace's
   `package.json`, `package-lock.json`, `tsconfig.base.json` and `types/`. The README is the
   standard.
@@ -47,7 +54,7 @@ What an app that holds keys should know: `keys/README.md`. Never copy it here.
 - Run what `.github/workflows/checks.yml` runs before you push (Node 22.18 or later; Solana CLI
   4.2.2; circom 2.2.3); the commands are there. A test that skips fails CI: the summary must say
   `# skipped 0`. `npm ci` at the root installs every package, and `npm run build` there builds keys,
-  proofs/note/client, proofs/reputation/client, records and escrows/solana/client to their `dist/`,
+  proofs/stamp/client, proofs/reputation/client, records and escrows/solana/client to their `dist/`,
   in that order, so each is built before a package that imports it. Then, in each package,
   `npm run check` and `npm test`; in each circuit, `npm run fetch` and `npm run compile` first.
 

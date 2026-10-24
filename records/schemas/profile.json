@@ -16,15 +16,27 @@
       "maxLength": 64
     },
     "pay": {
-      "type": "string",
-      "description": "Optional. The profile's payment address on Solana: keys/'s payKey(seed, label).address, base58 of an ed25519 public key. Where payments to this profile go.",
-      "minLength": 32,
-      "maxLength": 44,
-      "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$"
+      "type": "object",
+      "description": "Optional. The profile's pay addresses, one for each address type: keys/'s payAddresses(seed, label). Where payments to this profile go. A reader ignores a type it does not know.",
+      "required": ["solana", "evm"],
+      "properties": {
+        "solana": {
+          "type": "string",
+          "description": "Its address on Solana: base58 of an ed25519 public key.",
+          "minLength": 32,
+          "maxLength": 44,
+          "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$"
+        },
+        "evm": {
+          "type": "string",
+          "description": "Its address on EVM chains: 20 bytes in hex after 0x, in EIP-55's mixed-case checksum, its one spelling (keys/'s isEvmAddress checks it).",
+          "pattern": "^0x[0-9a-fA-F]{40}$"
+        }
+      }
     },
     "inboxKey": {
       "type": "string",
-      "description": "Optional. The profile's inbox key, as an age post-quantum hybrid key (`age1pq1…`, mlkem768x25519, 1,959 characters): what senders seal messages to, and others seal private records to. Without it, nobody can seal anything to this profile.",
+      "description": "Optional. The profile's inbox key, as an age post-quantum hybrid key (`age1pq1…`, mlkem768x25519, 1,959 characters): what senders encrypt messages to, and others encrypt private records to. Without it, nobody can encrypt anything to this profile.",
       "pattern": "^age1pq1[02-9ac-hj-np-z]{1952}$"
     },
     "inbox": {
@@ -32,7 +44,7 @@
     },
     "proofs": {
       "type": "array",
-      "description": "Optional. Proofs the profile shows, each one data anyone checks with its circuit's verifier (proofs/), for this profile's key.",
+      "description": "Optional. Proofs the profile shows, each one data anyone checks with its circuit's proof check (proofs/), for this profile's key.",
       "items": {
         "$ref": "#/$defs/proof"
       },
@@ -42,24 +54,24 @@
   "$defs": {
     "inbox": {
       "type": "object",
-      "description": "Optional. The profile's inbox: who may deliver a message to it on its hosts. Senders seal each message to inboxKey and to every reader, so a profile with an inbox also gives inboxKey. Without this field there is no inbox, and hosts refuse deliveries. A host refuses deliveries to an inbox it cannot read: a field, a rule or a value it does not know.",
+      "description": "Optional. The profile's inbox: who may deliver a message to it on its hosts. Senders encrypt each message to inboxKey, so a profile with an inbox also gives inboxKey. Without this field there is no inbox, and hosts refuse deliveries. A host refuses deliveries to an inbox it cannot read: a field, a rule or a value it does not know.",
       "required": ["senders"],
       "additionalProperties": false,
       "properties": {
         "senders": {
-          "description": "Who may deliver: anyone, or a profile whose profile record carries a note proof from this issuer, under any label.",
+          "description": "Who may deliver: anyone, or a profile whose profile record carries a stamp proof from this verifier, under any label.",
           "oneOf": [
             {
               "const": "anyone"
             },
             {
               "type": "object",
-              "required": ["issuer"],
+              "required": ["verifier"],
               "additionalProperties": false,
               "properties": {
-                "issuer": {
+                "verifier": {
                   "type": "string",
-                  "description": "The issuer's key: its address, a packed point on Baby Jubjub in base58.",
+                  "description": "The verifier's key: its address, a packed point on Baby Jubjub in base58.",
                   "minLength": 32,
                   "maxLength": 44,
                   "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$"
@@ -76,25 +88,17 @@
           "type": "integer",
           "description": "Optional. The largest message it takes, as canonical text in bytes. A host also takes messages only up to its own size.",
           "minimum": 0
-        },
-        "readers": {
-          "type": "array",
-          "description": "Optional. What read keys are sealed to (their sealTo). A sender seals every message to inboxKey and to each of these, in one envelope, so a reader listed here can act on the inbox while the person is away. Each adds about 2 KB to every message.",
-          "items": {
-            "type": "string",
-            "pattern": "^age1pq1[02-9ac-hj-np-z]{1952}$"
-          }
         }
       }
     },
     "proof": {
       "type": "object",
-      "description": "One proof, named by its circuit. A reader ignores a proof whose circuit it does not know, so a profile carrying a newer kind stays valid for an older app. A note proof and a reputation proof have the shapes below; another circuit's fields are its own.",
+      "description": "One proof, named by its circuit. A reader ignores a proof whose circuit it does not know, so a profile carrying a newer kind stays valid for an older app. A stamp proof and a reputation proof have the shapes below; another circuit's fields are its own.",
       "required": ["circuit"],
       "properties": {
         "circuit": {
           "type": "string",
-          "description": "The circuit that checks it: note (proofs/note/) and reputation (proofs/reputation/) have the shapes below.",
+          "description": "The circuit that checks it: stamp (proofs/stamp/) and reputation (proofs/reputation/) have the shapes below.",
           "pattern": "^[a-z][a-z0-9-]{0,31}$"
         }
       },
@@ -115,35 +119,35 @@
           "if": {
             "properties": {
               "circuit": {
-                "const": "note"
+                "const": "stamp"
               }
             }
           },
           "then": {
-            "$ref": "#/$defs/note"
+            "$ref": "#/$defs/stamp"
           }
         }
       ]
     },
-    "note": {
+    "stamp": {
       "type": "object",
-      "description": "A note proof (proofs/note/): the issuer with this key and this name signed a note for the person whose seed gives this profile's key for this label, and this is their stamp for the label at that issuer. Everything verifyNote takes but the profile's key, which is the profile's own address.",
-      "required": ["circuit", "issuer", "issuerName", "label", "stamp", "proof"],
+      "description": "A stamp proof (proofs/stamp/): the verifier with this key and this name signed a stamp for the person whose seed gives this profile's key for this label, and this is their tag for the label at that verifier. Everything checkStamp takes but the profile's key, which is the profile's own address.",
+      "required": ["circuit", "verifier", "verifierName", "label", "tag", "proof"],
       "additionalProperties": false,
       "properties": {
         "circuit": {
-          "const": "note"
+          "const": "stamp"
         },
-        "issuer": {
+        "verifier": {
           "type": "string",
-          "description": "The issuer's key: its address, a packed point on Baby Jubjub in base58.",
+          "description": "The verifier's key: its address, a packed point on Baby Jubjub in base58.",
           "minLength": 32,
           "maxLength": 44,
           "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$"
         },
-        "issuerName": {
+        "verifierName": {
           "type": "string",
-          "description": "The name the issuer publishes as its own, exactly as keys/'s recipe takes it: the proof's name hash is made from it.",
+          "description": "The name the verifier publishes as its own, exactly as keys/'s recipe takes it: the proof's name hash is made from it.",
           "minLength": 1,
           "maxLength": 256
         },
@@ -153,9 +157,9 @@
           "minLength": 1,
           "maxLength": 128
         },
-        "stamp": {
+        "tag": {
           "type": "string",
-          "description": "The person's stamp for the label at the issuer: 32 bytes big-endian, lowercase hex.",
+          "description": "The person's tag for the label at the verifier: 32 bytes big-endian, lowercase hex.",
           "pattern": "^[0-9a-f]{64}$"
         },
         "proof": {
@@ -167,7 +171,7 @@
     },
     "reputation": {
       "type": "object",
-      "description": "A reputation proof (proofs/reputation/): the count-weighted score of profiles in an index's tree that come from the same seed as this one, which profiles hidden. It holds only for this profile's key, which the proof derives from that seed. What the score means is what the index says its root holds. Everything verifyReputation takes but the profile's key, which is the profile's own address.",
+      "description": "A reputation proof (proofs/reputation/): the count-weighted score of profiles in an index's tree that come from the same seed as this one, which profiles hidden. It holds only for this profile's key, which the proof derives from that seed. What the score means is what the index says its root holds. Everything checkReputation takes but the profile's key, which is the profile's own address.",
       "required": ["circuit", "index", "root", "time", "signature", "score", "proof"],
       "additionalProperties": false,
       "properties": {

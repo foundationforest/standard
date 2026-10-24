@@ -19,8 +19,8 @@ import { blobNameOf, blobRequest, pullRequest } from '../src/message.ts'
 import { message } from '../src/private.ts'
 import type { Body } from '../src/record.ts'
 import { s3Url, signS3 } from '../src/storage.ts'
-import { ownerRecord, permissionsRecord } from '../src/write.ts'
-import { MINUTE, T0, accessKey, alice, allow, bob, offerBody, pastKey, profileBody } from './fixtures.ts'
+import { ownerRecord } from '../src/write.ts'
+import { MINUTE, T0, alice, bob, offerBody, profileBody } from './fixtures.ts'
 import { Clock, startHost } from './helpers.ts'
 
 const dirs: string[] = []
@@ -42,10 +42,10 @@ const deleteAs = (key: typeof alice, bytes: Uint8Array, time = T0) => blobReques
 const putBoth = async (url: string) => [...(await putBlob([url], putAs(alice, photo, 'image/jpeg'), photo)), ...(await putBlob([url], putAs(bob, clip, 'video/mp4'), clip))].map((o) => o.ok)
 
 const [aliceInbox, bobInbox] = await Promise.all([inboxKey(alice.secret), inboxKey(bob.secret)])
-const aliceProfile: Body = { ...profileBody('calculus'), inboxKey: aliceInbox.sealTo, inbox: { senders: 'anyone' } }
+const aliceProfile: Body = { ...profileBody('calculus'), inboxKey: aliceInbox.encryptTo, inbox: { senders: 'anyone' } }
 /** Alice's offer pointing at her photo, by a field of its own: where a record points at a blob is the market's. */
 const photoOffer = ownerRecord(alice, 'offer/photo', { ...offerBody('5'), files: [blobNameOf(photo, 'image/jpeg')] }, T0)
-const bobProfile: Body = { ...profileBody('chemistry'), role: 'buyer', inboxKey: bobInbox.sealTo, inbox: { senders: 'anyone' } }
+const bobProfile: Body = { ...profileBody('chemistry'), role: 'buyer', inboxKey: bobInbox.encryptTo, inbox: { senders: 'anyone' } }
 const withClip = (about: string): Body => ({ ...offerBody(about), files: [blobNameOf(clip, 'video/mp4')] })
 
 /** Every page of the feed, as [cursor, ids]: what a crawler sees, number for number. */
@@ -276,10 +276,9 @@ describe('the S3 driver', () => {
 
   /**
    * A local S3 stand-in, path-style: it checks each request's SigV4 signature and payload hash,
-   * keeps objects in memory with their content-type, and lists one key a page. `beforePut`, if
-   * given, holds each put, its bytes read, until it resolves.
+   * keeps objects in memory with their content-type, and lists one key a page.
    */
-  async function s3Stub(beforePut?: () => Promise<void>) {
+  async function s3Stub() {
     const objects = new Map<string, { type: string; bytes: Uint8Array }>()
     const server = createServer(async (req: IncomingMessage, res) => {
       const chunks: Buffer[] = []
@@ -302,7 +301,6 @@ describe('the S3 driver', () => {
       }
       const held = objects.get(key!)
       if (req.method === 'PUT') {
-        await beforePut?.()
         objects.set(key!, { type: String(req.headers['content-type']), bytes: new Uint8Array(body) })
         return void res.writeHead(200).end()
       }
@@ -357,31 +355,6 @@ describe('the S3 driver', () => {
       assert.equal((await putBlob([wrong.url], putAs(alice, photo, 'image/jpeg'), photo))[0]!.status, 500)
     } finally {
       await wrong.close()
-      await stub.close()
-    }
-  })
-
-  test('a write key made past while its bytes go up to the bucket is refused, and the bytes leave the bucket', async () => {
-    let arrived: () => void = () => {}
-    const uploading = new Promise<void>((resolve) => (arrived = resolve))
-    let release: () => void = () => {}
-    const held = new Promise<void>((resolve) => (release = resolve))
-    const stub = await s3Stub(async () => (arrived(), await held))
-    const h = await startHost({ now: () => T0, blobs: { kind: 's3', endpoint: stub.url, bucket: 'forest', ...credentials } })
-    try {
-      await publish([h.url], [permissionsRecord(alice, [allow(accessKey)], T0)])
-      const request = blobRequest({ key: accessKey, profile: alice.address }, { action: 'put', ...blobNameOf(photo, 'image/jpeg') }, T0) as Parameters<typeof putBlob>[1]
-      const putting = putBlob([h.url], request, photo)
-      await uploading
-      // While the bytes go up, the owner makes the key past.
-      await publish([h.url], [permissionsRecord(alice, [pastKey(accessKey, T0 + 1)], T0 + 1)])
-      release()
-      const [outcome] = await putting
-      assert.deepEqual([outcome!.error, outcome!.message], ['permission', 'the profile’s permissions record here does not list key as a write key'])
-      assert.deepEqual([...stub.objects.keys()], [], 'the bytes left the bucket')
-      assert.equal((await fetch(`${h.url}/v1/blobs/${sha256Hex(photo)}`)).status, 404)
-    } finally {
-      await h.close()
       await stub.close()
     }
   })

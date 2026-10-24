@@ -1,8 +1,7 @@
-// Blobs: bytes a folder holds. Its main key or a write key it lists puts them with a signed request,
-// and they stay until a key that may deletes them, whatever the folder's records say. A host
-// refuses bytes that do not hash to their name, or are not the type and size the request names, a
-// request no key that may signed, and what its own choice will not take. A reader checks the hash,
-// whatever host served them.
+// Blobs: bytes a folder holds. Its main key puts them with a signed request, and they stay until it
+// deletes them, whatever the folder's records say. A host refuses bytes that do not hash to their
+// name, or are not the type and size the request names, a request the main key did not sign, and
+// what its own choice will not take. A reader checks the hash, whatever host served them.
 
 import assert from 'node:assert/strict'
 import { connect } from 'node:net'
@@ -11,29 +10,31 @@ import { canonical } from '../src/canonical.ts'
 import { deleteBlob, getBlob, publish, putBlob, readProfile } from '../src/client.ts'
 import type { Host } from '../src/host.ts'
 import type { Key } from '../src/keys.ts'
-import { type SignedBlobRequest, blobNameOf, blobRequest } from '../src/message.ts'
-import { encodeRecord } from '../src/record.ts'
-import { hostsRecord, ownerRecord, permissionsRecord } from '../src/write.ts'
-import { DAY, MINUTE, T0, accessKey, alice, allow, bob, offerBody, pastKey, reader, stranger } from './fixtures.ts'
+import { type SignedBlobRequest, blobNameOf, blobRequest, blobSigningInput } from '../src/message.ts'
+import { signAs } from '../src/record.ts'
+import { hostsRecord, ownerRecord } from '../src/write.ts'
+import { DAY, MINUTE, T0, alice, bob, offerBody, stranger } from './fixtures.ts'
 import { Clock, startHost } from './helpers.ts'
 
-type Signer = Key | { key: Key; profile: string }
 const bytesOf = (seed: number, length = 2000) => Uint8Array.from({ length }, (_, i) => (i * 7 + seed * 13) & 255)
 const nameOf = (bytes: Uint8Array) => blobNameOf(bytes, 'image/jpeg').sha256
-const putOf = (signer: Signer, bytes: Uint8Array, type = 'image/jpeg', time = T0) => blobRequest(signer, { action: 'put', ...blobNameOf(bytes, type) }, time) as SignedBlobRequest & { action: 'put' }
-const deleteOf = (signer: Signer, bytes: Uint8Array, time = T0) => blobRequest(signer, { action: 'delete', sha256: nameOf(bytes) }, time) as SignedBlobRequest & { action: 'delete' }
+const putOf = (key: Key, bytes: Uint8Array, type = 'image/jpeg', time = T0) => blobRequest(key, { action: 'put', ...blobNameOf(bytes, type) }, time) as SignedBlobRequest & { action: 'put' }
+const deleteOf = (key: Key, bytes: Uint8Array, time = T0) => blobRequest(key, { action: 'delete', sha256: nameOf(bytes) }, time) as SignedBlobRequest & { action: 'delete' }
 /** One host's answer, as its error code, or its message, or ok. */
 const answer = (outcomes: Array<{ ok: boolean; error?: string; message?: string }>) => outcomes[0]!.error ?? outcomes[0]!.message ?? 'ok'
-const put = async (h: Host, signer: Signer, bytes: Uint8Array, type = 'image/jpeg') => answer(await putBlob([h.url], putOf(signer, bytes, type), bytes))
-const del = async (h: Host, signer: Signer, bytes: Uint8Array) => answer(await deleteBlob([h.url], deleteOf(signer, bytes)))
-/** A write key signing for Alice's folder. */
-const as = (key: Key) => ({ key, profile: alice.address })
+const put = async (h: Host, key: Key, bytes: Uint8Array, type = 'image/jpeg') => answer(await putBlob([h.url], putOf(key, bytes, type), bytes))
+const del = async (h: Host, key: Key, bytes: Uint8Array) => answer(await deleteBlob([h.url], deleteOf(key, bytes)))
+/** A request naming Alice's folder, signed by `key`, which is not her main key. */
+const posing = <R extends SignedBlobRequest>(request: R, key = stranger): R => {
+  const { sig: _sig, ...unsigned } = { ...request, profile: alice.address }
+  return { ...unsigned, sig: signAs(key, key.address, blobSigningInput(unsigned)) } as R
+}
 
 const photo = bytesOf(1)
 const clip = bytesOf(2, 5000)
 
 describe('blobs', () => {
-  test('a folder’s keys put bytes on its hosts; a reader follows a record’s reference to them, and gets their type', async () => {
+  test('a folder’s main key puts bytes on its hosts; a reader follows a record’s reference to them, and gets their type', async () => {
     const h1 = await startHost({ now: () => T0 })
     const h2 = await startHost({ now: () => T0 })
     try {
@@ -72,60 +73,13 @@ describe('blobs', () => {
     }
   })
 
-  test('the main key deletes any of its folder’s bytes; a write key, whatever its paths, only the ones it put', async () => {
+  test('the main key deletes its folder’s bytes; a delete of bytes it does not hold is not here', async () => {
     const h = await startHost({ now: () => T0 })
     try {
-      await publish([h.url], [permissionsRecord(alice, [allow(accessKey, ['inbox']), allow(stranger, ['offer'])], T0)])
-      // The main key's bytes: only it deletes them, as the owner's records.
       assert.equal(await put(h, alice, photo), 'ok')
-      assert.equal(await del(h, as(accessKey), photo), 'permission')
       assert.equal(await del(h, alice, photo), 'ok')
       assert.equal((await fetch(`${h.url}/v1/blobs/${nameOf(photo)}`)).status, 404)
       assert.equal(await del(h, alice, photo), 'not here')
-
-      // A write key's bytes: that key or the main key deletes them; another write key does not.
-      assert.equal(await put(h, as(accessKey), clip, 'video/mp4'), 'ok')
-      assert.equal(await del(h, as(stranger), clip), 'permission', 'another write key')
-      assert.equal(await del(h, as(accessKey), clip), 'ok')
-      assert.equal(await put(h, as(accessKey), clip, 'video/mp4'), 'ok')
-      assert.equal(await del(h, alice, clip), 'ok')
-
-      // The main key putting what a write key put takes it over; a write key putting the main key's changes nothing.
-      const both = bytesOf(3)
-      assert.equal(await put(h, as(accessKey), both), 'ok')
-      assert.equal(await put(h, alice, both), 'ok')
-      assert.equal(await put(h, as(accessKey), both), 'already here')
-      assert.equal(await del(h, as(accessKey), both), 'permission')
-    } finally {
-      await h.close()
-    }
-  })
-
-  test('who put the bytes is read in the step that deletes them: bytes the main key took over while a delete waited stay', async () => {
-    const h = await startHost({ now: () => T0 })
-    try {
-      await publish([h.url], [permissionsRecord(alice, [allow(accessKey, ['inbox'])], T0)])
-      assert.equal(await put(h, as(accessKey), photo), 'ok')
-      const takeOver = h.putBlob(nameOf(photo), 'image/jpeg', canonical(putOf(alice, photo)), photo)
-      const deleting = h.deleteBlob(nameOf(photo), canonical(deleteOf(as(accessKey), photo)))
-      assert.deepEqual([(await takeOver).ok, (await deleting).error], [true, 'permission'])
-      assert.ok(await h.getBlob(nameOf(photo)), 'still held')
-    } finally {
-      await h.close()
-    }
-  })
-
-  test('a write key made past while its delete waited its turn is refused in the step that deletes, and the bytes stay', async () => {
-    const h = await startHost({ now: () => T0 })
-    try {
-      await publish([h.url], [permissionsRecord(alice, [allow(accessKey, ['inbox'])], T0)])
-      assert.equal(await put(h, as(accessKey), photo), 'ok')
-      // The delete passes its first check and waits its turn; the owner makes the key past before it comes.
-      const deleting = h.deleteBlob(nameOf(photo), canonical(deleteOf(as(accessKey), photo)))
-      await h.accept([encodeRecord(permissionsRecord(alice, [pastKey(accessKey, T0 + 1, ['inbox'])], T0 + 1))])
-      const done = await deleting
-      assert.deepEqual([done.error, done.message], ['permission', 'the profile’s permissions record here does not list key as a write key'])
-      assert.ok(await h.getBlob(nameOf(photo)), 'still held')
     } finally {
       await h.close()
     }
@@ -145,16 +99,14 @@ describe('blobs', () => {
     }
   })
 
-  test('a request no key that may signed is refused: a key not listed, a past write key, a read key, another key’s signature', async () => {
+  test('a request signed by a key that is not the folder’s main key is refused [signature]', async () => {
     const h = await startHost({ now: () => T0 })
     try {
-      const past = stranger
-      await publish([h.url], [permissionsRecord(alice, [allow(accessKey, ['offer']), pastKey(past, T0, ['offer']), allow(reader, ['inbox'], 'read')], T0)])
-      assert.equal(await put(h, as(bob), photo), 'permission', 'a key the folder does not list')
-      assert.equal(await put(h, as(past), photo), 'permission', 'a past write key')
-      assert.equal(await put(h, as(reader), photo), 'permission', 'a read key')
-      assert.equal(await put(h, as(accessKey), photo), 'ok')
-      assert.equal(await del(h, as(past), photo), 'permission')
+      assert.equal(answer(await putBlob([h.url], posing(putOf(stranger, photo)), photo)), 'signature', 'a put')
+      assert.equal(await put(h, alice, photo), 'ok')
+      assert.equal(answer(await deleteBlob([h.url], posing(deleteOf(stranger, photo)))), 'signature', 'a delete')
+      assert.equal(answer(await deleteBlob([h.url], posing(deleteOf(bob, photo), bob))), 'signature', 'another profile’s main key')
+      assert.ok(await h.getBlob(nameOf(photo)), 'still held')
 
       // Alice's request with Bob's profile in it: the signature is not Bob's main key's.
       const forged = { ...putOf(alice, clip), profile: bob.address }

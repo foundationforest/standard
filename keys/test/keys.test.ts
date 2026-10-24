@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { hkdf as nobleHkdf } from '@noble/hashes/hkdf.js'
 import { sha256 } from '@noble/hashes/sha2.js'
-import { createHash } from 'node:crypto'
+import { createECDH, createHash } from 'node:crypto'
 import { keccak_256 } from '@noble/hashes/sha3.js'
 import { blake512 } from '@noble/hashes/blake1.js'
 import { base58, bech32, hex } from '@scure/base'
@@ -19,37 +19,40 @@ import { poseidon5 } from 'poseidon-lite/poseidon5'
 import {
   BN254_R,
   INFO,
+  PAY_TYPES,
+  PREFIX,
   SEED_LENGTH,
-  TAG,
   WORD_COUNT,
-  accessKey,
   addressOf,
   bytesMessage,
+  evmAddressOf,
   exportWords,
   hkdf,
   importWords,
   inboxKey,
-  issuerScalarOf,
-  issuerSecret,
+  isEvmAddress,
+  verifierScalarOf,
+  verifierSecret,
   mainKey,
   nameHashOf,
   newSeed,
   packPoint,
   packSignature,
+  payAddresses,
   payKey,
   pointOf,
   profileScalarOf,
-  readKey,
   signBytes,
   scopeOf,
   seedScalar,
+  serviceKey,
   signWithScalar,
-  stampOf,
+  tagOf,
   unpackPoint,
   unpackSignature,
   vaultKey,
-  verifyBytes,
-  verifyWithPublicKey,
+  checkBytes,
+  checkWithPublicKey,
   type Point,
 } from '../src/index.ts'
 
@@ -57,7 +60,7 @@ const vectors = JSON.parse(readFileSync(new URL('./vectors.json', import.meta.ur
 const seed = hex.decode(vectors.seed)
 const otherSeed = new Uint8Array(32).fill(7)
 const [seller, buyer] = vectors.mainKeys
-const [issuerA, issuerB] = vectors.issuers
+const [verifierA, verifierB] = vectors.verifiers
 const S = BigInt(vectors.seedScalar.scalar)
 const utf8 = (text: string) => new TextEncoder().encode(text)
 // HKDF-SHA256 from a second implementation: empty salt, 32 bytes.
@@ -81,24 +84,25 @@ const big = (p: string[]): Point => [BigInt(p[0]), BigInt(p[1])]
 
 // The mixing table
 
-test('the info strings and the tags are exactly the standard', () => {
+test('the info strings and the prefixes are exactly the standard', () => {
   assert.equal(INFO.seed, 'forest/v1/seed')
   assert.equal(INFO.profile('tutoring/seller'), 'forest/v1/profile/tutoring/seller')
-  assert.equal(INFO.read, 'forest/v1/inbox')
-  assert.equal(INFO.pay('tutoring/seller'), 'forest/v1/pay/solana/tutoring/seller')
+  assert.equal(INFO.inbox, 'forest/v1/inbox')
+  assert.equal(INFO.pay('solana', 'tutoring/seller'), 'forest/v1/pay/solana/tutoring/seller')
+  assert.equal(INFO.pay('evm', 'tutoring/seller'), 'forest/v1/pay/evm/tutoring/seller')
   assert.equal(INFO.vault, 'forest/v1/vault')
   assert.equal(INFO.seed, vectors.seedScalar.info)
   assert.equal(INFO.vault, vectors.vault.info)
   for (const p of vectors.mainKeys) assert.equal(INFO.profile(p.label), p.info)
-  for (const p of vectors.payKeys) assert.equal(INFO.pay(p.label), p.info)
-  for (const [name, tag] of Object.entries(vectors.tags) as [keyof typeof TAG, { text: string; value: string }][]) {
-    assert.equal(TAG[name], field(tag.text), name)
-    assert.equal(TAG[name].toString(), tag.value, name)
+  for (const p of vectors.payKeys) assert.equal(INFO.pay(p.type, p.label), p.info)
+  for (const [name, prefix] of Object.entries(vectors.prefixes) as [keyof typeof PREFIX, { text: string; value: string }][]) {
+    assert.equal(PREFIX[name], field(prefix.text), name)
+    assert.equal(PREFIX[name].toString(), prefix.value, name)
   }
 })
 
 test('HKDF agrees with an independent implementation', async () => {
-  for (const info of [INFO.seed, INFO.profile('tutoring/seller'), INFO.profile(''), INFO.read, INFO.pay('tutoring/seller'), INFO.vault]) {
+  for (const info of [INFO.seed, INFO.profile('tutoring/seller'), INFO.profile(''), INFO.inbox, INFO.pay('solana', 'tutoring/seller'), INFO.pay('evm', 'tutoring/seller'), INFO.vault]) {
     assert.equal(hex.encode(await hkdf(seed, info)), hex.encode(mix(seed, info)), info)
   }
 })
@@ -175,7 +179,7 @@ test('the main key, recomputed without the library: keccak, Poseidon, the low 25
   for (const expected of vectors.mainKeys) {
     const scope = field('forest/v1/label/' + expected.label)
     assert.equal(scope.toString(), expected.scope)
-    const raw = poseidon3([TAG.profile, S, scope])
+    const raw = poseidon3([PREFIX.profile, S, scope])
     assert.equal(raw.toString(), expected.raw)
     const scalar = raw % 2n ** 250n
     assert.equal(scalar.toString(), expected.scalar)
@@ -198,8 +202,8 @@ test('the label is used exactly: another case, another space, another profile', 
 
 test('keys of one seed have nothing to do with keys of another seed', async () => {
   assert.notEqual((await mainKey(seed, 'tutoring/seller')).address, (await mainKey(otherSeed, 'tutoring/seller')).address)
-  assert.notEqual((await payKey(seed, 'tutoring/seller')).address, (await payKey(otherSeed, 'tutoring/seller')).address)
-  assert.notEqual((await issuerSecret(seed, issuerA.name)).noteNumber, (await issuerSecret(otherSeed, issuerA.name)).noteNumber)
+  for (const type of PAY_TYPES) assert.notEqual((await payKey(seed, 'tutoring/seller', type)).address, (await payKey(otherSeed, 'tutoring/seller', type)).address)
+  assert.notEqual((await verifierSecret(seed, verifierA.name)).stampNumber, (await verifierSecret(otherSeed, verifierA.name)).stampNumber)
 })
 
 test('a main key needs a 32-byte seed and a label that is text', async () => {
@@ -247,8 +251,8 @@ test('the main key signs: the pinned signature, again the same, and it holds', (
   const sig = signWithScalar(scalar, message)
   assert.deepEqual(sig, { R8: big(v.R8), S: BigInt(v.S) })
   assert.deepEqual(signWithScalar(scalar, message), sig, 'deterministic')
-  assert.equal(verifyWithPublicKey(big(seller.publicKey), message, sig), true)
-  assert.equal(verifyWithPublicKey(seller.address, message, sig), true, 'from its address')
+  assert.equal(checkWithPublicKey(big(seller.publicKey), message, sig), true)
+  assert.equal(checkWithPublicKey(seller.address, message, sig), true, 'from its address')
   assert.equal(verifySignature(message, sig, big(seller.publicKey)), true, "zk-kit's own check")
 })
 
@@ -292,13 +296,13 @@ test('a signature holds for its message and key only', () => {
   const scalar = BigInt(seller.scalar)
   const message = 12345n
   const sig = signWithScalar(scalar, message)
-  assert.equal(verifyWithPublicKey(seller.address, message + 1n, sig), false, 'another message')
-  assert.equal(verifyWithPublicKey(buyer.address, message, sig), false, 'another key')
-  assert.equal(verifyWithPublicKey(seller.address, message, { ...sig, S: sig.S + 1n }), false, 'S changed')
-  assert.equal(verifyWithPublicKey(seller.address, message, { ...sig, S: sig.S + subOrder }), false, 'S plus l')
-  assert.equal(verifyWithPublicKey(seller.address, message, { ...sig, R8: [sig.R8[0], sig.R8[1] + 1n] }), false, 'R8 off the curve')
-  assert.equal(verifyWithPublicKey('not an address', message, sig), false, 'no key')
-  assert.equal(verifyWithPublicKey(seller.address, BN254_R, sig), false, 'a message past the field')
+  assert.equal(checkWithPublicKey(seller.address, message + 1n, sig), false, 'another message')
+  assert.equal(checkWithPublicKey(buyer.address, message, sig), false, 'another key')
+  assert.equal(checkWithPublicKey(seller.address, message, { ...sig, S: sig.S + 1n }), false, 'S changed')
+  assert.equal(checkWithPublicKey(seller.address, message, { ...sig, S: sig.S + subOrder }), false, 'S plus l')
+  assert.equal(checkWithPublicKey(seller.address, message, { ...sig, R8: [sig.R8[0], sig.R8[1] + 1n] }), false, 'R8 off the curve')
+  assert.equal(checkWithPublicKey('not an address', message, sig), false, 'no key')
+  assert.equal(checkWithPublicKey(seller.address, BN254_R, sig), false, 'a message past the field')
   assert.notDeepEqual(signWithScalar(scalar, message + 1n).R8, sig.R8, 'another message, another nonce')
   assert.throws(() => signWithScalar(0n, message), /scalar/)
   assert.throws(() => signWithScalar(subOrder, message), /scalar/)
@@ -312,25 +316,25 @@ test("each profile gives the pinned inbox key, from its secret, never from the m
     const key = await mainKey(seed, expected.label)
     const { privateKey, ...inbox } = expected.inbox
     assert.deepEqual(await inboxKey(key.secret), inbox)
-    assert.equal(hex.encode(await hkdf(key.secret, INFO.read)), privateKey)
+    assert.equal(hex.encode(await hkdf(key.secret, INFO.inbox)), privateKey)
   }
 })
 
 test("the inbox key, recomputed without the library: HKDF twice, ML-KEM-768 with X25519, age's bech32", () => {
-  const privateKey = mix(mix(seed, seller.info), INFO.read)
+  const privateKey = mix(mix(seed, seller.info), INFO.inbox)
   assert.equal(hex.encode(privateKey), seller.inbox.privateKey)
   assert.equal(bech32.encodeFromBytes('AGE-SECRET-KEY-PQ-', privateKey).toUpperCase(), seller.inbox.identity)
-  // What others seal to is the hybrid public key the 32 bytes expand to, in bech32 under age1pq, with
-  // no length limit: it is about 1,960 characters.
+  // What others encrypt to is the hybrid public key the 32 bytes expand to, in bech32 under age1pq,
+  // with no length limit: it is about 1,960 characters.
   const publicKey = MLKEM768X25519.getPublicKey(privateKey)
-  assert.equal(bech32.encode('age1pq', bech32.toWords(publicKey), false), seller.inbox.sealTo)
+  assert.equal(bech32.encode('age1pq', bech32.toWords(publicKey), false), seller.inbox.encryptTo)
   assert.match(seller.inbox.identity, /^AGE-SECRET-KEY-PQ-1[0-9A-Z]+$/)
-  assert.match(seller.inbox.sealTo, /^age1pq1[0-9a-z]+$/)
+  assert.match(seller.inbox.encryptTo, /^age1pq1[0-9a-z]+$/)
 })
 
-test('age seals to the inbox key, and only that profile opens it', async () => {
+test('age encrypts to the inbox key, and only that profile opens it', async () => {
   const encrypter = new Encrypter()
-  encrypter.addRecipient(seller.inbox.sealTo)
+  encrypter.addRecipient(seller.inbox.encryptTo)
   const encrypted = await encrypter.encrypt('only for the seller profile')
   const opener = new Decrypter()
   opener.addIdentity(seller.inbox.identity)
@@ -344,20 +348,70 @@ test('an inbox key needs a 32-byte secret', async () => {
   await assert.rejects(inboxKey(new Uint8Array(64)), /secret must be 32 bytes/)
 })
 
-// Payment keys
+// Pay keys
 
-test('each label gives the pinned payment key, recomputed without the library: HKDF, ed25519, base58', async () => {
+/** EIP-55 by hand: a hex letter is upper case where keccak256 of the lower-case hex has a digit of 8 or more. */
+const eip55 = (lower: string) => {
+  const hash = hex.encode(keccak_256(utf8(lower)))
+  return '0x' + [...lower].map((c, i) => (parseInt(hash[i]!, 16) >= 8 ? c.toUpperCase() : c)).join('')
+}
+/** An EVM address by hand: node:crypto's secp256k1, keccak256 of the uncompressed key without its 04, the last 20 bytes. */
+const evmByHand = (privateKey: Uint8Array) => {
+  const ecdh = createECDH('secp256k1')
+  ecdh.setPrivateKey(privateKey)
+  const publicKey = ecdh.getPublicKey()
+  return { publicKey: hex.encode(publicKey), address: eip55(hex.encode(keccak_256(publicKey.subarray(1)).subarray(12))) }
+}
+
+test('each label gives the pinned pay key of each type, recomputed without the library: HKDF, then ed25519 and base58, or secp256k1, keccak and EIP-55', async () => {
+  assert.deepEqual(PAY_TYPES, ['solana', 'evm'])
+  assert.deepEqual(vectors.payKeys.map((p: { label: string; type: string }) => `${p.label} ${p.type}`).sort(), ['tutoring/buyer evm', 'tutoring/buyer solana', 'tutoring/seller evm', 'tutoring/seller solana'])
   for (const expected of vectors.payKeys) {
-    const key = await payKey(seed, expected.label)
-    assert.equal(hex.encode(key.privateKey), expected.privateKey)
-    assert.equal(key.address, expected.address)
+    const key = await payKey(seed, expected.label, expected.type)
+    assert.deepEqual([key.label, key.type, hex.encode(key.privateKey), key.address], [expected.label, expected.type, expected.privateKey, expected.address])
     const privateKey = mix(seed, expected.info)
     assert.equal(hex.encode(privateKey), expected.privateKey)
-    assert.equal(base58.encode(ed25519.getPublicKey(privateKey)), expected.address)
+    if (expected.type === 'solana') {
+      assert.equal(base58.encode(ed25519.getPublicKey(privateKey)), expected.address)
+    } else {
+      assert.deepEqual(evmByHand(privateKey), { publicKey: expected.publicKey, address: expected.address })
+      assert.equal(hex.encode(key.publicKey), expected.publicKey)
+      assert.equal(isEvmAddress(key.address), true)
+    }
   }
-  assert.notEqual(vectors.payKeys[0].address, vectors.payKeys[1].address)
+  assert.deepEqual(await payAddresses(seed, seller.label), Object.fromEntries(vectors.payKeys.filter((p: { label: string }) => p.label === seller.label).map((p: { type: string; address: string }) => [p.type, p.address])))
+  const addresses = vectors.payKeys.map((p: { address: string }) => p.address)
+  assert.equal(new Set(addresses).size, 4)
   for (const p of vectors.payKeys) assert.ok(vectors.mainKeys.every((m: { address: string }) => m.address !== p.address))
-  await assert.rejects(payKey(seed, 'tutoring/\ud800seller'), /label must be text/)
+  await assert.rejects(payKey(seed, 'tutoring/\ud800seller', 'solana'), /label must be text/)
+  await assert.rejects(payKey(seed, 'tutoring/seller', 'bitcoin' as 'evm'), /pay type/)
+})
+
+test("an EVM address: key 1's is the well-known one, and EIP-55's checksum is its one written form", () => {
+  const one = new Uint8Array(32)
+  one[31] = 1
+  assert.equal(evmByHand(one).address, '0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf')
+  assert.equal(evmAddressOf(Buffer.from(evmByHand(one).publicKey, 'hex')), '0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf')
+  // EIP-55's own examples: all upper case, all lower case, and mixed, each its checksum form.
+  const examples = [
+    '0x52908400098527886E0F7030069857D2E4169EE7',
+    '0x8617E340B3D01FA5F11F306F4090FD50E238070D',
+    '0xde709f2102306220921060314715629080e2fb77',
+    '0x27b1fdb04752bbc536007a920d24acb045561c26',
+    '0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed',
+    '0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359',
+    '0xdbF03B407c01E7cD3CBea99509d93f8DDDC8C6FB',
+    '0xD1220A0cf47c7B9Be7A2E6BA89F429762e7b9aDb',
+  ]
+  for (const address of examples) {
+    assert.equal(eip55(address.slice(2).toLowerCase()), address, address)
+    assert.equal(isEvmAddress(address), true, address)
+  }
+  // Any other spelling is refused: all lower or all upper case where the checksum mixes, one letter changed in case, or no 0x.
+  const mixed = examples[4]!
+  for (const other of [mixed.toLowerCase(), '0x' + mixed.slice(2).toUpperCase(), mixed.replace('a', 'A'), mixed.slice(2), mixed + '0', mixed.slice(0, -1), '0X' + mixed.slice(2), 7]) {
+    assert.equal(isEvmAddress(other), false, String(other))
+  }
 })
 
 // The vault key
@@ -371,9 +425,9 @@ test('the seed gives the pinned vault key, recomputed without the library, and i
     assert.equal('label' in key, false, 'it belongs to no label')
     const { privateKey, ...inbox } = vectors.vault.inbox
     assert.deepEqual(await inboxKey(key.secret), inbox)
-    assert.equal(hex.encode(await hkdf(key.secret, INFO.read)), privateKey)
+    assert.equal(hex.encode(await hkdf(key.secret, INFO.inbox)), privateKey)
   }
-  const raw = poseidon2([TAG.vault, S])
+  const raw = poseidon2([PREFIX.vault, S])
   assert.equal(raw.toString(), vectors.vault.raw)
   const point = times(raw % 2n ** 250n)
   assert.equal(pack(point.x, point.y), vectors.vault.address)
@@ -381,8 +435,8 @@ test('the seed gives the pinned vault key, recomputed without the library, and i
 })
 
 test("the vault key is no profile's, and another seed gives another", async () => {
-  // Its mix has its own tag and two inputs, a profile's three, so no label can give it.
-  assert.notEqual(TAG.vault, TAG.profile)
+  // Its mix has its own prefix and two inputs, a profile's three, so no label can give it.
+  assert.notEqual(PREFIX.vault, PREFIX.profile)
   for (const label of ['', 'vault', '../vault', 'tutoring/seller']) {
     assert.notEqual((await mainKey(seed, label)).address, vectors.vault.address)
     assert.notEqual(INFO.profile(label), INFO.vault)
@@ -391,79 +445,72 @@ test("the vault key is no profile's, and another seed gives another", async () =
   await assert.rejects(vaultKey(new Uint8Array(31)), /seed must be 32 bytes/)
 })
 
-// Issuer secrets, note numbers and stamps
+// Verifier secrets, stamp numbers and tags
 
-test('each issuer gives the pinned name hash, secret, note number and stamps, and gives them again', async () => {
-  for (const expected of vectors.issuers) {
+test('each verifier gives the pinned name hash, secret, stamp number and tags, and gives them again', async () => {
+  for (const expected of vectors.verifiers) {
     for (let round = 0; round < 2; round++) {
-      const { name, nameHash, scalar, noteNumber } = await issuerSecret(seed, expected.name)
+      const { name, nameHash, scalar, stampNumber } = await verifierSecret(seed, expected.name)
       assert.equal(name, expected.name)
       assert.equal(nameHash.toString(), expected.nameHash)
       assert.equal(scalar.toString(), expected.scalar)
-      assert.equal(noteNumber.toString(), expected.noteNumber)
-      for (const [label, stamp] of Object.entries(expected.stamps)) assert.equal(stampOf(scalar, label).toString(), stamp)
+      assert.equal(stampNumber.toString(), expected.stampNumber)
+      for (const [label, tag] of Object.entries(expected.tags)) assert.equal(tagOf(scalar, label).toString(), tag)
     }
   }
 })
 
-test('the issuer secret, the note number and a stamp, recomputed without the library', () => {
-  for (const expected of vectors.issuers) {
+test('the verifier secret, the stamp number and a tag, recomputed without the library', () => {
+  for (const expected of vectors.verifiers) {
     const nameHash = field('forest/v1/issuer/' + expected.name)
     assert.equal(nameHash.toString(), expected.nameHash)
     assert.equal(nameHashOf(expected.name), nameHash)
-    const scalar = poseidon3([TAG.issuer, S, nameHash])
+    const scalar = poseidon3([PREFIX.verifier, S, nameHash])
     assert.equal(scalar.toString(), expected.scalar)
-    assert.equal(issuerScalarOf(S, expected.name), scalar)
-    assert.equal(poseidon1([scalar]).toString(), expected.noteNumber)
-    for (const [label, stamp] of Object.entries(expected.stamps)) {
-      assert.equal(poseidon2([field('forest/v1/label/' + label), scalar]).toString(), stamp)
+    assert.equal(verifierScalarOf(S, expected.name), scalar)
+    assert.equal(poseidon1([scalar]).toString(), expected.stampNumber)
+    for (const [label, tag] of Object.entries(expected.tags)) {
+      assert.equal(poseidon2([field('forest/v1/label/' + label), scalar]).toString(), tag)
       assert.equal(scopeOf(label), field('forest/v1/label/' + label))
     }
   }
 })
 
-test('two issuers, two unrelated note numbers and stamps; and none of it is a key', async () => {
-  const a = await issuerSecret(seed, issuerA.name)
-  const b = await issuerSecret(seed, issuerB.name)
-  assert.notEqual(a.noteNumber, b.noteNumber)
-  assert.notEqual(stampOf(a.scalar, 'tutoring/seller'), stampOf(b.scalar, 'tutoring/seller'))
-  const all = [issuerA.scalar, issuerB.scalar, seller.scalar, buyer.scalar, vectors.vault.scalar, vectors.seedScalar.scalar, seller.raw, buyer.raw]
+test('two verifiers, two unrelated stamp numbers and tags; and none of it is a key', async () => {
+  const a = await verifierSecret(seed, verifierA.name)
+  const b = await verifierSecret(seed, verifierB.name)
+  assert.notEqual(a.stampNumber, b.stampNumber)
+  assert.notEqual(tagOf(a.scalar, 'tutoring/seller'), tagOf(b.scalar, 'tutoring/seller'))
+  const all = [verifierA.scalar, verifierB.scalar, seller.scalar, buyer.scalar, vectors.vault.scalar, vectors.seedScalar.scalar, seller.raw, buyer.raw]
   assert.equal(new Set(all).size, all.length)
 })
 
 test('the name is used exactly, and must be text; the seed is 32 bytes', async () => {
   const names = new Set<string>()
   for (const name of ['issuer-a.example', 'Issuer-A.example', 'issuer-a.example ', '']) {
-    names.add((await issuerSecret(seed, name)).noteNumber.toString())
+    names.add((await verifierSecret(seed, name)).stampNumber.toString())
   }
   assert.equal(names.size, 4)
   for (const name of ['issuer-\ud800a.example', 7, undefined]) {
-    await assert.rejects(issuerSecret(seed, name as string), /issuer name must be text/, String(name))
+    await assert.rejects(verifierSecret(seed, name as string), /verifier name must be text/, String(name))
   }
-  await assert.rejects(issuerSecret(seed.subarray(1), issuerA.name), /seed must be 32 bytes/)
-  assert.throws(() => stampOf(BN254_R, 'tutoring/seller'), /field element/)
-  assert.throws(() => issuerScalarOf(-1n, issuerA.name), /field element/)
+  await assert.rejects(verifierSecret(seed.subarray(1), verifierA.name), /seed must be 32 bytes/)
+  assert.throws(() => tagOf(BN254_R, 'tutoring/seller'), /field element/)
+  assert.throws(() => verifierScalarOf(-1n, verifierA.name), /field element/)
 })
 
-// Access keys, and signing bytes
+// Service keys, and signing bytes
 
-test("an access key's 32 bytes are a zk-kit EdDSA-Poseidon private key: the pinned keys, and zk-kit's own", async () => {
-  const v = vectors.accessKeys
-  const w = accessKey(hex.decode(v.write.secret))
-  assert.equal(w.scalar.toString(), v.write.scalar)
-  assert.equal(w.address, v.write.address)
-  assert.deepEqual(w.publicKey, derivePublicKey(hex.decode(v.write.secret)), "zk-kit's public key for the same bytes")
-  const r = await readKey(hex.decode(v.read.secret))
-  assert.equal(r.address, v.read.address)
-  assert.equal(r.identity, v.read.identity)
-  assert.equal(r.sealTo, v.read.sealTo)
-  // The read key's identity is mixed as an inbox key is, from the same 32 bytes: no public number gives it.
-  assert.deepEqual(await inboxKey(hex.decode(v.read.secret)), { identity: v.read.identity, sealTo: v.read.sealTo })
-  assert.equal(hex.encode(mix(hex.decode(v.read.secret), INFO.read)), hex.encode(await hkdf(hex.decode(v.read.secret), INFO.read)))
-  // zk-kit signs with the same bytes; the signature holds under the access key.
+test("a service key's 32 bytes are a zk-kit EdDSA-Poseidon private key: the pinned key, and zk-kit's own", () => {
+  const v = vectors.serviceKey
+  const key = serviceKey(hex.decode(v.secret))
+  assert.equal(key.scalar.toString(), v.scalar)
+  assert.equal(key.address, v.address)
+  assert.deepEqual(key.publicKey, derivePublicKey(hex.decode(v.secret)), "zk-kit's public key for the same bytes")
+  // zk-kit signs with the same bytes; the signature holds under the service key.
   const m = 777n
-  assert.equal(verifyWithPublicKey(w.address, m, zkSign(hex.decode(v.write.secret), m)), true)
-  assert.throws(() => accessKey(new Uint8Array(31)), /32 bytes/)
+  assert.equal(checkWithPublicKey(key.address, m, zkSign(hex.decode(v.secret), m)), true)
+  assert.throws(() => serviceKey(new Uint8Array(31)), /32 bytes/)
 })
 
 test('bytes are signed as SHA-256 of them, shifted right one byte', () => {
@@ -474,9 +521,9 @@ test('bytes are signed as SHA-256 of them, shifted right one byte', () => {
   const scalar = BigInt(seller.scalar)
   const sig = signBytes(scalar, bytes)
   assert.deepEqual(sig, signWithScalar(scalar, digest))
-  assert.equal(verifyBytes(seller.address, bytes, sig), true)
+  assert.equal(checkBytes(seller.address, bytes, sig), true)
   assert.equal(verifySignature(digest, sig, big(seller.publicKey)), true, "zk-kit's own check")
   const other = bytes.slice()
   other[0]! ^= 1
-  assert.equal(verifyBytes(seller.address, other, sig), false)
+  assert.equal(checkBytes(seller.address, other, sig), false)
 })

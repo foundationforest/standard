@@ -1,12 +1,12 @@
 // Shared test fixtures: keys/'s test seed, a few keys, and ready-made bodies. Records mixes no
-// key: the main keys and access keys come from keys/, as an app gets them.
+// key: the keys come from keys/, as an app gets them.
 
 import { readFileSync } from 'node:fs'
-import { type ReadKey, accessKey as makeAccessKey, mainKey, readKey } from '@foundationforest/keys'
+import { mainKey, serviceKey } from '@foundationforest/keys'
 import { hex } from '../src/bytes.ts'
 import { canonical } from '../src/canonical.ts'
 import type { Key } from '../src/keys.ts'
-import { type AccessKey, type Body, type SignedRecord, type UnsignedRecord, signAs, signingInput } from '../src/record.ts'
+import { type Body, type SignedRecord, type UnsignedRecord, signAs, signingInput } from '../src/record.ts'
 
 /** keys/'s pinned vectors: its test seed (bytes 00 01 … 1f), its profiles and their inbox keys. */
 export const KEYS = JSON.parse(readFileSync(new URL('../../keys/test/vectors.json', import.meta.url), 'utf8'))
@@ -17,11 +17,8 @@ export const OTHER_SEED = new Uint8Array(32).fill(7)
 export const alice = await mainKey(SEED, 'tutoring/seller')
 export const aliceBuyer = await mainKey(SEED, 'tutoring/buyer') // the same person, another label
 export const bob = await mainKey(OTHER_SEED, 'tutoring/buyer') // someone else
-/** A write key an app made: never the main key. With `inbox` among its paths, or no paths, it also sends messages. */
-export const accessKey = makeAccessKey(new Uint8Array(32).fill(42))
-/** A read key an app made: it pulls the inbox and opens what is sealed to it. */
-export const reader = await readKey(new Uint8Array(32).fill(43))
-export const stranger = makeAccessKey(new Uint8Array(32).fill(99))
+/** A key that is no one's main key here: what tries to sign for a profile it is not. */
+export const stranger = serviceKey(new Uint8Array(32).fill(99))
 
 export const T0 = Date.UTC(2026, 9, 2, 12, 0, 0)
 export const MINUTE = 60_000
@@ -38,14 +35,6 @@ export const profileBody = (subject: string): Body => ({
 // these tests need only bodies that differ, so `about` stands in for them.
 export const offerBody = (about: string): Body => ({ about })
 export const reviewBody = (about: string): Body => ({ about })
-
-/** One entry in a permissions record: a write key, under these paths if given; a read key with what others seal to. */
-export const allow = (key: Key | ReadKey, paths?: string[], scope: 'write' | 'read' = 'write'): AccessKey => {
-  const entry: AccessKey = scope === 'read' ? { key: key.address, sealTo: (key as ReadKey).sealTo, scope } : { key: key.address, scope }
-  return paths === undefined ? entry : { ...entry, paths }
-}
-/** A past write key's entry: `was: "write"` in place of `scope`, `until`, the time of the permissions record that made it past, and the paths it had. */
-export const pastKey = (key: Key, until: number, paths?: string[]): AccessKey => (paths === undefined ? { key: key.address, was: 'write', until } : { key: key.address, was: 'write', until, paths })
 
 /** A signed owner record whose canonical text is exactly `bytes` long, `wide` of its characters two-byte (é). */
 export function sizedRecord(key: Key, path: string, bytes: number, wide = 0): SignedRecord {

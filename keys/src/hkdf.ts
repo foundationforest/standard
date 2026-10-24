@@ -10,9 +10,13 @@ export const INFO = {
   /** A profile's secret, which its inbox key is mixed from. The label is used exactly as given. */
   profile: (label: string) => `forest/v1/profile/${label}`,
   /** An inbox key, mixed from a profile's secret or the vault's. */
-  read: 'forest/v1/inbox',
-  /** A profile's payment key on Solana, mixed from the seed. The label is used exactly as given. */
-  pay: (label: string) => `forest/v1/pay/solana/${label}`,
+  inbox: 'forest/v1/inbox',
+  /**
+   * A profile's pay key for one address type, mixed from the seed. The label is used exactly as
+   * given. For solana this is, byte for byte, the string the standard mixed its one pay key
+   * with before evm was added, so every Solana address stays as it was.
+   */
+  pay: (type: 'solana' | 'evm', label: string) => `forest/v1/pay/${type}/${label}`,
   /** The vault's secret, which its inbox key is mixed from. */
   vault: 'forest/v1/vault',
 } as const

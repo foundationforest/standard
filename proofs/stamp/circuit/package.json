@@ -1,8 +1,8 @@
 {
-  "name": "@foundationforest/note-circuit",
+  "name": "@foundationforest/stamp-circuit",
   "version": "0.0.0",
   "private": true,
-  "description": "The note proof: a note an issuer signed for the note number the person's seed gives, a stamp for one label, and the main key the same seed gives for that label, naming neither the note nor the person. The circuit, its setup, and its tests through the note client.",
+  "description": "The stamp proof: a stamp a verifier signed for the stamp number the person's seed gives, a tag for one label, and the main key the same seed gives for that label, naming neither the stamp nor the person. The circuit, its setup, and its tests through the stamp client.",
   "license": "Apache-2.0",
   "type": "module",
   "engines": {
@@ -12,14 +12,14 @@
     "fetch": "node scripts/fetch.ts",
     "compile": "node scripts/compile.ts",
     "check": "tsc --noEmit",
-    "test": "node --test --test-force-exit test/note.test.ts"
+    "test": "node --test --test-force-exit test/stamp.test.ts"
   },
   "dependencies": {
     "snarkjs": "0.7.5"
   },
   "devDependencies": {
     "@foundationforest/keys": "0.0.0",
-    "@foundationforest/note": "0.0.0",
+    "@foundationforest/stamp": "0.0.0",
     "@zk-kit/eddsa-poseidon": "1.0.4",
     "circomlib": "2.0.5",
     "ffjavascript": "0.3.1",

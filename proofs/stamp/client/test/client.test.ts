@@ -1,4 +1,4 @@
-// The note client without proving: the verification key it checks with, the constants the circuit
+// The stamp client without proving: the verification key it checks with, the constants the circuit
 // shares with keys/, the hashes that turn text into numbers, and the 256 bytes a proof is carried
 // in. The proofs themselves are the circuit's tests (../../circuit/test/).
 
@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url'
 
 import { keccak_256 } from '@noble/hashes/sha3.js'
 
-import { TAG, publicKeyOf } from '@foundationforest/keys'
+import { PREFIX, publicKeyOf } from '@foundationforest/keys'
 import {
   BN254_P,
   BN254_R,
@@ -24,7 +24,7 @@ import {
   toBytes32,
   type SnarkjsProof,
 } from '../src/index.ts'
-import { NOTE_KEY } from '../src/note-key.ts'
+import { STAMP_KEY } from '../src/stamp-key.ts'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const circuit = readFileSync(join(here, '../../circuit/note.circom'), 'utf8')
@@ -32,17 +32,19 @@ const hash = (text: string) => fromBytes32(keccak_256(new TextEncoder().encode(t
 
 test("the verification key is the circuit's committed one, value for value", () => {
   const committed = JSON.parse(readFileSync(join(here, '../../circuit/setup/verification-key.json'), 'utf8'))
-  assert.deepEqual(NOTE_KEY, committed)
-  assert.equal(NOTE_KEY.nPublic, 7)
+  assert.deepEqual(STAMP_KEY, committed)
+  assert.equal(STAMP_KEY.nPublic, 7)
 })
 
-test("the circuit's constants are keys/'s: the issuer and profile tags, and Base8", () => {
-  assert.ok(circuit.includes(`var ISSUER_TAG = ${TAG.issuer};`), 'the issuer tag')
-  assert.ok(circuit.includes(`var PROFILE_TAG = ${TAG.profile};`), 'the profile tag')
+test("the circuit's constants are keys/'s: the verifier and profile prefixes, and Base8", () => {
+  // note.circom keeps its bytes, the names of its constants among them: ISSUER_TAG and PROFILE_TAG
+  // are the prefixes.
+  assert.ok(circuit.includes(`var ISSUER_TAG = ${PREFIX.verifier};`), 'the verifier prefix')
+  assert.ok(circuit.includes(`var PROFILE_TAG = ${PREFIX.profile};`), 'the profile prefix')
   const [x, y] = publicKeyOf(1n)
   assert.ok(circuit.includes(`${x},\n        ${y}\n    ];`), 'Base8, the point a scalar of 1 gives')
-  assert.equal(TAG.issuer, hash('forest/v1/issuer'))
-  assert.equal(TAG.profile, hash('forest/v1/profile'))
+  assert.equal(PREFIX.verifier, hash('forest/v1/issuer'))
+  assert.equal(PREFIX.profile, hash('forest/v1/profile'))
 })
 
 test('a label gives a scope and a name a name hash, each a field element, and the namespaces never collide', () => {
@@ -56,7 +58,7 @@ test('a label gives a scope and a name a name hash, each a field element, and th
   }
   assert.equal(fieldHash('', 'forest/v1/note'), hash('forest/v1/note'))
   assert.throws(() => scopeOf('a\ud800'), /label must be text/)
-  assert.throws(() => nameHashOf(7 as unknown as string), /issuer name must be text/)
+  assert.throws(() => nameHashOf(7 as unknown as string), /verifier name must be text/)
 })
 
 test('a number as 32 big-endian bytes, and back', () => {

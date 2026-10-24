@@ -19,8 +19,8 @@
   },
   "devDependencies": {
     "@foundationforest/keys": "0.0.0",
-    "@foundationforest/note": "0.0.0",
     "@foundationforest/reputation": "0.0.0",
+    "@foundationforest/stamp": "0.0.0",
     "@zk-kit/binary-merkle-root.circom": "2.0.0",
     "circomlib": "2.0.5"
   }
