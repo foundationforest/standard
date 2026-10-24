@@ -182,7 +182,7 @@ profiles whose stamps are the person's ([proofs](../proofs/README.md)).
 ### The vault key
 
 The vault is one folder on a host, sealed to the vault's own inbox key, holding what the seed
-cannot recompute: which profiles exist, issuer notes, and settings
+cannot recompute: which profiles exist, issuer notes, the person's permissions, and settings
 ([records](../records/README.md#the-vault)). Its keys are mixed from the seed, so a new device
 finds the vault with the seed and one host's address.
 
@@ -219,7 +219,7 @@ Everyone else asks a signer:
   of their own ([records](../records/README.md#inbox)).
 
 The signer decides by the person's permissions, a list kept in their vault
-([records](../records/README.md#the-vault)), and asks the person about what no permission covers.
+([records](../records/README.md#permissions)), and asks the person about what no permission covers.
 Whatever it does, it signs with the profile's main key, so a host or a reader checks one key per
 profile.
 

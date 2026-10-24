@@ -6,10 +6,10 @@ import { describe, test } from 'node:test'
 import { inboxKey, mainKey, seedScalar, vaultKey } from '@foundationforest/keys'
 import { fieldHash, noteNumberOf, noteToJson, signNote } from '@foundationforest/note'
 import { publish, readProfile } from '../src/client.ts'
-import { type Vault, VAULT_PATH, checkVault, openVault, readVault, readerCount, vaultRecord } from '../src/private.ts'
+import { ACTIONS, CURRENCIES, PERIODS, type Permission, type Vault, VAULT_PATH, checkVault, knowsPermission, openVault, readVault, readerCount, vaultRecord } from '../src/private.ts'
 import { RecordError } from '../src/record.ts'
 import { hostsRecord, ownerRecord } from '../src/write.ts'
-import { KEYS, MINUTE, SEED, T0, offerBody, profileBody } from './fixtures.ts'
+import { KEYS, MINUTE, SEED, T0, bob, offerBody, profileBody } from './fixtures.ts'
 import { startHost } from './helpers.ts'
 
 const vault = await vaultKey(SEED)
@@ -125,5 +125,103 @@ describe('the vault', () => {
     } finally {
       await up.close()
     }
+  })
+})
+
+describe('permissions', () => {
+  const connector = 'https://connector.example'
+  /** An AI app's connection, through a connector: it may post and read for one profile, and pay a little. */
+  const assistant: Permission = {
+    who: { connector, connection: 'c-1', name: 'My assistant' },
+    profiles: ['tutoring/seller'],
+    can: ['post', 'read', 'pay'],
+    limits: [{ amount: '25', currency: 'USD', per: 'day' }],
+    until: T0 + 30 * 86_400_000,
+  }
+  /** A person, by their profile: they may message for the person, and pay $25 a day on one profile, $100 a day across all. */
+  const partner: Permission = {
+    who: { profile: bob.address },
+    profiles: 'all',
+    can: ['message', 'pay'],
+    limits: [
+      { amount: '25', currency: 'USD', per: 'day', profile: 'tutoring/seller' },
+      { amount: '100', currency: 'USD', per: 'day' },
+    ],
+  }
+  const vaultOf = (...permissions: unknown[]) => ({ permissions }) as Vault
+
+  test('the standard’s words: four actions, one currency, three periods of fixed length', () => {
+    assert.deepEqual(ACTIONS, ['post', 'message', 'read', 'pay'])
+    assert.deepEqual(CURRENCIES, ['USD'])
+    assert.deepEqual(PERIODS, { day: 24 * 3_600_000, week: 7 * 24 * 3_600_000, month: 30 * 24 * 3_600_000 })
+  })
+
+  test('a connection and a profile, each with limits, go in the vault and come back as they were', async () => {
+    const contents = vaultOf(assistant, partner)
+    checkVault(contents)
+    const record = await vaultRecord(vault, vaultInbox.sealTo, contents, T0)
+    assert.deepEqual(await openVault(record.body!, vaultInbox.identity), contents)
+    assert.deepEqual([knowsPermission(assistant), knowsPermission(partner)], [true, true])
+    // The same connection id through two connectors is two connections.
+    checkVault(vaultOf(assistant, { ...assistant, who: { connector: 'https://other.example', connection: 'c-1' } }))
+  })
+
+  test('refused: pay with no limit, a limit on a profile the entry does not cover, one who twice, and malformed fields', () => {
+    const { limits: _, ...unlimited } = assistant
+    const bad: [string, unknown[]][] = [
+      ['pay with no limits: no limit never means unlimited', [unlimited]],
+      ['pay with an empty list', [{ ...assistant, limits: [] }]],
+      ['a limit on a profile the entry does not cover', [{ ...assistant, limits: [{ amount: '5', currency: 'USD', per: 'day', profile: 'tutoring/buyer' }] }]],
+      ['one connection twice, by another name', [assistant, { ...assistant, who: { connector, connection: 'c-1', name: 'Another name' } }]],
+      ['one profile twice', [partner, { ...partner, can: ['read'] }]],
+      ['who is no object', [{ ...partner, who: bob.address }]],
+      ['a connection and a profile in one who', [{ ...partner, who: { connector, connection: 'c-1', profile: bob.address } }]],
+      ['a connector that is no origin', [{ ...assistant, who: { connector: 'https://connector.example/mcp', connection: 'c-1' } }]],
+      ['a connector over http', [{ ...assistant, who: { connector: 'http://connector.example', connection: 'c-1' } }]],
+      ['a connection with no id', [{ ...assistant, who: { connector, connection: '' } }]],
+      ['a connection with no connector', [{ ...assistant, who: { connection: 'c-1' } }]],
+      ['a name that is no text', [{ ...assistant, who: { connector, connection: 'c-1', name: 7 } }]],
+      ['a profile that is no address', [{ ...partner, who: { profile: 'not an address' } }]],
+      ['profiles is neither all nor a list', [{ ...partner, profiles: 'some' }]],
+      ['a label that is no text', [{ ...partner, profiles: [7] }]],
+      ['can is no list', [{ ...partner, can: 'pay' }]],
+      ['an action that is no text', [{ ...partner, can: [1] }]],
+      ['limits is no list', [{ ...partner, limits: {} }]],
+      ['an amount as a number', [{ ...assistant, limits: [{ amount: 25, currency: 'USD', per: 'day' }] }]],
+      ['an amount with seven places', [{ ...assistant, limits: [{ amount: '0.0000001', currency: 'USD', per: 'day' }] }]],
+      ['a negative amount', [{ ...assistant, limits: [{ amount: '-1', currency: 'USD', per: 'day' }] }]],
+      ['an amount with a leading zero', [{ ...assistant, limits: [{ amount: '025', currency: 'USD', per: 'day' }] }]],
+      ['a currency that is no text', [{ ...assistant, limits: [{ amount: '1', currency: 1, per: 'day' }] }]],
+      ['no period', [{ ...assistant, limits: [{ amount: '1', currency: 'USD' }] }]],
+      ['until before 1970', [{ ...assistant, until: -1 }]],
+      ['until as text', [{ ...assistant, until: String(T0) }]],
+      ['a permission that is no object', ['post']],
+    ]
+    for (const [why, permissions] of bad) assert.throws(() => checkVault(vaultOf(...permissions)), code('vault'), why)
+    assert.throws(() => checkVault({ permissions: {} }), code('vault'), 'permissions is a list')
+    checkVault(vaultOf({ ...assistant, limits: [{ amount: '0.000001', currency: 'USD', per: 'week' }] }))
+    checkVault(vaultOf({ who: { profile: bob.address }, profiles: [], can: [] }))
+  })
+
+  test('unknown fields and values are kept, and a signer acts on no entry it does not know whole', async () => {
+    const unknown: [string, unknown][] = [
+      ['a field on the entry', { ...assistant, spend: 'any' }],
+      ['a field on who', { ...assistant, who: { ...assistant.who, device: 'phone' } }],
+      ['a field on a limit', { ...assistant, limits: [{ amount: '25', currency: 'USD', per: 'day', from: 'card' }] }],
+      ['an action a market names', { ...partner, can: ['message', 'review'] }],
+      ['a currency', { ...assistant, limits: [{ amount: '25', currency: 'EUR', per: 'day' }] }],
+      ['a period', { ...assistant, limits: [{ amount: '25', currency: 'USD', per: 'year' }] }],
+      ['an inherited name as a period', { ...assistant, limits: [{ amount: '25', currency: 'USD', per: 'toString' }] }],
+      ['a kind of who', { ...partner, who: { group: 'family' } }],
+    ]
+    for (const [why, p] of unknown) {
+      const contents = vaultOf(p)
+      checkVault(contents)
+      const back = await openVault((await vaultRecord(vault, vaultInbox.sealTo, contents, T0)).body!, vaultInbox.identity)
+      assert.deepEqual(back, contents, `${why}: kept`)
+      assert.equal(knowsPermission(p as Permission), false, why)
+    }
+    // Two entries of a kind of who this code does not know are never taken for one who twice.
+    checkVault(vaultOf({ ...partner, who: { group: 'family' } }, { ...partner, who: { group: 'family' } }))
   })
 })

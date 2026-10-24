@@ -187,15 +187,16 @@ gives the last message on a page, so the next ask starts after it (`POST /v1/inb
 
 ### The vault
 
-The vault is one folder on a host, sealed to the vault's own inbox key, holding what the seed
-cannot recompute: which profiles exist and where each lives, their issuers' notes (the note each
-issuer signed to the seed), and settings. Its main key is the vault key, mixed from the seed
-([keys](../keys/README.md#the-vault-key)), so a new device finds it with the seed and one host's
-address; like any folder, its hosts record may name more than one host.
+The vault is one folder on a host, sealed to the vault's own inbox key, holding what the seed cannot
+recompute: which profiles exist and where each lives, their issuers' notes (the note each issuer
+signed to the seed), the person's permissions, and settings. Its main key is the vault key, mixed
+from the seed ([keys](../keys/README.md#the-vault-key)), so a new device finds it with the seed and
+one host's address; like any folder, its hosts record may name more than one host.
 
 ```
 { "profiles": [{ "label": <label>, "hosts": [<origin>, …] }, …],
   "issuerNotes": [{ "issuer": <issuer name>, "note": <signed note> }, …],
+  "permissions": [<permission>, …],
   "settings": { … } }
 ```
 
@@ -207,6 +208,7 @@ address; like any folder, its hosts record may name more than one host.
   record there is the truth.
 - `issuerNotes`: the issuer's name, exactly as keys/'s recipe takes it, and the note it signed, as
   proofs/note/'s JSON ([note](../proofs/note/README.md#the-note-and-the-note-proof)).
+- `permissions`: who may ask the person's signers to act, and for what (Permissions, below).
 - `settings`: apps' settings, such as the hosts, issuers and indexes the person chose. Each field
   is an app's own.
 - To change it, an app reads the current vault, changes it, and writes it, at a time past the
@@ -218,6 +220,48 @@ key's folder; the folder's hosts record names the rest. It finds no vault only w
 asked answered: if one failed, the read fails too, since the vault may be there. It opens `vault`,
 then mixes each profile's main key from its label and reads that folder from its hosts. Issuer
 secrets come from the seed and each note's issuer name.
+
+#### Permissions
+
+The person's permissions say who may ask their signers, the devices that hold the seed, to act for
+them, and for what ([keys](../keys/README.md#signers)). Only the signers read them, and only they
+act on them: no host or reader checks them, since everything a host takes is signed by a
+profile's main key.
+
+```
+"permissions": [{ "who": { "connector": <origin>, "connection": <id>, "name"?: <text> }
+                       | { "profile": <address> },
+                  "profiles": "all" | [<label>, …], "can": [<action>, …],
+                  "limits"?: [{ "amount": <decimal text>, "currency": "USD",
+                                "per": "day" | "week" | "month", "profile"?: <label> }, …],
+                  "until"?: <ms since 1970> }, …]
+```
+
+- `who` is a connection or a profile, each listed once:
+  - a connection is how an AI app reaches a signer: named by the address of the connector it comes
+    through, an origin as a hosts record writes it, and `connection`, the id the signer gave it,
+    so connections through two connectors never collide. `name` is what the person calls it.
+  - a profile is a person or a business, by the address of a profile of their own: it asks by
+    messages to the person's inbox, signed by that profile's main key (Inbox).
+- `profiles`: the person's profiles the entry covers, by label, or `"all"`.
+- `can`: what the who may ask for. The standard's actions are `post` (write records), `message`
+  (send messages), `read` (open private records and messages) and `pay`; review, book and the like
+  are a market's ([foundationforest/markets](https://github.com/foundationforest/markets)).
+- `limits`: how much the who may pay, each limit in one currency in any one period: a day is any
+  24 hours, a week any 7 days, a month any 30 days. `amount` is decimal text, a whole number and up
+  to six places (`"25"`, `"0.5"`). A limit with `profile` holds on that profile, which the entry
+  must cover; without it, across all the profiles the entry covers, so "$25 a day on this profile,
+  $100 a day across all" is two limits. An entry whose `can` has `pay` gives at least one: no limit
+  never means unlimited.
+- `until`: when the entry ends, if it does.
+- `read` and sharing: for a profile, the signer seals the private records the entry covers to that
+  profile's inbox key, from their next version on (Private records), and removing the entry stops
+  new versions only. For a connection, the signer opens records when it asks.
+- An app keeps every field and value it does not know, and a signer acts on no entry it does not
+  know whole, a field at any level, an action, a currency or a period among them: it asks the
+  person, since what it skipped could be a limit (`knowsPermission`).
+- Limits belong to the who: each counts what that who asks for, on the profiles its entry covers.
+  Counting what was spent, and what a signer does when no entry covers a request, are the app's.
 
 ### Proofs
 
@@ -407,9 +451,10 @@ it to look now. An app sends the hosts record to the indexes the person chose.
   that redirects with `redirect: 'error'`. No server, database or encryption library is in it. The
   keys themselves, `mainKey` among them, are keys/'s.
 - `@foundationforest/records/private`: `makePrivate`, `openPrivate`, `readerCount`; `message` (seal
-  to a profile record's inbox key, and sign) and `openMessage`; the vault
-  (`vaultRecord`, `openVault`, `readVault`, `checkVault`, `VAULT_PATH`). The inbox key itself is
-  keys/'s `inboxKey`, and the vault's keys/'s `vaultKey`.
+  to a profile record's inbox key, and sign) and `openMessage`; the vault (`vaultRecord`,
+  `openVault`, `readVault`, `checkVault`, `VAULT_PATH`) and its permissions' words (`ACTIONS`,
+  `CURRENCIES`, `PERIODS`, `knowsPermission`). The inbox key itself is keys/'s `inboxKey`, and the
+  vault's keys/'s `vaultKey`.
 - `@foundationforest/records/host`: `Host`, the reference host (below).
 - `@foundationforest/records/public`: `publicFetch`, a fetch that reaches only public addresses and
   follows no redirect, for a host or an app that goes to a host a stranger named: it refuses
@@ -597,10 +642,12 @@ checks both with their verifiers.
   and blob it takes; batch and page sizes; which blob types it takes; which inbox rules it supports;
   whether it reads senders' records for an inbox with an issuer's rule, and how long it keeps what
   it read; rate limits; logging; storage.
-- **An app, with the person:** the copies it keeps; which hosts, the vault's among them; whether to
-  forward a message to email or a notification; dropping a message that arrives twice; what it finds
-  too big to read; and what asks for the person's device unlock. The profile can change or delete
-  anything it wrote, at will. What others wrote about it, and payments, stay.
+- **An app, with the person:** the copies it keeps; which hosts, the vault's among them; the
+  person's permissions, counting what each who spent against its limits, and what a signer does when
+  no permission covers a request; whether to forward a message to email or a notification; dropping
+  a message that arrives twice; what it finds too big to read; and what asks for the person's device
+  unlock. The profile can change or delete anything it wrote, at will. What others wrote about it,
+  and payments, stay.
 - **An index chooses:** which hosts it reads, which issuers and markets count, how much each
   review weighs, and which proofs it accepts.
 
@@ -635,6 +682,13 @@ which inboxes one device watches, and so which profiles are one person's.
 A rule that asks senders to pay would have every host check payments. An inbox's `senders` is a
 field with kinds, and a host refuses deliveries under a kind it does not know, so a new kind can be
 added without breaking anything.
+
+**Why are the permissions in the vault, not a public record?**
+A public list would tell anyone which apps and which people act for a person, and since when, and
+one connection or one person listed under two profiles would link them. Nobody but the person's
+signers needs to read it: they alone act on it, and every host and reader checks only the main
+key's signature. In the vault it is sealed to the vault's own inbox key, which only the seed gives,
+and a new device gets it back with the rest.
 
 **Why is the vault a folder of its own?**
 A new device has only the seed and a host's address. A record inside a profile's folder could be
