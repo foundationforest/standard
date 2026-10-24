@@ -262,8 +262,8 @@ profile's main key.
   24 hours, a week any 7 days, a month any 30 days. `amount` is decimal text, a whole number and up
   to six places (`"25"`, `"0.5"`). A limit with `profile` holds on that profile, which the entry
   must cover; without it, across all the profiles the entry covers, so "$25 a day on this profile,
-  $100 a day across all" is two limits. An entry whose `can` has `pay` gives at least one: no limit
-  never means unlimited.
+  $100 a day across all" is two limits. An entry with no limit sets no money cap; which limits an
+  app suggests is the app's.
 - `until`: when the entry ends, if it does.
 - `read` and sharing: for a profile, the signer encrypts the private records the entry covers to
   that profile's inbox key, from their next version on (Private records), and removing the entry
