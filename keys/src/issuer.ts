@@ -8,7 +8,7 @@
 import { poseidon1 } from 'poseidon-lite/poseidon1'
 import { poseidon2 } from 'poseidon-lite/poseidon2'
 import { poseidon3 } from 'poseidon-lite/poseidon3'
-import { TAG, isFieldElement, nameHashOf, scopeOf } from './field.ts'
+import { PREFIX, isFieldElement, nameHashOf, scopeOf } from './field.ts'
 import { SEED_LENGTH, assertBytes, assertText } from './hkdf.ts'
 import { seedScalar } from './scalar.ts'
 
@@ -16,7 +16,7 @@ export type IssuerSecret = {
   name: string
   /** The name as a number, `nameHashOf(name)`. */
   nameHash: bigint
-  /** The secret: `Poseidon(issuer tag, seed scalar, name hash)`. */
+  /** The secret: `Poseidon(issuer prefix, seed scalar, name hash)`. */
   scalar: bigint
   /** The note number, `Poseidon(scalar)`. The issuer signs it in the person's note. */
   noteNumber: bigint
@@ -25,7 +25,7 @@ export type IssuerSecret = {
 /** The person's secret for an issuer, from the seed scalar. The note circuit computes the same. */
 export function issuerScalarOf(seed: bigint, name: string): bigint {
   if (!isFieldElement(seed)) throw new RangeError('a seed scalar is a field element')
-  return poseidon3([TAG.issuer, seed, nameHashOf(name)])
+  return poseidon3([PREFIX.issuer, seed, nameHashOf(name)])
 }
 
 /** The person's stamp for a label at an issuer: `Poseidon(scope, issuer secret)`. */

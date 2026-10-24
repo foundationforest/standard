@@ -6,7 +6,7 @@ import { bech32 } from '@scure/base'
 import { identityToRecipient } from 'age-encryption'
 import { poseidon3 } from 'poseidon-lite/poseidon3'
 import { type Point, addressOf, keyScalar, publicKeyOf } from './curve.ts'
-import { TAG, isFieldElement, scopeOf } from './field.ts'
+import { PREFIX, isFieldElement, scopeOf } from './field.ts'
 import { INFO, SEED_LENGTH, assertBytes, assertText, hkdf } from './hkdf.ts'
 import { seedScalar } from './scalar.ts'
 
@@ -18,7 +18,7 @@ export type MainKey = {
   label: string
   /** The label as a number, `scopeOf(label)`. */
   scope: bigint
-  /** The scalar that signs: the lowest 250 bits of `Poseidon(profile tag, seed scalar, scope)`. */
+  /** The scalar that signs: the lowest 250 bits of `Poseidon(profile prefix, seed scalar, scope)`. */
   scalar: bigint
   /** `scalar · Base8`. */
   publicKey: Point
@@ -42,7 +42,7 @@ export type InboxKey = {
 /** A profile's scalar from the seed scalar and its label. The note circuit computes the same. */
 export function profileScalarOf(seed: bigint, label: string): bigint {
   if (!isFieldElement(seed)) throw new RangeError('a seed scalar is a field element')
-  return keyScalar(poseidon3([TAG.profile, seed, scopeOf(label)]))
+  return keyScalar(poseidon3([PREFIX.profile, seed, scopeOf(label)]))
 }
 
 /**

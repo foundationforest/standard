@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url'
 import { Group } from '@semaphore-protocol/group'
 import { poseidon4 } from 'poseidon-lite/poseidon4'
 
-import { BN254_R, TAG, issuerSecret, mainKey, nameHashOf, packSignature, publicKeyOf, scopeOf, seedScalar, serviceKey, signBytes, stampOf, verifyBytes } from '@foundationforest/keys'
+import { BN254_R, PREFIX, issuerSecret, mainKey, nameHashOf, packSignature, publicKeyOf, scopeOf, seedScalar, serviceKey, signBytes, stampOf, verifyBytes } from '@foundationforest/keys'
 import { BOUND, DEPTH, SIGNED_PREFIX, buildTree, circuitInput, leafHash, signedBytes, type Leaf } from '../src/index.ts'
 import { REPUTATION_KEY } from '../src/reputation-key.ts'
 
@@ -105,10 +105,12 @@ test("the proof names the key of the profile it is shown on, keys/'s main key, a
   assert.equal(shown[4], scopeOf('cleaning/seller'))
 })
 
-test("the circuit's constants are keys/'s: the issuer and profile tags, and Base8", () => {
+test("the circuit's constants are keys/'s: the issuer and profile prefixes, and Base8", () => {
   const circuit = readFileSync(join(here, '../../circuit/reputation.circom'), 'utf8')
-  assert.ok(circuit.includes(`var ISSUER_TAG = ${TAG.issuer};`))
-  assert.ok(circuit.includes(`var PROFILE_TAG = ${TAG.profile};`))
+  // reputation.circom keeps its bytes, the names of its constants among them: ISSUER_TAG and
+  // PROFILE_TAG are the prefixes.
+  assert.ok(circuit.includes(`var ISSUER_TAG = ${PREFIX.issuer};`))
+  assert.ok(circuit.includes(`var PROFILE_TAG = ${PREFIX.profile};`))
   const [x, y] = publicKeyOf(1n)
   assert.ok(circuit.includes(`${x},\n        ${y}\n    ];`))
 })

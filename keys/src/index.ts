@@ -3,7 +3,7 @@
 
 export { INFO, SEED_LENGTH, hkdf } from './hkdf.ts'
 export { newSeed, exportWords, importWords, WORD_COUNT } from './words.ts'
-export { BN254_R, ISSUER_NS, SCOPE_NS, TAG, fieldHash, isFieldElement, nameHashOf, scopeOf } from './field.ts'
+export { BN254_R, ISSUER_NS, PREFIX, SCOPE_NS, fieldHash, isFieldElement, nameHashOf, scopeOf } from './field.ts'
 export { seedScalar } from './scalar.ts'
 export {
   BASE8,

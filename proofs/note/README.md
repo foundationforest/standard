@@ -44,9 +44,9 @@ attributes*.
 - The attributes are one number below BN254's scalar order: whatever the issuer puts there, made
   as it chooses, such as a hash of what it saw. The proof keeps them private, so a reader learns
   nothing of them.
-- The issuer signs `Poseidon(tag, note number, attributes)` with its EdDSA key on Baby Jubjub, over
-  Poseidon (circomlib's). The tag is `keccak256("forest/v1/note") >> 8`, always the same, so nothing
-  an issuer signs for another purpose can pass as a note.
+- The issuer signs `Poseidon(prefix, note number, attributes)` with its EdDSA key on Baby Jubjub,
+  over Poseidon (circomlib's). The prefix is `keccak256("forest/v1/note") >> 8`, always the same, so
+  nothing an issuer signs for another purpose can pass as a note.
 - The issuer's key is an address, as every key in the standard is: its point packed into 32 bytes,
   in base58. `keys/`'s `pointOf` gives x and y back.
 - The person keeps the note, in their vault (the folder a new device restores from,
@@ -56,7 +56,7 @@ attributes*.
   person keeps what `attributes` was made from.
 - **The issuer's key is the issuer's to keep.** Whoever holds it can sign notes for people who do
   not exist. An issuer never signs a raw number someone hands it: it hashes the note itself, with
-  the tag, so nothing it signs for another purpose can pass as a note.
+  the prefix, so nothing it signs for another purpose can pass as a note.
 
 **The note proof.** The device proves, showing neither the seed nor the note: *I know a seed scalar
 and a note this issuer signed for the note number it gives at this issuer's name; my stamp for this
@@ -70,7 +70,7 @@ label at this issuer is this one; this profile's key is the one it gives for thi
 - The stamp is `Poseidon(scope, issuer secret)` ([keys](../../keys/README.md#stamps)). It depends on
   the seed, the issuer's name and the label, not on the note, so a new note, with other attributes
   or under a new key, gives the same stamp.
-- The profile's key is the lowest 250 bits of `Poseidon(profile tag, seed scalar, scope)`, times
+- The profile's key is the lowest 250 bits of `Poseidon(profile prefix, seed scalar, scope)`, times
   Baby Jubjub's `Base8` ([keys](../../keys/README.md#main-keys)). The issuer secret behind the note
   and the profile's key come from the same seed scalar, so a note counts only for profiles of the
   seed it was signed for.
@@ -88,12 +88,14 @@ label at this issuer is this one; this profile's key is the one it gives for thi
 
 Inside the proof:
 
-1. The issuer secret is `Poseidon(issuer tag, seedScalar, issuerNameHash)`, and the note number
+1. The issuer secret is `Poseidon(issuer prefix, seedScalar, issuerNameHash)`, and the note number
    `Poseidon(issuer secret)`.
 2. circomlib's `EdDSAPoseidonVerifier`, unchanged, checks that the issuer's key signed
-   `Poseidon(tag, note number, attributes)`, with the tag fixed in the circuit.
+   `Poseidon(prefix, note number, attributes)`, with the prefix fixed in the circuit. The circuit
+   names its prefixes `NOTE_TAG`, `ISSUER_TAG` and `PROFILE_TAG`: it keeps its bytes, and its names
+   with them.
 3. The stamp is `Poseidon(scope, issuer secret)`.
-4. `Poseidon(profile tag, seedScalar, scope)` is split into its bits by `Num2Bits_strict`, its
+4. `Poseidon(profile prefix, seedScalar, scope)` is split into its bits by `Num2Bits_strict`, its
    lowest 250 bits go to circomlib's `EscalarMulFix(250, Base8)`, and the point it gives must be
    `(profileX, profileY)`. The strict split matters: a number below the field also has the 254-bit
    spelling of itself plus the field's order, about a third of the time, and plain `Num2Bits`
@@ -167,7 +169,7 @@ setup/setup.sh                            # a new setup: new files, every hash n
 
 - The circuit's tests make a proof for `keys/`'s test person and check that it is for `keys/`'s main
   key and stamp, and that each of these fails: a wrong issuer key or name, a forged signature, the
-  issuer's signature changed or without the tag, attributes the issuer did not sign, another
+  issuer's signature changed or without the prefix, attributes the issuer did not sign, another
   person's seed, a stamp or label for another label, and a proof for another profile's key, whether
   the person's own other profile, someone else's, or a key of the prover's choosing. They also check
   that a note signed with `keys/`'s `signWithScalar` passes circomlib's verifier.

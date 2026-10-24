@@ -20,8 +20,8 @@ import {
   BN254_R,
   INFO,
   PAY_TYPES,
+  PREFIX,
   SEED_LENGTH,
-  TAG,
   WORD_COUNT,
   addressOf,
   bytesMessage,
@@ -84,7 +84,7 @@ const big = (p: string[]): Point => [BigInt(p[0]), BigInt(p[1])]
 
 // The mixing table
 
-test('the info strings and the tags are exactly the standard', () => {
+test('the info strings and the prefixes are exactly the standard', () => {
   assert.equal(INFO.seed, 'forest/v1/seed')
   assert.equal(INFO.profile('tutoring/seller'), 'forest/v1/profile/tutoring/seller')
   assert.equal(INFO.inbox, 'forest/v1/inbox')
@@ -95,9 +95,9 @@ test('the info strings and the tags are exactly the standard', () => {
   assert.equal(INFO.vault, vectors.vault.info)
   for (const p of vectors.mainKeys) assert.equal(INFO.profile(p.label), p.info)
   for (const p of vectors.payKeys) assert.equal(INFO.pay(p.type, p.label), p.info)
-  for (const [name, tag] of Object.entries(vectors.tags) as [keyof typeof TAG, { text: string; value: string }][]) {
-    assert.equal(TAG[name], field(tag.text), name)
-    assert.equal(TAG[name].toString(), tag.value, name)
+  for (const [name, prefix] of Object.entries(vectors.prefixes) as [keyof typeof PREFIX, { text: string; value: string }][]) {
+    assert.equal(PREFIX[name], field(prefix.text), name)
+    assert.equal(PREFIX[name].toString(), prefix.value, name)
   }
 })
 
@@ -179,7 +179,7 @@ test('the main key, recomputed without the library: keccak, Poseidon, the low 25
   for (const expected of vectors.mainKeys) {
     const scope = field('forest/v1/label/' + expected.label)
     assert.equal(scope.toString(), expected.scope)
-    const raw = poseidon3([TAG.profile, S, scope])
+    const raw = poseidon3([PREFIX.profile, S, scope])
     assert.equal(raw.toString(), expected.raw)
     const scalar = raw % 2n ** 250n
     assert.equal(scalar.toString(), expected.scalar)
@@ -427,7 +427,7 @@ test('the seed gives the pinned vault key, recomputed without the library, and i
     assert.deepEqual(await inboxKey(key.secret), inbox)
     assert.equal(hex.encode(await hkdf(key.secret, INFO.inbox)), privateKey)
   }
-  const raw = poseidon2([TAG.vault, S])
+  const raw = poseidon2([PREFIX.vault, S])
   assert.equal(raw.toString(), vectors.vault.raw)
   const point = times(raw % 2n ** 250n)
   assert.equal(pack(point.x, point.y), vectors.vault.address)
@@ -435,8 +435,8 @@ test('the seed gives the pinned vault key, recomputed without the library, and i
 })
 
 test("the vault key is no profile's, and another seed gives another", async () => {
-  // Its mix has its own tag and two inputs, a profile's three, so no label can give it.
-  assert.notEqual(TAG.vault, TAG.profile)
+  // Its mix has its own prefix and two inputs, a profile's three, so no label can give it.
+  assert.notEqual(PREFIX.vault, PREFIX.profile)
   for (const label of ['', 'vault', '../vault', 'tutoring/seller']) {
     assert.notEqual((await mainKey(seed, label)).address, vectors.vault.address)
     assert.notEqual(INFO.profile(label), INFO.vault)
@@ -465,7 +465,7 @@ test('the issuer secret, the note number and a stamp, recomputed without the lib
     const nameHash = field('forest/v1/issuer/' + expected.name)
     assert.equal(nameHash.toString(), expected.nameHash)
     assert.equal(nameHashOf(expected.name), nameHash)
-    const scalar = poseidon3([TAG.issuer, S, nameHash])
+    const scalar = poseidon3([PREFIX.issuer, S, nameHash])
     assert.equal(scalar.toString(), expected.scalar)
     assert.equal(issuerScalarOf(S, expected.name), scalar)
     assert.equal(poseidon1([scalar]).toString(), expected.noteNumber)

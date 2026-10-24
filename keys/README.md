@@ -31,12 +31,12 @@ Two mixers, each a standard one-way mix:
   bytes out. Only the text changes.
 - **Poseidon** (circomlib's), a hash made to be cheap inside a zero-knowledge proof (a proof that
   something is true of a secret without showing the secret). Every Poseidon mix starts with a fixed
-  tag, so no mix can give another's number.
+  prefix, so no mix can give another's number.
 
 Text enters Poseidon as a number: `keccak256` of its UTF-8 bytes, shifted right one byte so it fits
 the proofs' numbers. A label's number is its **scope**,
 `keccak256("forest/v1/label/" ‖ label) >> 8`; an issuer's name's is its **name hash**,
-`keccak256("forest/v1/issuer/" ‖ name) >> 8`; the three tags are `keccak256` of
+`keccak256("forest/v1/issuer/" ‖ name) >> 8`; the three prefixes are `keccak256` of
 `forest/v1/issuer`, `forest/v1/profile` and `forest/v1/vault`, `>> 8`.
 
 The table uses words from the rest of the standard:
@@ -52,16 +52,16 @@ The table uses words from the rest of the standard:
 | From | Mixed with | Gives |
 |---|---|---|
 | the seed | HKDF, `forest/v1/seed` | the seed scalar, the one number the proofs take |
-| the seed scalar | Poseidon, the profile tag and the label's scope | a main key: one profile's name and signature |
+| the seed scalar | Poseidon, the profile prefix and the label's scope | a main key: one profile's name and signature |
 | the seed | HKDF, `forest/v1/profile/<label>` | that profile's secret, which its inbox key comes from |
 | a profile's secret | HKDF, `forest/v1/inbox` | that profile's inbox key, which opens what is sealed to it |
 | the seed | HKDF, `forest/v1/pay/<type>/<label>` | that profile's payment key for one address type, `solana` or `evm`, and its address |
-| the seed scalar | Poseidon, the issuer tag and the issuer's name hash | the person's secret for one issuer, which their note number and stamps come from |
-| the seed scalar | Poseidon, the vault tag | the vault key: the main key of the person's vault |
+| the seed scalar | Poseidon, the issuer prefix and the issuer's name hash | the person's secret for one issuer, which their note number and stamps come from |
+| the seed scalar | Poseidon, the vault prefix | the vault key: the main key of the person's vault |
 | the seed | HKDF, `forest/v1/vault` | the vault's secret, which its inbox key comes from |
 
-The texts and tags are part of every key, so they never change: a new one would give everyone new
-keys.
+The texts and prefixes are part of every key, so they never change: a new one would give everyone
+new keys.
 
 ### Day to day
 
@@ -96,7 +96,7 @@ and its address is the profile's name.
   `Tutoring/Seller` and `tutoring/seller` are two profiles. Markets set the convention,
   `<market>/<role>`, such as `tutoring/seller`
   ([foundationforest/markets](https://github.com/foundationforest/markets)).
-- Its scalar is the lowest 250 bits of `Poseidon(profile tag, seed scalar, scope)`. Baby Jubjub's
+- Its scalar is the lowest 250 bits of `Poseidon(profile prefix, seed scalar, scope)`. Baby Jubjub's
   subgroup order `l` is above 2^250, so every 250-bit number is already a scalar, and the note
   proof derives the same key from the same seed scalar with nothing to reduce
   ([proofs/note](../proofs/note/README.md)).
@@ -165,7 +165,7 @@ key of each type.
 
 An issuer is anyone who signs notes to people's seeds
 ([proofs/note](../proofs/note/README.md#the-note-and-the-note-proof)). For each issuer, a person
-has one secret: `Poseidon(issuer tag, seed scalar, name hash)`.
+has one secret: `Poseidon(issuer prefix, seed scalar, name hash)`.
 
 - The name is the text the issuer publishes as its own, such as a domain, used exactly as given,
   as UTF-8. The secret comes from the name, not the issuer's key, so an issuer that changes its key
@@ -195,9 +195,9 @@ cannot recompute: which profiles exist, issuer notes, the person's permissions, 
 ([records](../records/README.md#the-vault)). Its keys are mixed from the seed, so a new device
 finds the vault with the seed and one host's address.
 
-- It is a main key with no label: its scalar is the lowest 250 bits of `Poseidon(vault tag, seed
+- It is a main key with no label: its scalar is the lowest 250 bits of `Poseidon(vault prefix, seed
   scalar)`, its address is the vault folder's name, and it signs the vault's records as a main key
-  does. Its mix has its own tag and no scope, so no label gives it.
+  does. Its mix has its own prefix and no scope, so no label gives it.
 - Its inbox key is mixed from the vault's secret, `hkdf(seed, "forest/v1/vault")`, by
   `forest/v1/inbox` as a profile's is, and opens what the vault holds.
 - Its address ties to no profile: one profile's keys say nothing about the vault's, and the vault's
@@ -280,7 +280,7 @@ mixes from the seed scalar is not.
 | `packSignature(signature)`, `unpackSignature(bytes)` | A signature's 64 bytes, and the signature back, or null |
 | `publicKeyOf(scalar)`, `addressOf(publicKey)`, `pointOf(address)` | A public key, its address, and the key an address names |
 | `packPoint(point)`, `unpackPoint(bytes)` | A point's 32 packed bytes, and the point back, or null |
-| `scopeOf(label)`, `nameHashOf(name)`, `fieldHash(namespace, ...parts)`, `TAG` | Text as the proofs' numbers, and the three tags |
+| `scopeOf(label)`, `nameHashOf(name)`, `fieldHash(namespace, ...parts)`, `PREFIX` | Text as the proofs' numbers, and the three prefixes |
 | `hkdf(ikm, info)`, `INFO` | The mixer and its info strings |
 
 ```
@@ -294,10 +294,10 @@ Node 22.18 or later runs the TypeScript directly.
 
 ### Test vectors
 
-`test/vectors.json` pins, for the seed `00 01 … 1f`: its words; its seed scalar; the three tags; the
-main keys for `tutoring/seller` and `tutoring/buyer`, each with its secret and inbox key, and their
-payment keys of both types; for two issuers, `issuer-a.example` and `issuer-b.example`, the name
-hash, the person's secret, the note number and a stamp for each label; the vault key, with its
+`test/vectors.json` pins, for the seed `00 01 … 1f`: its words; its seed scalar; the three prefixes;
+the main keys for `tutoring/seller` and `tutoring/buyer`, each with its secret and inbox key, and
+their payment keys of both types; for two issuers, `issuer-a.example` and `issuer-b.example`, the
+name hash, the person's secret, the note number and a stamp for each label; the vault key, with its
 secret and inbox key; one signature by the `tutoring/seller` main key; and a service key, from 32
 bytes of `0x2a`. `npm test` checks each value and recomputes it without the library: HKDF and keccak
 from `@noble/hashes`, the seed scalar step by step without zk-kit, Baby Jubjub's points and
@@ -342,7 +342,7 @@ derives the same main key and stamp ([proofs/note](../proofs/note/README.md)).
 
 ## Who decides what
 
-- **The standard:** the seed's 32 bytes, the recipe, its info strings and its tags.
+- **The standard:** the seed's 32 bytes, the recipe, its info strings and its prefixes.
 - **An app, with the person:** how it makes, keeps and unlocks the seed, and backups.
 - **A service:** nothing. No service holds a main key.
 

@@ -77,7 +77,7 @@ nor copied to another profile.
 Inside the proof:
 
 1. Each used slot's stamp is `Poseidon(scope, issuer secret)`, with the issuer secret
-   `Poseidon(issuer tag, seedScalar, the slot's name hash)`. Only the person whose seed it is can
+   `Poseidon(issuer prefix, seedScalar, the slot's name hash)`. Only the person whose seed it is can
    count those profiles, and each slot may name its own issuer.
 2. Each used slot's leaf is in the tree with that root. The root is never 0.
 3. A blank slot is all zeros, and every score and count is below 2^32.
@@ -85,7 +85,7 @@ Inside the proof:
 5. A shown scope is the scope of every used slot, so a shown label means exactly one profile.
 6. The output is `floor(sum(score * count) / sum(count))`, over a count of at least one. With
    one profile, it is that profile's score.
-7. `Poseidon(profile tag, seedScalar, profileScope)` is split into its bits by `Num2Bits_strict`,
+7. `Poseidon(profile prefix, seedScalar, profileScope)` is split into its bits by `Num2Bits_strict`,
    and its lowest 250 bits times `Base8` must be `(profileX, profileY)`: the profile it is shown on
    is the person's own.
 

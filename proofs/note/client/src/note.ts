@@ -3,9 +3,9 @@
 // An issuer signs a note for each person: { note number, attributes }. The note number is Poseidon
 // of the person's secret for that issuer (`keys/`'s `issuerSecret`), so the issuer never learns the
 // secret, nor the seed it comes from. The attributes are one field element, whatever the issuer
-// attests; the proof keeps them private. The issuer signs Poseidon(tag, note number, attributes)
+// attests; the proof keeps them private. The issuer signs Poseidon(prefix, note number, attributes)
 // with its EdDSA key on Baby Jubjub over Poseidon: zk-kit's signer, unchanged, which circomlib's
-// verifier checks inside the circuit. The tag is fixed, so nothing the issuer signs for another
+// verifier checks inside the circuit. The prefix is fixed, so nothing the issuer signs for another
 // purpose can be turned into a note. Its key is an address, as every key in the standard is: its
 // point packed into 32 bytes, in base58; keys/'s pointOf gives x and y back.
 //
@@ -38,10 +38,13 @@ export type Artifacts = {
   zkey: string | Uint8Array
 }
 
-/** The text whose field value starts every note an issuer signs. The circuit has it as a constant. */
-export const NOTE_TAG_TEXT = 'forest/v1/note'
+/**
+ * The text whose field value starts every note an issuer signs. The circuit has it as a constant,
+ * under the name it was set up with, `var NOTE_TAG`.
+ */
+export const NOTE_PREFIX_TEXT = 'forest/v1/note'
 /** `keccak256("forest/v1/note") >> 8`: the first input of every signed note. */
-export const NOTE_TAG = fieldHash(NOTE_TAG_TEXT)
+export const NOTE_PREFIX = fieldHash(NOTE_PREFIX_TEXT)
 
 /** An issuer's key: the address of its EdDSA public key on Baby Jubjub, the point packed into 32 bytes, in base58. */
 export type IssuerKey = string
@@ -88,11 +91,11 @@ export function noteNumberOf(seedScalar: bigint, issuerName: string): bigint {
   return poseidon1([issuerScalarOf(seedScalar, issuerName)])
 }
 
-/** What an issuer signs: Poseidon(tag, note number, attributes). */
+/** What an issuer signs: Poseidon(prefix, note number, attributes). */
 export function noteHash(note: Note): bigint {
   if (!isFieldElement(note.noteNumber)) throw new RangeError('a note number is a field element')
   if (!isFieldElement(note.attributes)) throw new RangeError('attributes are a field element')
-  return poseidon3([NOTE_TAG, note.noteNumber, note.attributes])
+  return poseidon3([NOTE_PREFIX, note.noteNumber, note.attributes])
 }
 
 /** The issuer's key, its address, from its 32-byte private key. */

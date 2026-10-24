@@ -1,5 +1,5 @@
 // The seed scalar: the one number the circuits take from the seed. Every number that ties a
-// person's notes and profiles together inside a proof is a Poseidon mix of it, under a tag, so a
+// person's notes and profiles together inside a proof is a Poseidon mix of it, under a prefix, so a
 // proof can show two of them come from one seed without showing it, and nothing public links them.
 //
 // The 32 mixed bytes become a scalar the way Semaphore v4 made its secret scalar, with zk-kit's

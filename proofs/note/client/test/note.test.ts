@@ -15,7 +15,7 @@ import { poseidon3 } from 'poseidon-lite/poseidon3'
 import { issuerSecret, mainKey, pointOf, seedScalar, stampOf } from '@foundationforest/keys'
 import {
   BN254_R,
-  NOTE_TAG,
+  NOTE_PREFIX,
   fromBytes32,
   fieldHash,
   noteInput,
@@ -55,14 +55,15 @@ test("the note number is keys/'s, from the seed scalar and the issuer's name", a
 
 const hash = (bytes: Uint8Array) => fromBytes32(keccak_256(bytes)) >> 8n
 
-test('the tag is keccak256("forest/v1/note") >> 8, the constant the circuit has', () => {
-  assert.equal(NOTE_TAG, hash(new TextEncoder().encode('forest/v1/note')))
+test('the prefix is keccak256("forest/v1/note") >> 8, the constant the circuit has', () => {
+  assert.equal(NOTE_PREFIX, hash(new TextEncoder().encode('forest/v1/note')))
   const circuit = readFileSync(join(here, '../../circuit/note.circom'), 'utf8')
-  assert.ok(circuit.includes(`var NOTE_TAG = ${NOTE_TAG};`), 'note.circom carries the same tag')
+  // note.circom keeps its bytes, the name of its constant among them: NOTE_TAG is the prefix.
+  assert.ok(circuit.includes(`var NOTE_TAG = ${NOTE_PREFIX};`), 'note.circom carries the same prefix')
 })
 
-test('an issuer signs Poseidon(tag, note number, attributes)', () => {
-  assert.equal(noteHash(note), poseidon3([NOTE_TAG, note.noteNumber, note.attributes]))
+test('an issuer signs Poseidon(prefix, note number, attributes)', () => {
+  assert.equal(noteHash(note), poseidon3([NOTE_PREFIX, note.noteNumber, note.attributes]))
   assert.throws(() => noteHash({ ...note, noteNumber: BN254_R }), /field element/)
   assert.throws(() => noteHash({ ...note, noteNumber: -1n }), /field element/)
   assert.throws(() => noteHash({ ...note, attributes: BN254_R }), /field element/)
@@ -83,9 +84,9 @@ test('a signed note checks; any change to it, its issuer or its signature does n
     ['attributes past the field', { ...signed, attributes: BN254_R }],
   ]
   for (const [what, n] of cases) assert.equal(noteSigned(n), false, what)
-  // The issuer's signature over the same fields without the tag is no note.
-  const untagged = { ...signed, signature: signMessage(issuerKey, poseidon2([note.noteNumber, note.attributes])) }
-  assert.equal(noteSigned(untagged), false, 'no tag')
+  // The issuer's signature over the same fields without the prefix is no note.
+  const unprefixed = { ...signed, signature: signMessage(issuerKey, poseidon2([note.noteNumber, note.attributes])) }
+  assert.equal(noteSigned(unprefixed), false, 'no prefix')
   assert.throws(() => signNote(new Uint8Array(31), note), /32 bytes/)
 })
 

@@ -1,6 +1,6 @@
 // Text as a number a circuit takes: keccak256 of the bytes, shifted right one byte so it is below
 // BN254's scalar order. A label becomes its scope this way, an issuer's name its name hash, and
-// each fixed tag that keeps one Poseidon mix apart from another its value.
+// each fixed prefix that keeps one Poseidon mix apart from another its value.
 
 import { keccak_256 } from '@noble/hashes/sha3.js'
 import { assertText, utf8 } from './hkdf.ts'
@@ -30,8 +30,8 @@ export function fieldHash(namespace: string, ...parts: (string | Uint8Array)[]):
   return value >> 8n
 }
 
-/** The tags that start each Poseidon mix of the seed scalar, so no mix gives another's number. */
-export const TAG = {
+/** The prefixes that start each Poseidon mix of the seed scalar, so no mix gives another's number. */
+export const PREFIX = {
   issuer: fieldHash('forest/v1/issuer'),
   profile: fieldHash('forest/v1/profile'),
   vault: fieldHash('forest/v1/vault'),

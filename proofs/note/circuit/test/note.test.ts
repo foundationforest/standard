@@ -110,7 +110,7 @@ test('a wrong issuer key or issuer name fails', async () => {
   await assert.rejects(proveNote({ seedScalar: mine, issuerName: OTHER_NAME, note, label: LABEL, artifacts }), /not for this seed at this issuer/)
 })
 
-test('a forged signature fails, and so do a signature without the tag and attributes the issuer did not sign', async () => {
+test('a forged signature fails, and so do a signature without the prefix and attributes the issuer did not sign', async () => {
   // A key that is not the issuer's signs a note, which then claims the issuer's key.
   const forged = { ...noteFor(note.noteNumber, strangerPrivate), issuer }
   assert.equal(noteSigned(forged), false)
@@ -120,9 +120,9 @@ test('a forged signature fails, and so do a signature without the tag and attrib
   await assert.rejects(prove(inputOf({ ...note, signature: { ...note.signature, S: note.signature.S + 1n } })), NO_WITNESS)
   const l = 2736030358979909402780800718157159386076813972158567259200215660948447373041n
   await assert.rejects(prove(inputOf({ ...note, signature: { ...note.signature, S: note.signature.S + l } })), NO_WITNESS)
-  // The issuer's own signature over the same fields without the tag: no witness.
-  const untagged = poseidon2([note.noteNumber, note.attributes])
-  await assert.rejects(prove(inputOf({ ...note, signature: signMessage(issuerPrivate, untagged) })), NO_WITNESS)
+  // The issuer's own signature over the same fields without the prefix: no witness.
+  const unprefixed = poseidon2([note.noteNumber, note.attributes])
+  await assert.rejects(prove(inputOf({ ...note, signature: signMessage(issuerPrivate, unprefixed) })), NO_WITNESS)
   // The signed note with other attributes: no witness.
   await assert.rejects(prove(inputOf({ ...note, attributes: note.attributes + 1n })), NO_WITNESS)
   await assert.rejects(proveNote({ seedScalar: mine, issuerName: NAME, note: { ...note, attributes: 0n }, label: LABEL, artifacts }), /signature is not on this note/)
