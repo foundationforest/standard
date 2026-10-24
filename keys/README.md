@@ -243,8 +243,9 @@ is what an app that holds the seed, a signer, should know, and what ours does:
 2. The signer asks for the person's device unlock whenever the person acts with the seed: to sign
    with a main key or the vault key, or to make a proof. What others ask, it does only within the
    person's permissions, and it asks the person about the rest.
-3. No key ever leaves a signer, to an app, a server, an AI or another person. What leaves is
-   signatures, proofs, and what the person's permissions let others read.
+3. No key ever leaves a signer, to an app, a server, an AI or another person. The main reason is
+   the vault: it holds the permissions, so an AI allowed to post there could raise its own limits.
+   What leaves is signatures, proofs, and what the person's permissions let others read.
 4. An AI app asks through its connection, and a person or a business by a message signed by its
    own profile's main key; the signer acts on either only by the person's permissions.
 5. Neither the AI app nor the connector ever receives the person's own profiles' addresses, keys
