@@ -10,7 +10,9 @@ do alone, until when, and what happens at the end. One program runs every schedu
 of deal is new parameters, never new code. An escrow that held the money leaves a receipt saying
 how the deal ended.
 
-- [`solana/`](solana/README.md): the escrow on Solana, on devnet.
+- [`solana/`](solana/README.md): the escrow on Solana, on devnet, where it can no longer be
+  upgraded in place: its upgrade key came from a devnet phrase that is lost, so a new version goes
+  to a new address, as on mainnet.
 
 ## How it works
 

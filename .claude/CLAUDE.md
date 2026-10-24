@@ -3,11 +3,18 @@ Read `README.md` and the README of the directory you work in before any task.
 
 ## Words
 
-Use these words: seed, seed scalar, main key, profile, profile record, address, label, scope, stamp,
-issuer, note, note number, attributes, note proof, reputation proof, record, folder, host, access
-key, write key, read key, permissions, private, envelope, sealed (an envelope), message, inbox key,
-inbox, pull, vault, blob, payment key, escrow, receipt, deal, index, fee payer, app, market, role.
-Plain words, no em-dashes.
+Use these words: seed, seed scalar, main key, profile, profile record, address, label, scope,
+prefix, tag, verifier, verified, stamp, stamp number, facts, stamp proof, reputation proof, check,
+record, folder, host, service key, signer, connection, connector, permissions, private, envelope,
+encrypted (an envelope), message, inbox key, inbox, pull, vault, blob, pay address, pay key, escrow,
+receipt, deal, index, fee payer, app, market, role. Plain words, no em-dashes.
+
+- Check, never verify: a reader checks a proof or a signature. The tooling keeps its own names
+  (snarkjs's verifier, `verification-key.json`), and prose calls that part the proof check.
+- Never "account" for a person: a person has a seed and profiles.
+- A string baked into a recipe or a circuit keeps its bytes even when its words are old
+  (`forest/v1/issuer`, `forest/v1/note`, the circuits' signal names): rename the code around it,
+  never the string, and say why in a comment beside it.
 
 The test for what goes in this repo: the standard holds formats (what bytes mean), recipes (how a
 number is derived) and checks (what a reader runs); meanings and choices live outside it.

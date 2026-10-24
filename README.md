@@ -2,9 +2,9 @@
 
 Part of [Forest](https://github.com/foundationforest), open software for people to offer, pay and review each other through profiles they own. A person holds one secret seed on their device and gets one profile for each label they use, such as `tennis/seller`.
 
-The standard is the only part of Forest everyone shares: the rules and math every app, host, index and verifier must agree on, along with the libraries, circuits and escrow program that implement them.
+The standard is the only part of Forest everyone shares: the formats, recipes and checks every app, host, index and verifier must agree on, along with the libraries, circuits and escrow program that implement them.
 
-- A **verifier** signs a stamp to a person's seed.
+- A **verifier** checks a person and signs a stamp to their seed: a person it stamped is verified.
 - A **host** stores a profile's folder of signed records and its encrypted inbox.
 - An **index** reads hosts and payment receipts, checks proofs, and scores profiles and offers.
 - An **app** creates records and reads the network for the person. One that holds the person's seed, on a device they own, is a **signer**; an AI or another person acts for them by asking a signer, never with a key of their own.
@@ -13,7 +13,7 @@ One seed gives one profile per label; a verifier decides how many stamps each hu
 
 Everything outside these rules lives in [markets](https://github.com/foundationforest/markets), [services](https://github.com/foundationforest/services) and [app](https://github.com/foundationforest/app), where anyone can run or propose their own copy.
 
-## Why these four
+## Why these parts
 
 The standard holds formats (what bytes mean), recipes (how a number is derived) and checks (what a reader runs); meanings and choices live outside it. Every piece here is sorted by one test: what must two strangers' programs agree on for one profile, one deal and one reputation to work across the open internet?
 
@@ -24,7 +24,7 @@ Four things stay outside: what a stamp means is the reader's; what a record says
 
 ## The directories
 
-A **label** is any text; markets set the convention, `<market>/<role>`, such as `plumbing/seller`, and each market defines its roles, its content paths and their bodies in [markets](https://github.com/foundationforest/markets). A **tag** is a number made from a person's seed for one label at one verifier, so an index's score tree can track the profile without linking it to others. Every profile has one **folder** kept on one or more hosts; the **vault** is one more folder on a host, encrypted to the vault's own inbox key, which only the person's seed gives, holding what the seed cannot recompute: which profiles exist, stamps and settings. A new device finds it with the seed and one host's address.
+A **label** is any text; markets set the convention, `<market>/<role>`, such as `plumbing/seller`, and each market defines its roles, its content paths and their bodies in [markets](https://github.com/foundationforest/markets). A **tag** is a number made from a person's seed for one label at one verifier, so an index's score tree can track the profile without linking it to others. Every profile has one **folder** kept on one or more hosts; the **vault** is one more folder on a host, encrypted to the vault's own inbox key, which only the person's seed gives, holding what the seed cannot recompute: which profiles exist, stamps, the person's permissions and settings. A new device finds it with the seed and one host's address.
 
 | Directory | What it is | What runs | Where |
 |---|---|---|---|
@@ -37,13 +37,13 @@ A **label** is any text; markets set the convention, `<market>/<role>`, such as 
 
 - **The standard** holds only what two strangers' programs must agree on to check keys, proofs, records and escrows.
 - **A market** (in [markets](https://github.com/foundationforest/markets)) defines its roles, its content paths and their bodies, and may suggest an offer field that carries an escrow's terms.
-- **A service** (verifier, host, index, fee payer) sets its own prices and rules. An index decides which verifiers it trusts, how many count, and how it weights evidence.
+- **A service** (verifier, host, index, fee payer) sets its own prices and choices. An index decides which verifiers it trusts, how many count, and how it weights evidence.
 - **An app** chooses how it holds the seed and which services it uses by default, together with the person.
 - **The person** decides which markets to enter, which AI, app or person may ask their signers to act for them, and for what, and when to carry a score across profiles.
 
 ## For builders
 
-- **Check a profile.** Read the profile's record at `profile` from its folder on any host. It holds the profile's `market`, `role`, `inboxKey` (what others encrypt to), seed-derived `pay` addresses (`solana` and `evm`, one per address type), and its `proofs` array. The array takes any circuit's proofs, and a reader skips the ones it does not know: `stamp` and `reputation` are ours, and anyone can add one. Verify each `stamp` proof against the verifier's key to see which verifiers signed a stamp to the seed behind the profile.
+- **Check a profile.** Read the profile's record at `profile` from its folder on any host. It holds the profile's `market`, `role`, `inboxKey` (what others encrypt to), seed-derived `pay` addresses (`solana` and `evm`, one per address type), and its `proofs` array. The array takes any circuit's proofs, and a reader skips the ones it does not know: `stamp` and `reputation` are ours, and anyone can add one. Check each `stamp` proof against the verifier's key to see which verifiers signed a stamp to the seed behind the profile.
 - **Find a profile's folder.** A profile's address is the public half of its main key (`Baby Jubjub`). Ask any host you know for its records, and check its signed `hosts` record to see every host that mirrors the folder.
 - **Act for a person.** Ask one of their signers, the devices that hold their seed: an AI app through its connection, a person or a business by a message signed by its own profile's main key. The signer acts by the person's permissions and signs with the profile's main key; no key is ever handed out (`keys/`, Signers).
 - **Write offers and reviews.** Their paths and bodies are defined by the market the profile lives in ([markets](https://github.com/foundationforest/markets)); the standard names none of them. A photo or a video is a blob the folder holds, put and deleted by its keys; where a record points at one is the market's.
@@ -60,6 +60,7 @@ What others can still see:
 - Everything in a profile's public records (`profile`, `hosts` and the market's content paths) is open for any index or person to read.
 - On-chain payments and escrow receipts are public on the payment chain. Moving money directly between two of your own profiles' `pay` addresses links them on chain.
 - A host sees when a folder is written or read and the network address of the connection, unless a VPN or relay is used.
+- The connector, a relay AI apps call from their cloud, holds no keys and sees what is asked; anyone can run their own. It sees each request in plain text and any token passed through it, so it can act as any connection it carries, within that connection's permissions: that is why permissions have limits (`keys/`, Signers).
 - A verifier sees the person's stamp number, a stable number for them at that verifier.
 
 ## Promises
@@ -68,13 +69,14 @@ What others can still see:
 - **One seed, one profile per label.** The stamp circuit derives the main key inside the proof, making a second main key for the same seed and label mathematically invalid (`proofs/stamp/`).
 - **Updates and deletes are just writes.** Every path holds its newest signed record; a record with a null body deletes the path (`records/`).
 - **Nothing in the standard charges a fee.** There is no coin and no cut on deals.
-- **Escrows have no admin key.** Once the program is on Solana's mainnet and can no longer change, nothing moves the money but a side giving, both agreeing, the arbiter, or the schedule; on its devnet we can still upgrade it (`escrows/`).
+- **Escrows have no admin key.** Once the program is on Solana's mainnet and can no longer change, nothing moves the money but a side giving, both agreeing, the arbiter, or the schedule; on devnet it can no longer be upgraded in place either, since its upgrade key came from a devnet phrase that is lost, so a new version goes to a new address, as on mainnet (`escrows/`).
 
 ## Limits
 
 - **The escrow runs on Solana's devnet,** so no real money moves through it (`escrows/`).
 - **Both circuits' setups were made by one party** (`proofs/`).
 - **No seed recovery.** Lose the seed and the profiles made from it are gone; nothing can give them back (`keys/`).
+- **The connector can act as any connection it carries,** within that connection's permissions: it sees each request in plain text and any token passed through it. Anyone can run their own (`keys/`, Signers).
 
 ## What it is built from
 

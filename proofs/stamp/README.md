@@ -5,12 +5,13 @@ Part of Forest's standard: [the top README](../../README.md). Up: [proofs](../RE
 ## What it is
 
 The stamp proof, and the client a device uses to make it and anyone uses to check it. Anyone can
-sign a stamp to a person's seed: whoever does is a verifier. The main use, and the one we build, is
-a verifier that checks one human per seed and signs them one stamp; a school, a club or a license
-board could sign stamps the same way, and a reader decides which signers count. Any of the person's
-profiles can then prove it holds such a stamp, without the verifier learning the seed or any
-profile, and without a reader learning the stamp. The verifier sees only the person's stamp number,
-a stable number for that person at that verifier.
+sign a stamp to a person's seed: whoever does is a verifier. The main use is a verifier that checks
+one human per seed and signs them one stamp; the one we run is at the verifier's address in
+[services](https://github.com/foundationforest/services), with two keys, a face check and an ID
+check. A school, a club or a license board could sign stamps the same way, and a reader decides
+which verifiers count. Any of the person's profiles can then prove it holds such a stamp, without
+the verifier learning the seed or any profile, and without a reader learning the stamp. The verifier
+sees only the person's stamp number, a stable number for that person at that verifier.
 
 A proof says: *the verifier with this key signed a stamp for the seed behind this profile; this is
 the profile's tag for its label at that verifier; and this profile's key is the one that seed gives
