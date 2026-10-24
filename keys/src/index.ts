@@ -27,6 +27,6 @@ export {
 } from './curve.ts'
 export { mainKey, inboxKey, profileScalarOf, type MainKey, type InboxKey } from './profile.ts'
 export { PAY_TYPES, evmAddressOf, isEvmAddress, payAddresses, payKey, type PayAddresses, type PayKey, type PayType } from './pay.ts'
-export { issuerSecret, issuerScalarOf, stampOf, type IssuerSecret } from './issuer.ts'
+export { issuerSecret, issuerScalarOf, tagOf, type IssuerSecret } from './issuer.ts'
 export { vaultKey, vaultScalarOf, type VaultKey } from './vault.ts'
 export { serviceKey, type ServiceKey } from './service.ts'

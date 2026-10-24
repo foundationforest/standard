@@ -8,7 +8,7 @@ import { assertText, utf8 } from './hkdf.ts'
 /** BN254's scalar field order. Every number a circuit takes is below it. */
 export const BN254_R = 21888242871839275222246405745257275088548364400416034343698204186575808495617n
 
-/** What a label is hashed after. Fixed: a change gives every profile a new key and stamp. */
+/** What a label is hashed after. Fixed: a change gives every profile a new key and tag. */
 export const SCOPE_NS = 'forest/v1/label/'
 /** What an issuer's name is hashed after. */
 export const ISSUER_NS = 'forest/v1/issuer/'

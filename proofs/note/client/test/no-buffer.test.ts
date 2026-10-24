@@ -32,7 +32,7 @@ test('with no Buffer: an issuer signs a note, the device proves, a reader checks
   const r = await proveNote({ seedScalar: S, issuerName: NAME, note, label: LABEL, artifacts })
   const main = await mainKey(seed, LABEL)
   assert.equal(r.address, main.address)
-  const shown = { issuer: r.issuer, issuerName: NAME, label: LABEL, profile: main.address, stamp: r.stamp }
+  const shown = { issuer: r.issuer, issuerName: NAME, label: LABEL, profile: main.address, tag: r.tag }
   assert.equal(await verifyNote({ ...shown, proof: r.proof }), true)
   assert.equal(await verifyNote({ ...shown, proof: proofBytes(r.proof) }), true, 'from its 256 bytes')
 })

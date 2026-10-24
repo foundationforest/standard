@@ -18,7 +18,7 @@ export type NoteCheck = {
   label: string
   /** The profile that carries the proof: its address. */
   profile: string
-  stamp: Uint8Array
+  tag: Uint8Array
 }
 
 /** What verifyReputation takes, for one reputation proof on a profile record. */
@@ -50,16 +50,16 @@ export function proofsOf(body: Body | null | undefined): Array<{ [key: string]: 
 /** A note proof on a profile record as verifyNote takes it, for the profile `profile`; null if it is not one. */
 export function noteCheck(proof: unknown, profile: string): NoteCheck | null {
   if (!isObject(proof) || proof.circuit !== 'note') return null
-  const { issuer, issuerName, label, stamp } = proof
+  const { issuer, issuerName, label, tag } = proof
   if (!publicKeyFromAddress(issuer) || typeof issuerName !== 'string' || typeof label !== 'string') return null
-  if (typeof stamp !== 'string' || !HEX64.test(stamp) || typeof proof.proof !== 'string' || !PROOF.test(proof.proof)) return null
+  if (typeof tag !== 'string' || !HEX64.test(tag) || typeof proof.proof !== 'string' || !PROOF.test(proof.proof)) return null
   return {
     proof: b64u.decode(proof.proof),
     issuer: issuer as string,
     issuerName,
     label,
     profile,
-    stamp: hex.decode(stamp),
+    tag: hex.decode(tag),
   }
 }
 

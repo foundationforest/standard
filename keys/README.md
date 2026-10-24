@@ -44,7 +44,7 @@ The table uses words from the rest of the standard:
 - **profile:** one of the person's identities, one for each label, a free text saying what the
   profile is for;
 - **note:** what an issuer, anyone who signs notes, signs to a person's seed;
-- **stamp:** the number an index's tree knows a profile by, one for each issuer that signed the
+- **tag:** the number an index's tree knows a profile by, one for each issuer that signed the
   person a note;
 - **vault:** a folder of the person's own on a host, which a new device restores from. A folder is
   the signed records kept under one key, and a host is a server that keeps folders.
@@ -56,7 +56,7 @@ The table uses words from the rest of the standard:
 | the seed | HKDF, `forest/v1/profile/<label>` | that profile's secret, which its inbox key comes from |
 | a profile's secret | HKDF, `forest/v1/inbox` | that profile's inbox key, which opens what is sealed to it |
 | the seed | HKDF, `forest/v1/pay/<type>/<label>` | that profile's payment key for one address type, `solana` or `evm`, and its address |
-| the seed scalar | Poseidon, the issuer prefix and the issuer's name hash | the person's secret for one issuer, which their note number and stamps come from |
+| the seed scalar | Poseidon, the issuer prefix and the issuer's name hash | the person's secret for one issuer, which their note number and tags come from |
 | the seed scalar | Poseidon, the vault prefix | the vault key: the main key of the person's vault |
 | the seed | HKDF, `forest/v1/vault` | the vault's secret, which its inbox key comes from |
 
@@ -169,7 +169,7 @@ has one secret: `Poseidon(issuer prefix, seed scalar, name hash)`.
 
 - The name is the text the issuer publishes as its own, such as a domain, used exactly as given,
   as UTF-8. The secret comes from the name, not the issuer's key, so an issuer that changes its key
-  changes no one's stamps.
+  changes no one's tags.
 - Nothing is stored: the app mixes the secret again from the seed whenever it needs it.
 
 ### The note number
@@ -178,15 +178,15 @@ The note number is what a person gives an issuer: `Poseidon(issuer secret)`. The
 to the issuer once, and the issuer signs it in the person's note. The issuer never learns the
 secret, nor the seed scalar behind it.
 
-### Stamps
+### Tags
 
-A stamp is the number an index's tree knows one profile by, at one issuer:
+A tag is the number an index's tree knows one profile by, at one issuer:
 `Poseidon(scope, issuer secret)`. The note proof shows it, and the reputation proof counts the
-profiles whose stamps are the person's ([proofs](../proofs/README.md)).
+profiles whose tags are the person's ([proofs](../proofs/README.md)).
 
-- The same person, issuer and label always give the same stamp, and nobody without the secret can
+- The same person, issuer and label always give the same tag, and nobody without the secret can
   work it out.
-- Stamps for two labels, or for two issuers, cannot be matched to each other.
+- Tags for two labels, or for two issuers, cannot be matched to each other.
 
 ### The vault key
 
@@ -272,7 +272,7 @@ mixes from the seed scalar is not.
 | `payKey(seed, label, type)`, `payAddresses(seed, label)`, `PAY_TYPES` | A payment key of one type: `label`, `type`, `privateKey`, `publicKey`, `address`; the profile's address of each type; and the types |
 | `evmAddressOf(publicKey)`, `isEvmAddress(text)` | A secp256k1 key's EVM address, in EIP-55; and whether text is one, in that spelling |
 | `issuerSecret(seed, name)` | The issuer's `name`, its `nameHash`, the person's `scalar` for it, and the `noteNumber` |
-| `issuerScalarOf(seedScalar, name)`, `stampOf(issuerScalar, label)` | The issuer secret from the seed scalar, and a stamp |
+| `issuerScalarOf(seedScalar, name)`, `tagOf(issuerScalar, label)` | The issuer secret from the seed scalar, and a tag |
 | `vaultKey(seed)`, `vaultScalarOf(seedScalar)` | The vault key: `scalar`, `publicKey`, `address`, `secret`; and its scalar |
 | `serviceKey(secret)` | A service key from its 32 random bytes: `secret`, `scalar`, `publicKey`, `address` |
 | `signWithScalar(scalar, message)`, `verifyWithPublicKey(key or address, message, signature)` | A signature `{ R8, S }` on a field element, and its check |
@@ -297,7 +297,7 @@ Node 22.18 or later runs the TypeScript directly.
 `test/vectors.json` pins, for the seed `00 01 … 1f`: its words; its seed scalar; the three prefixes;
 the main keys for `tutoring/seller` and `tutoring/buyer`, each with its secret and inbox key, and
 their payment keys of both types; for two issuers, `issuer-a.example` and `issuer-b.example`, the
-name hash, the person's secret, the note number and a stamp for each label; the vault key, with its
+name hash, the person's secret, the note number and a tag for each label; the vault key, with its
 secret and inbox key; one signature by the `tutoring/seller` main key; and a service key, from 32
 bytes of `0x2a`. `npm test` checks each value and recomputes it without the library: HKDF and keccak
 from `@noble/hashes`, the seed scalar step by step without zk-kit, Baby Jubjub's points and
@@ -305,7 +305,7 @@ signatures from zk-kit (`@zk-kit/baby-jubjub`, `@zk-kit/eddsa-poseidon`), the ad
 hand, the signature's equation, ed25519 from `@noble/curves`, secp256k1 from Node's own crypto with
 keccak256 and EIP-55 by hand, the hybrid key others seal to from `@noble/post-quantum`, age's bech32
 by hand, and an envelope sealed and opened through age. The note proof's tests check the circuit
-derives the same main key and stamp ([proofs/note](../proofs/note/README.md)).
+derives the same main key and tag ([proofs/note](../proofs/note/README.md)).
 
 ## Promises
 
@@ -330,7 +330,7 @@ derives the same main key and stamp ([proofs/note](../proofs/note/README.md)).
   `poseidon-lite` 0.3.0.
 - **An issuer's name is its own to keep unique.** Two issuers under one name get the same note
   number from each person, so they can match their people.
-- **No recovery.** Lose the seed, and every profile and every stamp is gone. Nobody can reset
+- **No recovery.** Lose the seed, and every profile and every tag is gone. Nobody can reset
   them, because nobody else has them.
 - **No rotation.** A profile's name is its key, so a leaked main key loses that profile for good
   (see the FAQ).
@@ -379,7 +379,7 @@ record's signature, so nothing asks for Poseidon there.
 They work in different places. HKDF-SHA256 mixes on the device, from the seed: it is a standard,
 built into every browser's Web Crypto, and well studied. Inside a zero-knowledge proof, SHA-256
 costs far more than Poseidon. So what a proof must work out (the issuer secret, the note number, a
-stamp, a main key) is Poseidon of the seed scalar, and what no proof needs (the profiles' secrets,
+tag, a main key) is Poseidon of the seed scalar, and what no proof needs (the profiles' secrets,
 the payment keys, the vault's secret) is HKDF of the seed. Neither is ours; both are used
 unchanged.
 

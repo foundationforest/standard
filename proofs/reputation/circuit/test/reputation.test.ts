@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url'
 
 import { groth16 } from 'snarkjs'
 
-import { BN254_R, issuerSecret, mainKey, nameHashOf, packSignature, scopeOf, seedScalar, serviceKey, signBytes, stampOf } from '@foundationforest/keys'
+import { BN254_R, issuerSecret, mainKey, nameHashOf, packSignature, scopeOf, seedScalar, serviceKey, signBytes, tagOf } from '@foundationforest/keys'
 import { BN254_P, fromBytes32, toBytes32 } from '@foundationforest/note'
 import {
   buildTree,
@@ -43,12 +43,12 @@ const sources = [
   { label: 'tutoring/buyer', issuerName: A },
   { label: 'cleaning/seller', issuerName: B },
 ]
-const leafOf = (label: string, issuerName: string, score: bigint, count: bigint): Leaf => ({ stamp: stampOf(at[issuerName], label), scope: scopeOf(label), score, count })
+const leafOf = (label: string, issuerName: string, score: bigint, count: bigint): Leaf => ({ tag: tagOf(at[issuerName], label), scope: scopeOf(label), score, count })
 const mine = [leafOf(sources[0].label, A, 47n, 12n), leafOf(sources[1].label, A, 39n, 3n), leafOf(sources[2].label, B, 50n, 1n)]
 const sellerAtB = leafOf('tutoring/seller', B, 10n, 9n)
 const field = () => BigInt('0x' + randomBytes(32).toString('hex')) % BN254_R
 const madeUp = (n: number): Leaf[] =>
-  Array.from({ length: n }, (_, i) => ({ stamp: field(), scope: scopeOf(`made-up/${i}`), score: BigInt(i % 51), count: BigInt(i % 40) }))
+  Array.from({ length: n }, (_, i) => ({ tag: field(), scope: scopeOf(`made-up/${i}`), score: BigInt(i % 51), count: BigInt(i % 40) }))
 const others = madeUp(97)
 const leaves = [...others.slice(0, 40), mine[0], ...others.slice(40, 70), mine[1], sellerAtB, mine[2], ...others.slice(70)]
 const tree = buildTree(leaves)
@@ -113,7 +113,7 @@ test("a proof lands only on the prover's own profile: it cannot be lent", async 
   assert.equal(await verifyReputation({ ...shown, profile: stranger.address }), false, "someone else's profile")
   assert.equal(await verifyReputation({ ...shown, profile: (await mainKey(seed, 'tutoring/seller')).address }), false, 'my other profile')
   // Straight to the circuit: my leaves with the stranger's key, or the stranger's seed with my
-  // leaves: no witness. Only a seed that gives both the leaves' stamps and the profile's key does.
+  // leaves: no witness. Only a seed that gives both the leaves' tags and the profile's key does.
   const lent = circuitInput({ seedScalar: S, sources, leaves, profileLabel }).input as Record<string, any>
   lent.profileX = stranger.publicKey[0]
   lent.profileY = stranger.publicKey[1]
@@ -173,13 +173,14 @@ test('the circuit refuses a leaf not in the tree', async () => {
 
 test('the circuit refuses one profile counted twice, even from two issuers', async () => {
   const input = good()
+  // The circuit's own signal names: reputation.circom keeps its bytes, so the tags' is stamps.
   for (const key of ['stamps', 'scopes', 'scores', 'counts', 'pathLengths', 'pathIndices', 'pathSiblings', 'issuerNameHashes']) input[key][1] = input[key][0]
   await refused(input)
-  // tutoring/seller's leaf at issuer A and its leaf at issuer B: two stamps, one profile.
+  // tutoring/seller's leaf at issuer A and its leaf at issuer B: two tags, one profile.
   const twoIssuers = good()
-  const path = tree.pathOf(sellerAtB.stamp)!
+  const path = tree.pathOf(sellerAtB.tag)!
   twoIssuers.issuerNameHashes[1] = nameHashOf(B)
-  twoIssuers.stamps[1] = sellerAtB.stamp
+  twoIssuers.stamps[1] = sellerAtB.tag
   twoIssuers.scopes[1] = sellerAtB.scope
   twoIssuers.scores[1] = sellerAtB.score
   twoIssuers.counts[1] = sellerAtB.count

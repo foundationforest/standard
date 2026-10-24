@@ -10,7 +10,7 @@
 
 import { readFileSync, writeFileSync } from 'node:fs'
 import { sha256 } from '@noble/hashes/sha2.js'
-import { fieldHash, inboxKey, issuerSecret, mainKey, packSignature, payAddresses, scopeOf, seedScalar, serviceKey, signBytes, stampOf } from '@foundationforest/keys'
+import { fieldHash, inboxKey, issuerSecret, mainKey, packSignature, payAddresses, scopeOf, seedScalar, serviceKey, signBytes, tagOf } from '@foundationforest/keys'
 import { noteNumberOf, proofBytes, proveNote, signNote, toBytes32 } from '@foundationforest/note'
 import { type Leaf, proveReputation, signedBytes } from '@foundationforest/reputation'
 import { b64u, hex } from '../src/bytes.ts'
@@ -36,10 +36,10 @@ const noteProof = await proveNote({ seedScalar: S, issuerName: ISSUER, note, lab
 // index's tree, among made-up leaves, shown on tutoring/seller.
 const at = (await issuerSecret(seed, ISSUER)).scalar
 const mine: Leaf[] = [
-  { stamp: stampOf(at, 'tutoring/buyer'), scope: scopeOf('tutoring/buyer'), score: 90n, count: 7n },
-  { stamp: stampOf(at, 'cleaning/seller'), scope: scopeOf('cleaning/seller'), score: 80n, count: 3n },
+  { tag: tagOf(at, 'tutoring/buyer'), scope: scopeOf('tutoring/buyer'), score: 90n, count: 7n },
+  { tag: tagOf(at, 'cleaning/seller'), scope: scopeOf('cleaning/seller'), score: 80n, count: 3n },
 ]
-const madeUp: Leaf[] = Array.from({ length: 30 }, (_, i) => ({ stamp: fieldHash('forest example leaf', String(i)), scope: scopeOf(`made-up/${i}`), score: BigInt((i * 7) % 51), count: BigInt(i % 9) }))
+const madeUp: Leaf[] = Array.from({ length: 30 }, (_, i) => ({ tag: fieldHash('forest example leaf', String(i)), scope: scopeOf(`made-up/${i}`), score: BigInt((i * 7) % 51), count: BigInt(i % 9) }))
 const leaves = [...madeUp.slice(0, 11), mine[0]!, ...madeUp.slice(11, 23), mine[1]!, ...madeUp.slice(23)]
 const index = serviceKey(new Uint8Array(32).fill(0x2c)) // the example index's key: 32 bytes of 0x2c
 const time = 1_790_812_800_000
@@ -72,7 +72,7 @@ const profile = {
       issuer: noteProof.issuer,
       issuerName: ISSUER,
       label: LABEL,
-      stamp: hex.encode(toBytes32(noteProof.stamp)),
+      tag: hex.encode(toBytes32(noteProof.tag)),
       proof: b64u.encode(proofBytes(noteProof.proof)),
     },
   ],

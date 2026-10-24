@@ -131,8 +131,8 @@
     },
     "note": {
       "type": "object",
-      "description": "A note proof (proofs/note/): the issuer with this key and this name signed a note for the person whose seed gives this profile's key for this label, and this is their stamp for the label at that issuer. Everything verifyNote takes but the profile's key, which is the profile's own address.",
-      "required": ["circuit", "issuer", "issuerName", "label", "stamp", "proof"],
+      "description": "A note proof (proofs/note/): the issuer with this key and this name signed a note for the person whose seed gives this profile's key for this label, and this is their tag for the label at that issuer. Everything verifyNote takes but the profile's key, which is the profile's own address.",
+      "required": ["circuit", "issuer", "issuerName", "label", "tag", "proof"],
       "additionalProperties": false,
       "properties": {
         "circuit": {
@@ -157,9 +157,9 @@
           "minLength": 1,
           "maxLength": 128
         },
-        "stamp": {
+        "tag": {
           "type": "string",
-          "description": "The person's stamp for the label at the issuer: 32 bytes big-endian, lowercase hex.",
+          "description": "The person's tag for the label at the issuer: 32 bytes big-endian, lowercase hex.",
           "pattern": "^[0-9a-f]{64}$"
         },
         "proof": {

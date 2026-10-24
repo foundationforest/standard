@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url'
 import { Group } from '@semaphore-protocol/group'
 import { poseidon4 } from 'poseidon-lite/poseidon4'
 
-import { BN254_R, PREFIX, issuerSecret, mainKey, nameHashOf, packSignature, publicKeyOf, scopeOf, seedScalar, serviceKey, signBytes, stampOf, verifyBytes } from '@foundationforest/keys'
+import { BN254_R, PREFIX, issuerSecret, mainKey, nameHashOf, packSignature, publicKeyOf, scopeOf, seedScalar, serviceKey, signBytes, tagOf, verifyBytes } from '@foundationforest/keys'
 import { BOUND, DEPTH, SIGNED_PREFIX, buildTree, circuitInput, leafHash, signedBytes, type Leaf } from '../src/index.ts'
 import { REPUTATION_KEY } from '../src/reputation-key.ts'
 
@@ -31,14 +31,14 @@ const sources = [
   { label: 'cleaning/seller', issuerName: B },
 ]
 const mine: Leaf[] = sources.map((s, i) => ({
-  stamp: stampOf(at[s.issuerName], s.label),
+  tag: tagOf(at[s.issuerName], s.label),
   scope: scopeOf(s.label),
   score: [47n, 39n, 50n][i],
   count: [12n, 3n, 1n][i],
 }))
 const field = () => BigInt('0x' + randomBytes(32).toString('hex')) % BN254_R
 const madeUp = (n: number): Leaf[] =>
-  Array.from({ length: n }, (_, i) => ({ stamp: field(), scope: scopeOf(`made-up/${i}`), score: BigInt(i % 51), count: BigInt(i % 40) }))
+  Array.from({ length: n }, (_, i) => ({ tag: field(), scope: scopeOf(`made-up/${i}`), score: BigInt(i % 51), count: BigInt(i % 40) }))
 const others = madeUp(97)
 const leaves = [...others.slice(0, 40), mine[0], ...others.slice(40, 70), mine[1], mine[2], ...others.slice(70)]
 const tree = buildTree(leaves)
@@ -50,22 +50,22 @@ const time = 1_791_072_000_000n
 // The person shows the proof on a new profile of theirs.
 const profileLabel = 'tutoring/new'
 
-test("a leaf is Poseidon(stamp, scope, score, count), and the tree is Semaphore's over them", () => {
-  assert.equal(leafHash(mine[0]), poseidon4([mine[0].stamp, mine[0].scope, 47n, 12n]))
+test("a leaf is Poseidon(tag, scope, score, count), and the tree is Semaphore's over them", () => {
+  assert.equal(leafHash(mine[0]), poseidon4([mine[0].tag, mine[0].scope, 47n, 12n]))
   assert.equal(tree.root, new Group(leaves.map(leafHash)).root)
-  const path = tree.pathOf(mine[1].stamp)
+  const path = tree.pathOf(mine[1].tag)
   assert.ok(path)
   assert.equal(path.length, path.siblings.length)
   assert.ok(path.length <= DEPTH)
   assert.equal(tree.pathOf(field()), undefined)
 })
 
-test('buildTree refuses an empty tree, one too deep, a field out of range, and two leaves for one stamp', () => {
+test('buildTree refuses an empty tree, one too deep, a field out of range, and two leaves for one tag', () => {
   assert.throws(() => buildTree([]), /at least one leaf/)
   assert.throws(() => buildTree(Array(2 ** DEPTH + 1).fill(mine[0])), /at most 2\^20/)
   assert.throws(() => buildTree([{ ...mine[0], score: BOUND }]), /0 to 2\^32 - 1/)
   assert.throws(() => buildTree([{ ...mine[0], count: -1n }]), /0 to 2\^32 - 1/)
-  assert.throws(() => buildTree([{ ...mine[0], stamp: BN254_R }]), /field element/)
+  assert.throws(() => buildTree([{ ...mine[0], tag: BN254_R }]), /field element/)
   assert.throws(() => buildTree([mine[0], { ...mine[0], score: 50n }]), /second leaf/)
 })
 
@@ -100,7 +100,7 @@ test("the proof names the key of the profile it is shown on, keys/'s main key, a
   assert.equal(publicSignals[4], 0n, 'no label shown')
   assert.equal(input.profileScope, scopeOf(profileLabel))
   assert.deepEqual(input.issuerNameHashes, [nameHashOf(A), nameHashOf(A), nameHashOf(B), 0n, 0n, 0n, 0n, 0n])
-  assert.equal('stamp' in input, false, 'no stamp of the profile shown on: its key is what names it')
+  assert.equal('tag' in input, false, 'no tag of the profile shown on: its key is what names it')
   const shown = circuitInput({ seedScalar: S, sources: [sources[2]], leaves, profileLabel, show: true }).publicSignals
   assert.equal(shown[4], scopeOf('cleaning/seller'))
 })

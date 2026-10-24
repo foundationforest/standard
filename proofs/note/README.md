@@ -13,7 +13,7 @@ profile, and without a reader learning the note. The issuer sees only the person
 stable number for that person at that issuer.
 
 A proof says: *the issuer with this key signed a note for the seed behind this profile; this is the
-profile's stamp for its label at that issuer; and this profile's key is the one that seed gives for
+profile's tag for its label at that issuer; and this profile's key is the one that seed gives for
 this label.* A profile is one of a person's identities, named by its main key; a label is any text
 saying what the profile is for, `<market>/<role>` by the markets' convention. It is a
 zero-knowledge proof, so it shows this without showing the note, the seed or who the person is.
@@ -59,23 +59,23 @@ attributes*.
   the prefix, so nothing it signs for another purpose can pass as a note.
 
 **The note proof.** The device proves, showing neither the seed nor the note: *I know a seed scalar
-and a note this issuer signed for the note number it gives at this issuer's name; my stamp for this
+and a note this issuer signed for the note number it gives at this issuer's name; my tag for this
 label at this issuer is this one; this profile's key is the one it gives for this label.*
 
-- Public: the stamp; the profile's key; the issuer's key; the label, as its scope; and the
+- Public: the tag; the profile's key; the issuer's key; the label, as its scope; and the
   issuer's name, as its name hash.
 - The scope is `keccak256("forest/v1/label/" ‖ label) >> 8` and the name hash
   `keccak256("forest/v1/issuer/" ‖ name) >> 8` ([keys](../../keys/README.md#the-recipe)). A reader
   computes both itself from the label and the name, so a proof counts for one label at one issuer.
-- The stamp is `Poseidon(scope, issuer secret)` ([keys](../../keys/README.md#stamps)). It depends on
+- The tag is `Poseidon(scope, issuer secret)` ([keys](../../keys/README.md#tags)). It depends on
   the seed, the issuer's name and the label, not on the note, so a new note, with other attributes
-  or under a new key, gives the same stamp.
+  or under a new key, gives the same tag.
 - The profile's key is the lowest 250 bits of `Poseidon(profile prefix, seed scalar, scope)`, times
   Baby Jubjub's `Base8` ([keys](../../keys/README.md#main-keys)). The issuer secret behind the note
   and the profile's key come from the same seed scalar, so a note counts only for profiles of the
   seed it was signed for.
 - A profile shows the proof in its profile record ([records](../../records/README.md#proofs)), with
-  the issuer's key and name and the stamp.
+  the issuer's key and name and the tag.
 
 ### The circuit and its setup
 
@@ -84,7 +84,10 @@ label at this issuer is this one; this profile's key is the one it gives for thi
 | | Signals |
 |---|---|
 | Private | `seedScalar`, the number `keys/`'s `seedScalar` gives; the note's `attributes`; the issuer's signature, `R8x`, `R8y` and `S` |
-| Public, in this order | `stamp`, the output, first, as snarkjs lists it; then `profileX`, `profileY`; `issuerX`, `issuerY`; `scope`; `issuerNameHash` |
+| Public, in this order | `stamp`, the output, the tag, first, as snarkjs lists it; then `profileX`, `profileY`; `issuerX`, `issuerY`; `scope`; `issuerNameHash` |
+
+The signals keep the names the circuit was set up with, since it keeps its bytes: `stamp` is the
+tag.
 
 Inside the proof:
 
@@ -94,7 +97,7 @@ Inside the proof:
    `Poseidon(prefix, note number, attributes)`, with the prefix fixed in the circuit. The circuit
    names its prefixes `NOTE_TAG`, `ISSUER_TAG` and `PROFILE_TAG`: it keeps its bytes, and its names
    with them.
-3. The stamp is `Poseidon(scope, issuer secret)`.
+3. The tag is `Poseidon(scope, issuer secret)`.
 4. `Poseidon(profile prefix, seedScalar, scope)` is split into its bits by `Num2Bits_strict`, its
    lowest 250 bits go to circomlib's `EscalarMulFix(250, Base8)`, and the point it gives must be
    `(profileX, profileY)`. The strict split matters: a number below the field also has the 254-bit
@@ -117,7 +120,7 @@ honest one is enough.
 ### Use it
 
 The client (`client/src/`) talks to no network: the caller passes the seed scalar, the note and
-the setup's files. The scope, the name hash, the stamp and the profile's key come from `keys/`,
+the setup's files. The scope, the name hash, the tag and the profile's key come from `keys/`,
 unchanged.
 
 | Function | Gives |
@@ -126,7 +129,7 @@ unchanged.
 | `noteNumberOf(seedScalar, issuerName)`, `noteHash(note)`, `noteSigned(note)` | The note number, what an issuer signs, and whether its issuer signed it |
 | `noteToJson(note)`, `noteFromJson(json)` | The note as JSON, as a vault keeps it, and back; `noteFromJson` refuses the note's own fields in any other shape, an issuer key that is not an address among them, passes the issuer's added fields through unchanged, and leaves the signature to `noteSigned` |
 | `proveNote({ seedScalar, issuerName, note, label, artifacts })` | The proof, on the device, for the profile the seed gives for `label`. Refuses a note for another seed or issuer name, or one its issuer did not sign |
-| `verifyNote({ proof, issuer, issuerName, label, profile, stamp })` | Whether the proof holds for that issuer's key (its address or its point) and name, label, profile (its address or its key) and stamp |
+| `verifyNote({ proof, issuer, issuerName, label, profile, tag })` | Whether the proof holds for that issuer's key (its address or its point) and name, label, profile (its address or its key) and tag |
 | `proofBytes(proof)`, `proofFromBytes(bytes)` | The proof as the 256 bytes a profile record carries, and back; `verifyNote` takes either |
 | `noteInput({...})` | The circuit's input, for a caller that drives snarkjs itself |
 
@@ -145,11 +148,11 @@ const r = await proveNote({
     zkey: 'proofs/note/circuit/setup/note.zkey',
   },
 })
-// r.address is mainKey(seed, 'tutoring/seller').address; the profile shows r.proof, r.stamp,
+// r.address is mainKey(seed, 'tutoring/seller').address; the profile shows r.proof, r.tag,
 // and the issuer's key and name.
 
 // Any reader, from what the profile shows:
-const ok = await verifyNote({ proof, issuer, issuerName, label, profile: address, stamp })
+const ok = await verifyNote({ proof, issuer, issuerName, label, profile: address, tag })
 ```
 
 ### Run it
@@ -168,9 +171,9 @@ setup/setup.sh                            # a new setup: new files, every hash n
 ```
 
 - The circuit's tests make a proof for `keys/`'s test person and check that it is for `keys/`'s main
-  key and stamp, and that each of these fails: a wrong issuer key or name, a forged signature, the
+  key and tag, and that each of these fails: a wrong issuer key or name, a forged signature, the
   issuer's signature changed or without the prefix, attributes the issuer did not sign, another
-  person's seed, a stamp or label for another label, and a proof for another profile's key, whether
+  person's seed, a tag or label for another label, and a proof for another profile's key, whether
   the person's own other profile, someone else's, or a key of the prover's choosing. They also check
   that a note signed with `keys/`'s `signWithScalar` passes circomlib's verifier.
 - The client's tests check the note, its JSON and the circuit's input against `keys/` without
@@ -194,7 +197,7 @@ Measured in Node 22 on a 4-core machine:
 - **One seed gives one key per label.** A proof holds only for the key the prover's seed gives for
   the label it shows.
 - A proof counts for one label at one issuer: a reader derives the scope and the name hash itself.
-- The stamp is the same for every proof of one seed, label and issuer, and says nothing else.
+- The tag is the same for every proof of one seed, label and issuer, and says nothing else.
 - Nothing else is in the proof: not the seed, not the note, not the person.
 
 ## Limits
@@ -216,17 +219,17 @@ Measured in Node 22 on a 4-core machine:
 
 - **The standard:** the note, the proof, the circuit and its public signals.
 - **An issuer:** whom it signs notes for, how many each gets, what its attributes hold, what it adds
-  beside them, and its name. The name is text the stamp recipe uses, so an issuer that changes its
-  key keeps its people's stamps.
+  beside them, and its name. The name is text the tag recipe uses, so an issuer that changes its
+  key keeps its people's tags.
 - **Each reader:** which issuer keys count is its own list, and how much each weighs.
 - **An app, with the person:** which proofs to show on which profile, made on the device.
 
 ## FAQ
 
-**What if I lose my seed?** Your profiles' keys and stamps are gone with it. Whether an issuer signs
+**What if I lose my seed?** Your profiles' keys and tags are gone with it. Whether an issuer signs
 a note to a new seed is that issuer's choice.
 
 **Can I hold notes from more than one issuer?** Yes. Each issuer's note gives its own proof for the
-same profile, with its own stamp, and the profile shows them all. Each reader decides which issuers
-it counts and how much each weighs. The same issuer never gives a second stamp under one label: a
-new note from it gives the same stamp.
+same profile, with its own tag, and the profile shows them all. Each reader decides which issuers
+it counts and how much each weighs. The same issuer never gives a second tag under one label: a
+new note from it gives the same tag.

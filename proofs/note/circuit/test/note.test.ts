@@ -14,7 +14,7 @@ import { signMessage } from '@zk-kit/eddsa-poseidon'
 import { poseidon2 } from 'poseidon-lite/poseidon2'
 import { groth16 } from 'snarkjs'
 
-import { addressOf, keyScalar, mainKey, pointOf, publicKeyOf, seedScalar, signWithScalar, stampOf, issuerSecret } from '@foundationforest/keys'
+import { addressOf, keyScalar, mainKey, pointOf, publicKeyOf, seedScalar, signWithScalar, tagOf, issuerSecret } from '@foundationforest/keys'
 import {
   BN254_R,
   fieldHash,
@@ -60,7 +60,7 @@ const otherProfile = await mainKey(seed, OTHER_LABEL)
 const theirProfile = await mainKey(theirSeed, LABEL)
 
 const valid = await proveNote({ seedScalar: mine, issuerName: NAME, note, label: LABEL, artifacts })
-const good = { proof: valid.proof, issuer, issuerName: NAME, label: LABEL, profile: profile.address, stamp: valid.stamp }
+const good = { proof: valid.proof, issuer, issuerName: NAME, label: LABEL, profile: profile.address, tag: valid.tag }
 
 /** The circuit's witness for these inputs, proven straight through snarkjs. */
 const prove = (input: Record<string, unknown>) => groth16.fullProve(input, artifacts.wasm, artifacts.zkey)
@@ -68,18 +68,18 @@ const inputOf = (n: SignedNote, seedScalar = mine, label = LABEL) => noteInput({
 /** What circom's witness generator says when a constraint does not hold: there is nothing to prove. */
 const NO_WITNESS = /Assert Failed/
 
-test("a valid proof: the issuer signed my note; my stamp for this label; the profile's key is keys/'s main key", async () => {
+test("a valid proof: the issuer signed my note; my tag for this label; the profile's key is keys/'s main key", async () => {
   assert.equal(noteSigned(note), true)
   assert.equal(await verifyNote(good), true)
-  assert.equal(await verifyNote({ ...good, stamp: toBytes32(valid.stamp) }), true, 'the stamp as 32 bytes')
+  assert.equal(await verifyNote({ ...good, tag: toBytes32(valid.tag) }), true, 'the tag as 32 bytes')
   assert.equal(await verifyNote({ ...good, profile: profile.publicKey }), true, 'the profile as its key')
   assert.equal(await verifyNote({ ...good, issuer: pointOf(issuer) }), true, 'the issuer as its point')
   assert.equal(valid.address, profile.address)
   assert.deepEqual(valid.profile, profile.publicKey)
-  assert.equal(valid.stamp, stampOf((await issuerSecret(seed, NAME)).scalar, LABEL))
-  assert.equal(valid.stamp.toString(), keysVectors.issuers[0].stamps[LABEL], "keys/'s pinned stamp")
+  assert.equal(valid.tag, tagOf((await issuerSecret(seed, NAME)).scalar, LABEL))
+  assert.equal(valid.tag.toString(), keysVectors.issuers[0].tags[LABEL], "keys/'s pinned tag")
   assert.deepEqual(valid.issuer, issuer)
-  assert.equal(valid.publicSignals.length, 7, 'the stamp, then profileX, profileY, issuerX, issuerY, scope, issuerNameHash')
+  assert.equal(valid.publicSignals.length, 7, 'the tag, then profileX, profileY, issuerX, issuerY, scope, issuerNameHash')
 })
 
 test('a proof for another profile fails, and so does a key the seed does not give for the label', async () => {
@@ -130,21 +130,21 @@ test('a forged signature fails, and so do a signature without the prefix and att
 
 test("another person's seed fails", async () => {
   await assert.rejects(proveNote({ seedScalar: theirs, issuerName: NAME, note, label: LABEL, artifacts }), /not for this seed at this issuer/)
-  // My proof does not hold for their stamp either.
-  const theirStamp = stampOf((await issuerSecret(theirSeed, NAME)).scalar, LABEL)
-  assert.equal(await verifyNote({ ...good, stamp: theirStamp }), false)
+  // My proof does not hold for their tag either.
+  const theirTag = tagOf((await issuerSecret(theirSeed, NAME)).scalar, LABEL)
+  assert.equal(await verifyNote({ ...good, tag: theirTag }), false)
 })
 
-test('a stamp or a label for another label fails', async () => {
-  const otherStamp = stampOf((await issuerSecret(seed, NAME)).scalar, OTHER_LABEL)
+test('a tag or a label for another label fails', async () => {
+  const otherTag = tagOf((await issuerSecret(seed, NAME)).scalar, OTHER_LABEL)
   assert.equal(await verifyNote({ ...good, label: OTHER_LABEL }), false)
-  assert.equal(await verifyNote({ ...good, stamp: otherStamp }), false)
-  assert.equal(await verifyNote({ ...good, label: OTHER_LABEL, stamp: otherStamp }), false)
-  assert.equal(await verifyNote({ ...good, label: OTHER_LABEL, stamp: otherStamp, profile: otherProfile.address }), false, 'the other profile, whole')
+  assert.equal(await verifyNote({ ...good, tag: otherTag }), false)
+  assert.equal(await verifyNote({ ...good, label: OTHER_LABEL, tag: otherTag }), false)
+  assert.equal(await verifyNote({ ...good, label: OTHER_LABEL, tag: otherTag, profile: otherProfile.address }), false, 'the other profile, whole')
 })
 
 test('a public value outside the field, or a proof changed, fails', async () => {
-  assert.equal(await verifyNote({ ...good, stamp: valid.stamp + BN254_R }), false)
+  assert.equal(await verifyNote({ ...good, tag: valid.tag + BN254_R }), false)
   assert.equal(await verifyNote({ ...good, issuer: [pointOf(issuer)[0] + BN254_R, pointOf(issuer)[1]] }), false)
   assert.equal(await verifyNote({ ...good, issuer: 'not an address' }), false)
   assert.equal(await verifyNote({ ...good, profile: [profile.publicKey[0] + BN254_R, profile.publicKey[1]] }), false)

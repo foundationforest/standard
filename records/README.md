@@ -283,7 +283,7 @@ what its verifier takes, for the profile that carries it.
 
 - **`note`** shows that an issuer signed a note to the seed that gives this profile's key for its
   label ([proofs/note/](../proofs/note/README.md)). It carries the issuer's key, as its address, and
-  its name, the label, the profile's stamp at that issuer, and the proof's 256 bytes, in the
+  its name, the label, the profile's tag at that issuer, and the proof's 256 bytes, in the
   reputation proof's order. A reader checks it with proofs/note/client's `verifyNote`, which works
   the name hash and the scope out of the name and the label itself. Each reader decides which
   issuers it trusts.

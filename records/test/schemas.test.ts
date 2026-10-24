@@ -166,17 +166,17 @@ describe('schemas', () => {
     ] as const) {
       assert.equal(await verifyNote({ ...check, ...changed }), false, why)
     }
-    assert.equal(noteCheck({ ...shown, stamp: shown.stamp.toUpperCase() }, alice.address), null)
+    assert.equal(noteCheck({ ...shown, tag: shown.tag.toUpperCase() }, alice.address), null)
     assert.equal(noteCheck({ ...shown, issuer: shown.issuer.slice(1) }, alice.address), null, 'an issuer that is no address')
 
-    for (const field of ['issuer', 'issuerName', 'label', 'stamp', 'proof']) assert.ok(!fits('profile', set(field, undefined)), field)
+    for (const field of ['issuer', 'issuerName', 'label', 'tag', 'proof']) assert.ok(!fits('profile', set(field, undefined)), field)
     assert.ok(!fits('profile', set('extra', 1)), 'nothing verifyNote does not take')
     assert.ok(!fits('profile', set('month', 202609)), 'the month a proof once showed, too')
     const bad: { [field: string]: unknown[] } = {
       issuer: [pointOf(shown.issuer).map((n) => n.toString(16).padStart(64, '0')).join(''), shown.issuer + '0', 'x', 7, pointOf(shown.issuer).map(String)],
       issuerName: ['', 'x'.repeat(257), 1],
       label: ['', 'x'.repeat(129), 1],
-      stamp: [shown.stamp.toUpperCase(), shown.stamp.slice(1), shown.stamp + '0', '0x' + shown.stamp.slice(2)],
+      tag: [shown.tag.toUpperCase(), shown.tag.slice(1), shown.tag + '0', '0x' + shown.tag.slice(2)],
       proof: [shown.proof.slice(1), shown.proof + 'A', shown.proof.replace(/^./, '+')],
     }
     for (const [field, values] of Object.entries(bad)) {

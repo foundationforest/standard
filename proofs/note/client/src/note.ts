@@ -10,8 +10,8 @@
 // point packed into 32 bytes, in base58; keys/'s pointOf gives x and y back.
 //
 // The person proves on the device, from the seed scalar and the note: "this issuer signed a note
-// for the note number my seed gives at it; my stamp for this label at it is this one; this
-// profile's key is the one my seed gives for this label". Public: the stamp, the profile's key,
+// for the note number my seed gives at it; my tag for this label at it is this one; this
+// profile's key is the one my seed gives for this label". Public: the tag, the profile's key,
 // the issuer's key, the label's scope and the issuer's name hash.
 
 import { derivePublicKey, signMessage, verifySignature } from '@zk-kit/eddsa-poseidon'
@@ -26,7 +26,7 @@ import {
   pointOf,
   profileScalarOf,
   publicKeyOf,
-  stampOf,
+  tagOf,
 } from '@foundationforest/keys'
 import { type SnarkjsProof, proofFromBytes } from './bytes.ts'
 import { fieldHash, fromBytes32, isFieldElement, nameHashOf, scopeOf } from './field.ts'
@@ -70,8 +70,8 @@ export type NoteSignature = { R8: [bigint, bigint]; S: bigint }
 export type SignedNote = Note & { issuer: IssuerKey; signature: NoteSignature; [field: string]: unknown }
 
 export type NoteProof = {
-  /** The stamp for this label at this issuer, `Poseidon(scope, issuer secret)`. */
-  stamp: bigint
+  /** The tag for this label at this issuer, `Poseidon(scope, issuer secret)`. */
+  tag: bigint
   /** The profile's key, which the seed gives for this label. */
   profile: Point
   /** The profile's address: its key packed, in base58. */
@@ -82,7 +82,7 @@ export type NoteProof = {
   scope: bigint
   /** The proof as snarkjs wrote it. */
   proof: SnarkjsProof
-  /** In the circuit's order: stamp, profile x, profile y, issuer x, issuer y, scope, name hash. */
+  /** In the circuit's order: tag, profile x, profile y, issuer x, issuer y, scope, name hash. */
   publicSignals: string[]
 }
 
@@ -203,7 +203,7 @@ export function noteInput(input: {
   const nameHash = nameHashOf(input.issuerName)
   const scope = scopeOf(input.label)
   const profile = publicKeyOf(profileScalarOf(seedScalar, input.label))
-  const stamp = stampOf(issuerScalar, input.label)
+  const tag = tagOf(issuerScalar, input.label)
   return {
     input: {
       seedScalar,
@@ -218,7 +218,7 @@ export function noteInput(input: {
       scope,
       issuerNameHash: nameHash,
     },
-    publicSignals: [stamp, profile[0], profile[1], issuerX, issuerY, scope, nameHash],
+    publicSignals: [tag, profile[0], profile[1], issuerX, issuerY, scope, nameHash],
   }
 }
 
@@ -234,16 +234,16 @@ export async function proveNote(input: Parameters<typeof noteInput>[0] & { artif
     proof: SnarkjsProof
     publicSignals: string[]
   }
-  // The circuit's order: stamp, profile x, profile y, issuer x, issuer y, scope, name hash.
+  // The circuit's order: tag, profile x, profile y, issuer x, issuer y, scope, name hash.
   // Checked so a change in the circuit or the setup files shows up here, and not as a proof every
   // reader refuses.
   if (publicSignals.length !== 7 || publicSignals.some((s, i) => BigInt(s) !== want[i])) {
     throw new Error('the proof carries other public signals than the ones asked for')
   }
-  const [stamp, px, py, ix, iy, scope, nameHash] = want as [bigint, bigint, bigint, bigint, bigint, bigint, bigint]
+  const [tag, px, py, ix, iy, scope, nameHash] = want as [bigint, bigint, bigint, bigint, bigint, bigint, bigint]
   const profile: Point = [px, py]
   return {
-    stamp,
+    tag,
     profile,
     address: addressOf(profile),
     issuer: addressOf([ix, iy]),
@@ -257,7 +257,7 @@ export async function proveNote(input: Parameters<typeof noteInput>[0] & { artif
 
 /**
  * Does this proof hold: did the issuer with this key and this name sign a note for whoever holds
- * the seed behind this profile's key, with this stamp for this label? Every public value must be a
+ * the seed behind this profile's key, with this tag for this label? Every public value must be a
  * field element, the scope and the name hash are derived from the label and the name, and the
  * proof is checked with the committed verification key. Which issuers to trust is the reader's
  * choice. Anything that is not a good proof for these inputs is false.
@@ -271,14 +271,14 @@ export async function verifyNote(input: {
   label: string
   /** The profile the proof is for: its address, or its key. */
   profile: string | Point
-  stamp: bigint | Uint8Array
+  tag: bigint | Uint8Array
 }): Promise<boolean> {
   try {
-    const stamp = typeof input.stamp === 'bigint' ? input.stamp : fromBytes32(input.stamp)
+    const tag = typeof input.tag === 'bigint' ? input.tag : fromBytes32(input.tag)
     const profile = typeof input.profile === 'string' ? pointOf(input.profile) : pointOf(addressOf(input.profile))
     const issuer = typeof input.issuer === 'string' ? pointOf(input.issuer) : pointOf(addressOf(input.issuer))
-    if (!isFieldElement(stamp)) return false
-    const values = [stamp, profile[0], profile[1], issuer[0], issuer[1], scopeOf(input.label), nameHashOf(input.issuerName)]
+    if (!isFieldElement(tag)) return false
+    const values = [tag, profile[0], profile[1], issuer[0], issuer[1], scopeOf(input.label), nameHashOf(input.issuerName)]
     const proof = input.proof instanceof Uint8Array ? proofFromBytes(input.proof) : input.proof
     return await groth16.verify(NOTE_KEY, values.map(String), proof)
   } catch {

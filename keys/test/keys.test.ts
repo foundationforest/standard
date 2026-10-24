@@ -47,7 +47,7 @@ import {
   seedScalar,
   serviceKey,
   signWithScalar,
-  stampOf,
+  tagOf,
   unpackPoint,
   unpackSignature,
   vaultKey,
@@ -445,9 +445,9 @@ test("the vault key is no profile's, and another seed gives another", async () =
   await assert.rejects(vaultKey(new Uint8Array(31)), /seed must be 32 bytes/)
 })
 
-// Issuer secrets, note numbers and stamps
+// Issuer secrets, note numbers and tags
 
-test('each issuer gives the pinned name hash, secret, note number and stamps, and gives them again', async () => {
+test('each issuer gives the pinned name hash, secret, note number and tags, and gives them again', async () => {
   for (const expected of vectors.issuers) {
     for (let round = 0; round < 2; round++) {
       const { name, nameHash, scalar, noteNumber } = await issuerSecret(seed, expected.name)
@@ -455,12 +455,12 @@ test('each issuer gives the pinned name hash, secret, note number and stamps, an
       assert.equal(nameHash.toString(), expected.nameHash)
       assert.equal(scalar.toString(), expected.scalar)
       assert.equal(noteNumber.toString(), expected.noteNumber)
-      for (const [label, stamp] of Object.entries(expected.stamps)) assert.equal(stampOf(scalar, label).toString(), stamp)
+      for (const [label, tag] of Object.entries(expected.tags)) assert.equal(tagOf(scalar, label).toString(), tag)
     }
   }
 })
 
-test('the issuer secret, the note number and a stamp, recomputed without the library', () => {
+test('the issuer secret, the note number and a tag, recomputed without the library', () => {
   for (const expected of vectors.issuers) {
     const nameHash = field('forest/v1/issuer/' + expected.name)
     assert.equal(nameHash.toString(), expected.nameHash)
@@ -469,18 +469,18 @@ test('the issuer secret, the note number and a stamp, recomputed without the lib
     assert.equal(scalar.toString(), expected.scalar)
     assert.equal(issuerScalarOf(S, expected.name), scalar)
     assert.equal(poseidon1([scalar]).toString(), expected.noteNumber)
-    for (const [label, stamp] of Object.entries(expected.stamps)) {
-      assert.equal(poseidon2([field('forest/v1/label/' + label), scalar]).toString(), stamp)
+    for (const [label, tag] of Object.entries(expected.tags)) {
+      assert.equal(poseidon2([field('forest/v1/label/' + label), scalar]).toString(), tag)
       assert.equal(scopeOf(label), field('forest/v1/label/' + label))
     }
   }
 })
 
-test('two issuers, two unrelated note numbers and stamps; and none of it is a key', async () => {
+test('two issuers, two unrelated note numbers and tags; and none of it is a key', async () => {
   const a = await issuerSecret(seed, issuerA.name)
   const b = await issuerSecret(seed, issuerB.name)
   assert.notEqual(a.noteNumber, b.noteNumber)
-  assert.notEqual(stampOf(a.scalar, 'tutoring/seller'), stampOf(b.scalar, 'tutoring/seller'))
+  assert.notEqual(tagOf(a.scalar, 'tutoring/seller'), tagOf(b.scalar, 'tutoring/seller'))
   const all = [issuerA.scalar, issuerB.scalar, seller.scalar, buyer.scalar, vectors.vault.scalar, vectors.seedScalar.scalar, seller.raw, buyer.raw]
   assert.equal(new Set(all).size, all.length)
 })
@@ -495,7 +495,7 @@ test('the name is used exactly, and must be text; the seed is 32 bytes', async (
     await assert.rejects(issuerSecret(seed, name as string), /issuer name must be text/, String(name))
   }
   await assert.rejects(issuerSecret(seed.subarray(1), issuerA.name), /seed must be 32 bytes/)
-  assert.throws(() => stampOf(BN254_R, 'tutoring/seller'), /field element/)
+  assert.throws(() => tagOf(BN254_R, 'tutoring/seller'), /field element/)
   assert.throws(() => issuerScalarOf(-1n, issuerA.name), /field element/)
 })
 

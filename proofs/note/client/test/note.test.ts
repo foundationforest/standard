@@ -12,7 +12,7 @@ import { signMessage } from '@zk-kit/eddsa-poseidon'
 import { poseidon2 } from 'poseidon-lite/poseidon2'
 import { poseidon3 } from 'poseidon-lite/poseidon3'
 
-import { issuerSecret, mainKey, pointOf, seedScalar, stampOf } from '@foundationforest/keys'
+import { issuerSecret, mainKey, pointOf, seedScalar, tagOf } from '@foundationforest/keys'
 import {
   BN254_R,
   NOTE_PREFIX,
@@ -130,23 +130,23 @@ test("fields an issuer adds beside the note pass through signing and JSON unchan
   assert.equal(noteSigned({ ...back, model: 'another' }), true, 'an added field is the issuer’s, not the note’s')
 })
 
-test("the circuit's input: keys/'s stamp and main key, and the public signals in order", async () => {
+test("the circuit's input: keys/'s tag and main key, and the public signals in order", async () => {
   const label = 'tutoring/seller'
   const { input, publicSignals } = noteInput({ seedScalar: S, issuerName: issuerA.name, note: signed, label })
   const main = await mainKey(seed, label)
   const a = await issuerSecret(seed, issuerA.name)
   assert.deepEqual(publicSignals, [
-    stampOf(a.scalar, label),
+    tagOf(a.scalar, label),
     main.publicKey[0],
     main.publicKey[1],
     ...pointOf(signed.issuer),
     scopeOf(label),
     nameHashOf(issuerA.name),
   ])
-  assert.equal(publicSignals[0].toString(), issuerA.stamps[label], "keys/'s pinned stamp")
+  assert.equal(publicSignals[0].toString(), issuerA.tags[label], "keys/'s pinned tag")
   assert.equal(input.seedScalar, BigInt(keysVectors.seedScalar.scalar))
   const other = noteInput({ seedScalar: S, issuerName: issuerA.name, note: signed, label: 'tutoring/buyer' }).publicSignals
-  assert.notEqual(other[0], publicSignals[0], 'another label, another stamp')
+  assert.notEqual(other[0], publicSignals[0], 'another label, another tag')
   assert.notEqual(other[1], publicSignals[1], 'and another key')
   assert.throws(() => noteInput({ seedScalar: BN254_R, issuerName: issuerA.name, note: signed, label }), /field element/)
   assert.throws(() => noteInput({ seedScalar: S, issuerName: issuerA.name, note: { ...signed, attributes: BN254_R }, label }), /field element/)
