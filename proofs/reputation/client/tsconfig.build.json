@@ -6,5 +6,5 @@
     "rootDir": "src",
     "outDir": "dist"
   },
-  "include": ["src", "../../../types/snarkjs.d.ts"]
+  "include": ["src", "../../snarkjs.d.ts"]
 }

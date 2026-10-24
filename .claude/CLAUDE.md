@@ -32,8 +32,8 @@ What an app that holds keys should know: `keys/README.md`. Never copy it here.
   `foundationforest/markets`'s.
 - The repo is `keys/`, `proofs/` (`stamp/`, `reputation/`), `records/`, `escrows/` (`solana/`),
   `README.md` and `LICENSE`, with `.github/`, `.claude/CLAUDE.md`, and the npm workspace's
-  `package.json`, `package-lock.json`, `tsconfig.base.json` and `types/`. The README is the
-  standard.
+  `package.json`, `package-lock.json`, `tsconfig.base.json` and `proofs/snarkjs.d.ts`. The README
+  is the standard.
 - Keep the docs true in the same pull request: a change that makes a README wrong fixes it. A README
   says only what the code does. Say where each thing runs. The escrow runs on Solana's devnet;
   everything else is version 1.
