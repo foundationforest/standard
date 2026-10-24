@@ -228,9 +228,9 @@ Everyone else asks a signer:
   of their own ([records](../records/README.md#inbox)).
 
 The signer decides by the person's permissions, a list kept in their vault
-([records](../records/README.md#permissions)), and asks the person about what no permission covers.
-Whatever it does, it signs with the profile's main key, so a host or a reader checks one key per
-profile.
+([records](../records/README.md#permissions)). It never acts on a request no entry covers without
+the person's yes; how it asks, a prompt or a message waiting in the inbox, is the app's. Whatever it
+does, it signs with the profile's main key, so a host or a reader checks one key per profile.
 
 ### What an app that holds keys should know
 
@@ -243,8 +243,8 @@ is what an app that holds the seed, a signer, should know, and what ours does:
 2. The signer asks for the person's device unlock whenever the person acts with the seed: to sign
    with a main key or the vault key, or to make a proof. What others ask, it does only within the
    person's permissions, and it asks the person about the rest.
-3. Nothing leaves a signer but signatures and proofs: no key is handed to an app, a server, an AI
-   or another person.
+3. No key ever leaves a signer, to an app, a server, an AI or another person. What leaves is
+   signatures, proofs, and what the person's permissions let others read.
 4. An AI app asks through its connection, and a person or a business by a message signed by its
    own profile's main key; the signer acts on either only by the person's permissions.
 5. Neither the AI app nor the connector ever receives the person's own profiles' addresses, keys

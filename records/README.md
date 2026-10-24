@@ -266,7 +266,9 @@ profile's main key.
   know whole, a field at any level, an action, a currency or a period among them: it asks the
   person, since what it skipped could be a limit (`knowsPermission`).
 - Limits belong to the who: each counts what that who asks for, on the profiles its entry covers.
-  Counting what was spent, and what a signer does when no entry covers a request, are the app's.
+  Counting what was spent is the app's.
+- A signer never acts on a request no entry covers without the person's yes; how it asks, a prompt
+  or a message waiting in the inbox, is the app's.
 
 ### Proofs
 
@@ -650,11 +652,11 @@ checks both with their proof checks.
   whether it reads senders' records for an inbox with a verifier's rule, and how long it keeps what
   it read; rate limits; logging; storage.
 - **An app, with the person:** the copies it keeps; which hosts, the vault's among them; the
-  person's permissions, counting what each who spent against its limits, and what a signer does when
-  no permission covers a request; whether to forward a message to email or a notification; dropping
-  a message that arrives twice; what it finds too big to read; and what asks for the person's device
-  unlock. The profile can change or delete anything it wrote, at will. What others wrote about it,
-  and payments, stay.
+  person's permissions, counting what each who spent against its limits, and how a signer asks the
+  person about a request no entry covers; whether to forward a message to email or a notification;
+  dropping a message that arrives twice; what it finds too big to read; and what asks for the
+  person's device unlock. The profile can change or delete anything it wrote, at will. What others
+  wrote about it, and payments, stay.
 - **An index chooses:** which hosts it reads, which verifiers and markets count, how much each
   review weighs, and which proofs it accepts.
 
