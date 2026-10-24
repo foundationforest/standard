@@ -17,7 +17,7 @@
     },
     "pay": {
       "type": "object",
-      "description": "Optional. The profile's payment addresses, one for each address type: keys/'s payAddresses(seed, label). Where payments to this profile go. A reader ignores a type it does not know.",
+      "description": "Optional. The profile's pay addresses, one for each address type: keys/'s payAddresses(seed, label). Where payments to this profile go. A reader ignores a type it does not know.",
       "required": ["solana", "evm"],
       "properties": {
         "solana": {
@@ -36,7 +36,7 @@
     },
     "inboxKey": {
       "type": "string",
-      "description": "Optional. The profile's inbox key, as an age post-quantum hybrid key (`age1pq1…`, mlkem768x25519, 1,959 characters): what senders seal messages to, and others seal private records to. Without it, nobody can seal anything to this profile.",
+      "description": "Optional. The profile's inbox key, as an age post-quantum hybrid key (`age1pq1…`, mlkem768x25519, 1,959 characters): what senders encrypt messages to, and others encrypt private records to. Without it, nobody can encrypt anything to this profile.",
       "pattern": "^age1pq1[02-9ac-hj-np-z]{1952}$"
     },
     "inbox": {
@@ -54,7 +54,7 @@
   "$defs": {
     "inbox": {
       "type": "object",
-      "description": "Optional. The profile's inbox: who may deliver a message to it on its hosts. Senders seal each message to inboxKey, so a profile with an inbox also gives inboxKey. Without this field there is no inbox, and hosts refuse deliveries. A host refuses deliveries to an inbox it cannot read: a field, a rule or a value it does not know.",
+      "description": "Optional. The profile's inbox: who may deliver a message to it on its hosts. Senders encrypt each message to inboxKey, so a profile with an inbox also gives inboxKey. Without this field there is no inbox, and hosts refuse deliveries. A host refuses deliveries to an inbox it cannot read: a field, a rule or a value it does not know.",
       "required": ["senders"],
       "additionalProperties": false,
       "properties": {

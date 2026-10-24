@@ -58,7 +58,7 @@ const profile = {
   market: 'tutoring',
   role: 'seller',
   pay: await payAddresses(seed, LABEL),
-  inboxKey: (await inboxKey(me.secret)).sealTo,
+  inboxKey: (await inboxKey(me.secret)).encryptTo,
   inbox: { senders: 'anyone', maxBytes: 16384 },
   proofs: [
     {

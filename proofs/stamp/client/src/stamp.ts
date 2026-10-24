@@ -4,7 +4,7 @@
 // of the person's secret for that verifier (`keys/`'s `verifierSecret`), so the verifier never
 // learns the secret, nor the seed it comes from. The facts are one field element, whatever the
 // verifier attests; the proof keeps them private. The verifier signs Poseidon(prefix, stamp number,
-// facts) with its EdDSA key on Baby Jubjub over Poseidon: zk-kit's signer, unchanged, which
+// facts) with its EdDSA key on Baby Jubjub over Poseidon: zk-kit's signMessage, unchanged, which
 // circomlib's EdDSAPoseidonVerifier checks inside the circuit. The prefix is fixed, so nothing the
 // verifier signs for another purpose can be turned into a stamp. Its key is an address, as every
 // key in the standard is: its point packed into 32 bytes, in base58; keys/'s pointOf gives x and y

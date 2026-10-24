@@ -88,14 +88,14 @@ describe('schemas', () => {
   })
 
   test('a profile’s inboxKey is its inbox key, an age post-quantum hybrid key', async () => {
-    const own = (await inboxKey(alice.secret)).sealTo
+    const own = (await inboxKey(alice.secret)).encryptTo
     assert.equal(example('profile').inboxKey, own, 'the example profile record’s')
     assert.ok(fits('profile', edit('profile', ['inboxKey'], undefined)), 'optional')
     for (const bad of ['age1pq1' + 'q'.repeat(60), alice.address, 'AGE1' + 'Q'.repeat(58), 'age1' + 'b'.repeat(58)]) assert.ok(!fits('profile', edit('profile', ['inboxKey'], bad)), bad)
   })
 
   test('a profile’s inbox: open to anyone or to a verifier’s stamp proofs, once, a size; nothing else', async () => {
-    const reader = (await inboxKey(new Uint8Array(32).fill(5))).sealTo
+    const reader = (await inboxKey(new Uint8Array(32).fill(5))).encryptTo
     const verifier = example('profile').proofs[at('stamp')].verifier
     for (const inbox of [{ senders: 'anyone' }, { senders: { verifier } }, { senders: 'anyone', once: true, maxBytes: 4000 }]) {
       assert.ok(fits('profile', edit('profile', ['inbox'], inbox)), JSON.stringify(inbox))

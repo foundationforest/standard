@@ -105,17 +105,17 @@ export function recordId(unsigned: UnsignedRecord): string {
   return hex.encode(sha256(signingInput(unsigned)))
 }
 
-export function signRecord(unsigned: UnsignedRecord, signer: Key): SignedRecord {
+export function signRecord(unsigned: UnsignedRecord, key: Key): SignedRecord {
   checkShape(unsigned, false)
-  return { ...unsigned, sig: signAs(signer, unsigned.profile, signingInput(unsigned)) }
+  return { ...unsigned, sig: signAs(key, unsigned.profile, signingInput(unsigned)) }
 }
 
-/** Sign `bytes` with `signer`, which must be the key `address` names. The signature in base64url. */
-export function signAs(signer: Key, address: string, bytes: Uint8Array): string {
+/** Sign `bytes` with `key`, which must be the key `address` names. The signature in base64url. */
+export function signAs(key: Key, address: string, bytes: Uint8Array): string {
   const named = publicKeyFromAddress(address)
-  const own = publicKeyOf(signer.scalar)
-  if (signer.address !== address || !named || named[0] !== own[0] || named[1] !== own[1]) fail('key', 'the key that signs is not the one named to sign')
-  return b64u.encode(packSignature(signBytes(signer.scalar, bytes)))
+  const own = publicKeyOf(key.scalar)
+  if (key.address !== address || !named || named[0] !== own[0] || named[1] !== own[1]) fail('key', 'the key that signs is not the one named to sign')
+  return b64u.encode(packSignature(signBytes(key.scalar, bytes)))
 }
 
 /**
@@ -163,8 +163,8 @@ export type HostsBody = {
 }
 
 export const MAX_HOSTS = 8
-/** What an envelope is sealed to: an age post-quantum hybrid key (mlkem768x25519), an inbox key's public half. */
-export const SEAL_TO = /^age1pq1[02-9ac-hj-np-z]{1952}$/
+/** What an envelope is encrypted to: an age post-quantum hybrid key (mlkem768x25519), an inbox key's public half. */
+export const ENCRYPT_TO = /^age1pq1[02-9ac-hj-np-z]{1952}$/
 
 /** A hosts record's body: 1 to MAX_HOSTS distinct origins, and no other field. Throws RecordError with code `hosts`. */
 export function checkHostsBody(body: Body): void {

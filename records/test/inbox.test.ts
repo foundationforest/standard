@@ -1,6 +1,6 @@
-// The inbox: a profile record declares one, anyone may deliver a sealed message to it on the
-// profile's hosts, sealed to its inbox key, and only the profile's main key pulls it. Each check a
-// host runs on a delivery is tried here, in the standard's order, and so is each way to pull what
+// The inbox: a profile record declares one, anyone may deliver an encrypted message to it on the
+// profile's hosts, encrypted to its inbox key, and only the profile's main key pulls it. Each check
+// a host runs on a delivery is tried here, in the standard's order, and so is each way to pull what
 // is not yours. The verifier rule runs proofs/stamp/client's own proof check on the example profile
 // record's stamp proof.
 
@@ -28,7 +28,7 @@ const STAMP_PROOF = EXAMPLE.proofs.find((p: { circuit: string }) => p.circuit ==
 /** That verifier, named by its key's address. */
 const VERIFIER: string = STAMP_PROOF.verifier
 
-const profileWith = (inbox?: Body | string, subject = 'maths') => ({ ...profileBody(subject), inboxKey: aliceInbox.sealTo, ...(inbox !== undefined && { inbox }) })
+const profileWith = (inbox?: Body | string, subject = 'maths') => ({ ...profileBody(subject), inboxKey: aliceInbox.encryptTo, ...(inbox !== undefined && { inbox }) })
 const ANYONE = { senders: 'anyone' }
 
 /** A host, at T0 unless given a clock, holding Alice's profile record with this inbox. */
@@ -45,7 +45,7 @@ const code = (c: string) => (err: unknown) => err instanceof RecordError && err.
 
 /** How a host reads a sender's records: from the host the message names, each checked. */
 const readSender = async (url: string, profile: string) => (await readAll(url, { profile })).records
-const bobProfile = { ...profileBody('maths'), role: 'buyer', inboxKey: bobInbox.sealTo, inbox: ANYONE }
+const bobProfile = { ...profileBody('maths'), role: 'buyer', inboxKey: bobInbox.encryptTo, inbox: ANYONE }
 const toBob = (sender: Sender, text = 'Tuesday works.') => message(sender, bob.address, { text }, T0, bobProfile)
 
 /** Alice's folder on her own host, with her profile record; Bob's inbox on another host, which reads senders' records. */
@@ -65,7 +65,7 @@ async function twoHosts(options: HostOptions = {}, aliceProfile: Body = profileW
 }
 
 describe('messages', () => {
-  test('a message is sealed to the profile record’s inbox key and signed by from; only that key opens it', async () => {
+  test('a message is encrypted to the profile record’s inbox key and signed by from; only that key opens it', async () => {
     const m = await stamp()
     assert.deepEqual(Object.keys(m.body), ['private'])
     assert.equal(m.from, bob.address)
@@ -77,12 +77,12 @@ describe('messages', () => {
   })
 
   test('a body is { private } and nothing else; the key must be from’s', async () => {
-    const sealed = await makePrivate({ text: 'hi' }, [aliceInbox.sealTo])
+    const encrypted = await makePrivate({ text: 'hi' }, [aliceInbox.encryptTo])
     assert.throws(() => signMessage(bob, alice.address, { text: 'hi' } as never, T0), /body/)
-    assert.throws(() => signMessage(bob, alice.address, { ...sealed, extra: 'x' } as never, T0), /body/)
-    assert.throws(() => signMessage(bob, 'not an address', sealed, T0), /to is not/)
-    assert.throws(() => signMessage({ ...bob, address: alice.address }, alice.address, sealed, T0), /not the one named to sign/)
-    const m = signMessage(bob, alice.address, sealed, T0)
+    assert.throws(() => signMessage(bob, alice.address, { ...encrypted, extra: 'x' } as never, T0), /body/)
+    assert.throws(() => signMessage(bob, 'not an address', encrypted, T0), /to is not/)
+    assert.throws(() => signMessage({ ...bob, address: alice.address }, alice.address, encrypted, T0), /not the one named to sign/)
+    const m = signMessage(bob, alice.address, encrypted, T0)
     for (const [text, code] of [
       [JSON.stringify(m, null, 1), 'canonical'],
       [canonical({ ...m, path: 'x' }), 'shape'],
@@ -97,29 +97,29 @@ describe('messages', () => {
     assert.equal(inboxOf({ private: 'abc' }), null, 'a private profile record declares nothing a host can read')
     assert.deepEqual(inboxOf(profileWith(ANYONE)), { senders: 'anyone' })
     assert.deepEqual(inboxOf(profileWith({ senders: { verifier: VERIFIER }, once: true, maxBytes: 4000 })), { senders: { verifier: VERIFIER }, once: true, maxBytes: 4000 })
-    for (const inbox of ['anyone', {}, { senders: 'everyone' }, { senders: { deposit: '5' } }, { senders: { verifier: 'x' } }, { senders: { verifier: pointOf(VERIFIER).map((n) => n.toString(16).padStart(64, '0')).join('') } }, { senders: { verifier: pointOf(VERIFIER).map(String) } }, { senders: { verifier: VERIFIER.slice(1) } }, { senders: { verifier: VERIFIER + '1' } }, { senders: { verifier: VERIFIER, label: 'x' } }, { ...ANYONE, once: false }, { ...ANYONE, maxBytes: -1 }, { ...ANYONE, deposit: '5' }, { ...ANYONE, readers: [aliceBuyerInbox.sealTo] }]) {
+    for (const inbox of ['anyone', {}, { senders: 'everyone' }, { senders: { deposit: '5' } }, { senders: { verifier: 'x' } }, { senders: { verifier: pointOf(VERIFIER).map((n) => n.toString(16).padStart(64, '0')).join('') } }, { senders: { verifier: pointOf(VERIFIER).map(String) } }, { senders: { verifier: VERIFIER.slice(1) } }, { senders: { verifier: VERIFIER + '1' } }, { senders: { verifier: VERIFIER, label: 'x' } }, { ...ANYONE, once: false }, { ...ANYONE, maxBytes: -1 }, { ...ANYONE, deposit: '5' }, { ...ANYONE, readers: [aliceBuyerInbox.encryptTo] }]) {
       assert.equal(inboxOf(profileWith(inbox as Body)), 'unsupported', JSON.stringify(inbox))
     }
   })
 })
 
-describe('sealing', () => {
-  test('a message is sealed to the inbox key the profile record gives, and nothing else', async () => {
-    assert.equal(inboxKeyOf(profileWith(ANYONE)), aliceInbox.sealTo)
+describe('encrypting', () => {
+  test('a message is encrypted to the inbox key the profile record gives, and nothing else', async () => {
+    assert.equal(inboxKeyOf(profileWith(ANYONE)), aliceInbox.encryptTo)
     const m = await message(bob, alice.address, { text: 'hi' }, T0, profileWith(ANYONE))
     assert.equal((await openMessage(m, aliceInbox.identity)).body.text, 'hi')
     await assert.rejects(openMessage(m, aliceBuyerInbox.identity))
   })
 
-  test('a sender seals to nobody when the profile record gives no inbox key, no inbox, or an inbox this code cannot read: a field it does not know could name more keys', async () => {
+  test('a sender encrypts to nobody when the profile record gives no inbox key, no inbox, or an inbox this code cannot read: a field it does not know could name more keys', async () => {
     const { inboxKey: _, ...noKey } = profileWith(ANYONE)
-    for (const c of [profileWith(), noKey, profileWith({ ...ANYONE, sealTo: 'x' }), profileWith({ ...ANYONE, readers: [aliceBuyerInbox.sealTo] })]) assert.throws(() => inboxKeyOf(c), code('no_inbox'), JSON.stringify(c.inbox))
+    for (const c of [profileWith(), noKey, profileWith({ ...ANYONE, encryptTo: 'x' }), profileWith({ ...ANYONE, readers: [aliceBuyerInbox.encryptTo] })]) assert.throws(() => inboxKeyOf(c), code('no_inbox'), JSON.stringify(c.inbox))
     await assert.rejects(message(bob, alice.address, { text: 'hi' }, T0, profileWith()), code('no_inbox'))
   })
 })
 
 describe('deliver and pull', () => {
-  test('a sender reads the profile record, seals to its inbox key, delivers to each host; the main key pulls from each and opens; no host reads it, and no record lists it', async () => {
+  test('a sender reads the profile record, encrypts to its inbox key, delivers to each host; the main key pulls from each and opens; no host reads it, and no record lists it', async () => {
     const h1 = await startHost({ now: () => T0 })
     const h2 = await startHost({ now: () => T0 })
     try {
@@ -185,7 +185,7 @@ describe('deliver and pull', () => {
   })
 
   test('a message from the profile it is to skips the inbox’s rules: its verifier rule, an inbox the host cannot read, once and maxBytes', async () => {
-    const toSelf = async (text: string) => signMessage(alice, alice.address, await makePrivate({ text }, [aliceInbox.sealTo]), T0)
+    const toSelf = async (text: string) => signMessage(alice, alice.address, await makePrivate({ text }, [aliceInbox.encryptTo]), T0)
     for (const inbox of [{ senders: { verifier: VERIFIER }, once: true, maxBytes: 100 }, { ...ANYONE, deposit: '5' }] as Body[]) {
       const h = await hostWith(inbox)
       try {
@@ -348,8 +348,8 @@ describe('deliver and pull', () => {
 
 describe('naming a host', () => {
   test('a message may name host, one of from’s hosts, where an inbox with a verifier’s rule reads from’s profile record; no other key signs, and no field names one', async () => {
-    const sealed = await makePrivate({ text: 'hi' }, [bobInbox.sealTo])
-    const own = signMessage({ from: alice, host: 'https://host-a.example' }, bob.address, sealed, T0)
+    const encrypted = await makePrivate({ text: 'hi' }, [bobInbox.encryptTo])
+    const own = signMessage({ from: alice, host: 'https://host-a.example' }, bob.address, encrypted, T0)
     assert.deepEqual([own.from, own.host], [alice.address, 'https://host-a.example'])
     assert.ok(checkMessage(readMessage(encodeMessage(own))))
     const { host: _h, ...noHost } = own
@@ -360,7 +360,7 @@ describe('naming a host', () => {
       ['host over http', { ...own, host: 'http://a.example' }, 'shape'],
     ] as const) assert.throws(() => readMessage(canonical(value)), code(c), why)
     // A message signed by a key that is not from's: refused [signature].
-    const unsigned = { v: 1 as const, to: bob.address, from: alice.address, time: T0, body: sealed }
+    const unsigned = { v: 1 as const, to: bob.address, from: alice.address, time: T0, body: encrypted }
     assert.equal(checkMessage(readMessage(canonical({ ...unsigned, sig: signAs(stranger, stranger.address, messageSigningInput(unsigned)) }))), false)
   })
 
@@ -415,7 +415,7 @@ describe('pulling', () => {
   test('a pull answers that profile’s messages after the cursor, in arrival order, paged as the host chooses', async () => {
     const h = await hostWith(ANYONE, { maxPageRecords: 2 })
     try {
-      const buyerProfile = { ...profileWith(ANYONE, 'algebra'), inboxKey: aliceBuyerInbox.sealTo }
+      const buyerProfile = { ...profileWith(ANYONE, 'algebra'), inboxKey: aliceBuyerInbox.encryptTo }
       await publish([h.url], [ownerRecord(aliceBuyer, 'profile', buyerProfile, T0)])
       const toBuyer = await message(bob, aliceBuyer.address, { text: 'for the buyer' }, T0, buyerProfile)
       const texts = ['one', 'two', 'three', 'four', 'five']

@@ -29,14 +29,14 @@ export type MainKey = {
 }
 
 /**
- * The key that opens envelopes sealed to a profile: age's post-quantum hybrid identity, ML-KEM-768
- * with X25519 (mlkem768x25519).
+ * The key that opens envelopes encrypted to a profile: age's post-quantum hybrid identity,
+ * ML-KEM-768 with X25519 (mlkem768x25519).
  */
 export type InboxKey = {
-  /** age's hybrid identity, `AGE-SECRET-KEY-PQ-1…`: it opens what is sealed to this profile. */
+  /** age's hybrid identity, `AGE-SECRET-KEY-PQ-1…`: it opens what is encrypted to this profile. */
   identity: string
-  /** What others seal to, `age1pq1…`. The profile's address does not give it. */
-  sealTo: string
+  /** What others encrypt to, `age1pq1…`. The profile's address does not give it. */
+  encryptTo: string
 }
 
 /** A profile's scalar from the seed scalar and its label. The stamp circuit computes the same. */
@@ -61,11 +61,11 @@ export async function mainKey(seed: Uint8Array, label: string): Promise<MainKey>
 /**
  * An inbox key, from a profile's 32-byte secret or the vault's. The 32 mixed bytes are used
  * unchanged as age's hybrid identity (its seed, which age expands into the ML-KEM-768 and X25519
- * keys); age's own library computes what others seal to (identityToRecipient).
+ * keys); age's own library computes what others encrypt to (identityToRecipient).
  */
 export async function inboxKey(secret: Uint8Array): Promise<InboxKey> {
   assertBytes('secret', secret, 32)
   const bytes = await hkdf(secret, INFO.inbox)
   const identity = bech32.encodeFromBytes('AGE-SECRET-KEY-PQ-', bytes).toUpperCase()
-  return { identity, sealTo: await identityToRecipient(identity) }
+  return { identity, encryptTo: await identityToRecipient(identity) }
 }

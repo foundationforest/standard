@@ -1,9 +1,9 @@
 // The spec's test vectors. The keys are keys/'s: its test seed (bytes 00 01 … 1f), and its
-// tutoring/seller and tutoring/buyer profiles and their inbox keys, pinned in keys/test/vectors.json
-// and not repeated here. EdDSA-Poseidon here is deterministic, and the sealed body is pinned as made,
-// so these never change unless the protocol does.
-// `node test/vectors.ts` prints them; vectors.test.ts checks them against test/vectors.json, each
-// with a second implementation.
+// tutoring/seller and tutoring/buyer profiles and their inbox keys, pinned in
+// keys/test/vectors.json and not repeated here. EdDSA-Poseidon here is deterministic, and the
+// encrypted body is pinned as made, so these never change unless the protocol does. `node
+// test/vectors.ts` prints them; vectors.test.ts checks them against test/vectors.json, each with a
+// second implementation.
 
 import { pathToFileURL } from 'node:url'
 import { sha256 } from '@noble/hashes/sha2.js'
@@ -17,10 +17,10 @@ import { KEYS, alice, aliceBuyer } from './fixtures.ts'
 const TIME = 1_790_000_000_000 // 2026-09-21T13:33:20Z
 
 /**
- * The message vector's body: { text: 'Is Tuesday at six free?' } sealed to tutoring/seller's inbox
- * key, made once with makePrivate. age's sealing is random, so it is pinned as made.
+ * The message vector's body: { text: 'Is Tuesday at six free?' } encrypted to tutoring/seller's
+ * inbox key, made once with makePrivate. age's encryption is random, so it is pinned as made.
  */
-const SEALED = [
+const ENCRYPTED = [
   'YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0-IG1sa2VtNzY4eDI1NTE5IEI3dTNhYkpyVUdxRlYwc291dzZjclZ3TGFGTFpDbD',
   'Vyc0Y2MzNnZWpNYll0ZStHUU5kbElpOC9rcVBGc3ZLUEVwNHlLcGFHSzJrWlROS00weS8xY25RanNBYzgzYVdvL1FncVhB',
   'T09yaGpYNHN2aUhOME5RMTIwOUpVeU45WWdCZHVhRTBJZUF4TWdEcVlvdWk4MHd3NDJhSXNUVTVNRXFaTDFFbGhzNFUwcT',
@@ -81,13 +81,13 @@ export async function vectors() {
   const offer = { about: 'One hour of maths, online.' }
   const letters = { sha256: hex.encode(sha256(LETTERS)), mimeType: 'text/plain', size: LETTERS.length }
   return {
-    about: "Forest records vectors. The profile is keys/'s tutoring/seller profile, from its test seed, and the profile record's inboxKey field is that profile's inbox key, pinned in keys/test/vectors.json. Every signature is EdDSA-Poseidon on Baby Jubjub over SHA-256 of the signed bytes, shifted right one byte, by the main key of the profile it is for. The message is from keys/'s tutoring/buyer profile, from the same seed, to tutoring/seller; its body is sealed to tutoring/seller's inbox key, made once and pinned as made, since age's sealing is random. The pull is tutoring/seller's, for everything. blobPut is tutoring/seller's main key putting the 26 letters a to z, as text/plain, in its folder; blobDelete is its main key deleting them.",
+    about: "Forest records vectors. The profile is keys/'s tutoring/seller profile, from its test seed, and the profile record's inboxKey field is that profile's inbox key, pinned in keys/test/vectors.json. Every signature is EdDSA-Poseidon on Baby Jubjub over SHA-256 of the signed bytes, shifted right one byte, by the main key of the profile it is for. The message is from keys/'s tutoring/buyer profile, from the same seed, to tutoring/seller; its body is encrypted to tutoring/seller's inbox key, made once and pinned as made, since age's encryption is random. The pull is tutoring/seller's, for everything. blobPut is tutoring/seller's main key putting the 26 letters a to z, as text/plain, in its folder; blobDelete is its main key deleting them.",
     profile: alice.address,
     hosts: describe(hostsRecord(alice, [hostA, 'https://host-b.example'], TIME)),
-    profileRecord: describe(ownerRecord(alice, 'profile', { market: 'tutoring', role: 'seller', inboxKey: inbox.sealTo, inbox: { senders: 'anyone' } }, TIME)),
+    profileRecord: describe(ownerRecord(alice, 'profile', { market: 'tutoring', role: 'seller', inboxKey: inbox.encryptTo, inbox: { senders: 'anyone' } }, TIME)),
     offer: describe(ownerRecord(alice, 'offer/maths', offer, TIME)),
     deleted: describe(ownerRecord(alice, 'offer/maths', null, TIME + 120_000)),
-    message: describeMessage(signMessage(aliceBuyer, alice.address, { private: SEALED }, TIME + 180_000)),
+    message: describeMessage(signMessage(aliceBuyer, alice.address, { private: ENCRYPTED }, TIME + 180_000)),
     pull: describePull(pullRequest(alice, 0, TIME + 240_000)),
     blobPut: describeBlob(blobRequest(alice, { action: 'put', ...letters }, TIME + 480_000)),
     blobDelete: describeBlob(blobRequest(alice, { action: 'delete', sha256: letters.sha256 }, TIME + 540_000)),

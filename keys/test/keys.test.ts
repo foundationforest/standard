@@ -324,17 +324,17 @@ test("the inbox key, recomputed without the library: HKDF twice, ML-KEM-768 with
   const privateKey = mix(mix(seed, seller.info), INFO.inbox)
   assert.equal(hex.encode(privateKey), seller.inbox.privateKey)
   assert.equal(bech32.encodeFromBytes('AGE-SECRET-KEY-PQ-', privateKey).toUpperCase(), seller.inbox.identity)
-  // What others seal to is the hybrid public key the 32 bytes expand to, in bech32 under age1pq, with
-  // no length limit: it is about 1,960 characters.
+  // What others encrypt to is the hybrid public key the 32 bytes expand to, in bech32 under age1pq,
+  // with no length limit: it is about 1,960 characters.
   const publicKey = MLKEM768X25519.getPublicKey(privateKey)
-  assert.equal(bech32.encode('age1pq', bech32.toWords(publicKey), false), seller.inbox.sealTo)
+  assert.equal(bech32.encode('age1pq', bech32.toWords(publicKey), false), seller.inbox.encryptTo)
   assert.match(seller.inbox.identity, /^AGE-SECRET-KEY-PQ-1[0-9A-Z]+$/)
-  assert.match(seller.inbox.sealTo, /^age1pq1[0-9a-z]+$/)
+  assert.match(seller.inbox.encryptTo, /^age1pq1[0-9a-z]+$/)
 })
 
-test('age seals to the inbox key, and only that profile opens it', async () => {
+test('age encrypts to the inbox key, and only that profile opens it', async () => {
   const encrypter = new Encrypter()
-  encrypter.addRecipient(seller.inbox.sealTo)
+  encrypter.addRecipient(seller.inbox.encryptTo)
   const encrypted = await encrypter.encrypt('only for the seller profile')
   const opener = new Decrypter()
   opener.addIdentity(seller.inbox.identity)

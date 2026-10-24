@@ -1,7 +1,7 @@
 // @foundationforest/records: the core every reader and every app that writes needs, and nothing
 // that needs a server, a database or an encryption library. The reference host is
-// @foundationforest/records/host; private records, sealing and opening messages, and the vault are
-// @foundationforest/records/private; a fetch that reaches only public addresses is
+// @foundationforest/records/host; private records, encrypting and opening messages, and the vault
+// are @foundationforest/records/private; a fetch that reaches only public addresses is
 // @foundationforest/records/public. The rules are README.md's.
 
 export * from './keys.ts'

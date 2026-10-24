@@ -54,8 +54,8 @@ The table uses words from the rest of the standard:
 | the seed | HKDF, `forest/v1/seed` | the seed scalar, the one number the proofs take |
 | the seed scalar | Poseidon, the profile prefix and the label's scope | a main key: one profile's name and signature |
 | the seed | HKDF, `forest/v1/profile/<label>` | that profile's secret, which its inbox key comes from |
-| a profile's secret | HKDF, `forest/v1/inbox` | that profile's inbox key, which opens what is sealed to it |
-| the seed | HKDF, `forest/v1/pay/<type>/<label>` | that profile's payment key for one address type, `solana` or `evm`, and its address |
+| a profile's secret | HKDF, `forest/v1/inbox` | that profile's inbox key, which opens what is encrypted to it |
+| the seed | HKDF, `forest/v1/pay/<type>/<label>` | that profile's pay key for one address type, `solana` or `evm`, and its address |
 | the seed scalar | Poseidon, the verifier prefix and the verifier's name hash | the person's secret for one verifier, which their stamp number and tags come from |
 | the seed scalar | Poseidon, the vault prefix | the vault key: the main key of the person's vault |
 | the seed | HKDF, `forest/v1/vault` | the vault's secret, which its inbox key comes from |
@@ -128,7 +128,7 @@ A main key signs with EdDSA-Poseidon on Baby Jubjub, the signature circomlib's
 
 ### Inbox keys
 
-A profile's inbox key opens what others seal to it: the messages in its inbox and its private
+A profile's inbox key opens what others encrypt to it: the messages in its inbox and its private
 records ([records](../records/README.md)).
 
 - It is mixed from the profile's secret, `hkdf(seed, "forest/v1/profile/<label>")`, by
@@ -136,15 +136,15 @@ records ([records](../records/README.md)).
   gives no other profile, and no inbox key gives the seed.
 - Its 32 bytes are used unchanged as an identity for age, a widely used encryption format, of
   age's post-quantum hybrid kind, `mlkem768x25519`: two keys at once, ML-KEM-768 and X25519, so
-  what is sealed to it stays closed unless both are broken. It is written `AGE-SECRET-KEY-PQ-1`,
+  what is encrypted to it stays closed unless both are broken. It is written `AGE-SECRET-KEY-PQ-1`,
   then bech32 of the bytes, in upper case; age expands it into the two private keys.
-- Others seal to its public half, `sealTo`, `age1pq1…`, which age computes from the identity. It
-  is about 1,960 characters long. The profile publishes it; the address does not give it.
-- The main key cannot do this job: EdDSA only signs, so nothing is ever sealed to a main key.
+- Others encrypt to its public half, `encryptTo`, `age1pq1…`, which age computes from the identity.
+  It is about 1,960 characters long. The profile publishes it; the address does not give it.
+- The main key cannot do this job: EdDSA only signs, so nothing is ever encrypted to a main key.
 
-### Payment keys
+### Pay keys
 
-A profile's payment keys hold and move its money: one for each address type, `solana` and `evm`.
+A profile's pay keys hold and move its money: one for each address type, `solana` and `evm`.
 A main key, on Baby Jubjub, is no chain's account, so each profile has its main key and a payment
 key of each type.
 
@@ -190,7 +190,7 @@ profiles whose tags are the person's ([proofs](../proofs/README.md)).
 
 ### The vault key
 
-The vault is one folder on a host, sealed to the vault's own inbox key, holding what the seed
+The vault is one folder on a host, encrypted to the vault's own inbox key, holding what the seed
 cannot recompute: which profiles exist, stamps, the person's permissions, and settings
 ([records](../records/README.md#the-vault)). Its keys are mixed from the seed, so a new device
 finds the vault with the seed and one host's address.
@@ -268,8 +268,8 @@ mixes from the seed scalar is not.
 | `seedScalar(seed)` | The seed scalar |
 | `mainKey(seed, label)` | The main key: `label`, `scope`, `scalar`, `publicKey`, `address`, and the profile's `secret` |
 | `profileScalarOf(seedScalar, label)` | A main key's scalar, from the seed scalar |
-| `inboxKey(secret)` | The inbox key, from a profile's `secret` or the vault's: age's `identity`, and `sealTo`, what others seal to |
-| `payKey(seed, label, type)`, `payAddresses(seed, label)`, `PAY_TYPES` | A payment key of one type: `label`, `type`, `privateKey`, `publicKey`, `address`; the profile's address of each type; and the types |
+| `inboxKey(secret)` | The inbox key, from a profile's `secret` or the vault's: age's `identity`, and `encryptTo`, what others encrypt to |
+| `payKey(seed, label, type)`, `payAddresses(seed, label)`, `PAY_TYPES` | A pay key of one type: `label`, `type`, `privateKey`, `publicKey`, `address`; the profile's address of each type; and the types |
 | `evmAddressOf(publicKey)`, `isEvmAddress(text)` | A secp256k1 key's EVM address, in EIP-55; and whether text is one, in that spelling |
 | `verifierSecret(seed, name)` | The verifier's `name`, its `nameHash`, the person's `scalar` for it, and the `stampNumber` |
 | `verifierScalarOf(seedScalar, name)`, `tagOf(verifierScalar, label)` | The verifier secret from the seed scalar, and a tag |
@@ -296,22 +296,22 @@ Node 22.18 or later runs the TypeScript directly.
 
 `test/vectors.json` pins, for the seed `00 01 … 1f`: its words; its seed scalar; the three prefixes;
 the main keys for `tutoring/seller` and `tutoring/buyer`, each with its secret and inbox key, and
-their payment keys of both types; for two verifiers, `issuer-a.example` and `issuer-b.example`, the
-name hash, the person's secret, the stamp number and a tag for each label; the vault key, with its
-secret and inbox key; one signature by the `tutoring/seller` main key; and a service key, from 32
-bytes of `0x2a`. `npm test` checks each value and recomputes it without the library: HKDF and keccak
-from `@noble/hashes`, the seed scalar step by step without zk-kit, Baby Jubjub's points and
-signatures from zk-kit (`@zk-kit/baby-jubjub`, `@zk-kit/eddsa-poseidon`), the address packed by
-hand, the signature's equation, ed25519 from `@noble/curves`, secp256k1 from Node's own crypto with
-keccak256 and EIP-55 by hand, the hybrid key others seal to from `@noble/post-quantum`, age's bech32
-by hand, and an envelope sealed and opened through age. The stamp proof's tests check the circuit
+their pay keys of both types; for two verifiers, `issuer-a.example` and `issuer-b.example`, the name
+hash, the person's secret, the stamp number and a tag for each label; the vault key, with its secret
+and inbox key; one signature by the `tutoring/seller` main key; and a service key, from 32 bytes of
+`0x2a`. `npm test` checks each value and recomputes it without the library: HKDF and keccak from
+`@noble/hashes`, the seed scalar step by step without zk-kit, Baby Jubjub's points and signatures
+from zk-kit (`@zk-kit/baby-jubjub`, `@zk-kit/eddsa-poseidon`), the address packed by hand, the
+signature's equation, ed25519 from `@noble/curves`, secp256k1 from Node's own crypto with keccak256
+and EIP-55 by hand, the hybrid key others encrypt to from `@noble/post-quantum`, age's bech32 by
+hand, and an envelope encrypted and opened through age. The stamp proof's tests check the circuit
 derives the same main key and tag ([proofs/stamp](../proofs/stamp/README.md)).
 
 ## Promises
 
 - **The same seed gives the same keys,** in any app, on any device, every time.
 - **Nothing ties two profiles together.** Each label is its own mix: one profile's main key,
-  address, payment key or inbox key says nothing about another's.
+  address, pay key or inbox key says nothing about another's.
 - **Nothing ties two verifiers together.** Each verifier is its own mix, so the same person's stamp
   numbers for two verifiers are unrelated, and two verifiers comparing what they hold cannot match
   them.
@@ -351,7 +351,7 @@ derives the same main key and tag ([proofs/stamp](../proofs/stamp/README.md)).
 **What if the wrong app gets the seed?**
 Then that app has everything the seed opens, and nothing takes it back:
 - every profile: a main key is mixed from the seed and a label, and labels are public, so it can
-  mix the main key of every profile and sign as it, and every payment key and move its money;
+  mix the main key of every profile and sign as it, and every pay key and move its money;
 - every inbox key, so it can open the person's private records and messages;
 - the seed scalar, so it can make stamp proofs for the person's profiles with their stamps, and
   reputation proofs from their scores;
@@ -360,12 +360,12 @@ Then that app has everything the seed opens, and nothing takes it back:
 There is no rotation, so the only way out is a new seed and new profiles, moving the money first if
 there is still time. An app that holds the seed is trusted with all of that.
 
-**Why is a main key on Baby Jubjub, with payment keys beside it?**
+**Why is a main key on Baby Jubjub, with pay keys beside it?**
 So a proof can derive it. The stamp proof shows that a profile's key comes from the same seed as
 a stamp a verifier signed, and the reputation proof that a profile's key comes from the same seed as
 the profiles it counts: both work the key out from the seed scalar inside the proof. Baby Jubjub
 is the curve a proof does that on cheaply; ed25519 inside a proof costs far more. Solana's accounts
-are ed25519 and EVM chains' secp256k1, so the money sits under payment keys of their own, one for
+are ed25519 and EVM chains' secp256k1, so the money sits under pay keys of their own, one for
 each address type, mixed from the seed apart from the main key.
 
 **Why are bytes signed as their SHA-256, and not their Poseidon?**
@@ -379,11 +379,11 @@ record's signature, so nothing asks for Poseidon there.
 device, from the seed: it is a standard, built into every browser's Web Crypto, and well studied.
 Inside a zero-knowledge proof, SHA-256 costs far more than Poseidon. So what a proof must work out
 (the verifier secret, the stamp number, a tag, a main key) is Poseidon of the seed scalar, and what
-no proof needs (the profiles' secrets, the payment keys, the vault's secret) is HKDF of the seed.
+no proof needs (the profiles' secrets, the pay keys, the vault's secret) is HKDF of the seed.
 Neither is ours; both are used unchanged.
 
 **What if a main key leaks?**
 Whoever has it can sign records as the profile. It cannot reach the seed, the seed scalar, another
-profile, the profile's payment key or its inbox key. There is no rotation, because the name is the
+profile, the profile's pay key or its inbox key. There is no rotation, because the name is the
 key, and nothing in Forest marks the profile as leaked: the person stops using it. The same seed
 and label always give the leaked key, so with this seed, that label is gone for good.

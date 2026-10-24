@@ -146,11 +146,11 @@ describe('linking two profiles of one person', () => {
     const [inbox0, inbox1] = await Promise.all([inboxKey(alice.secret), inboxKey(aliceBuyer.secret)])
     const one = [
       hostsRecord(alice, ['https://big-host.example'], T0),
-      ownerRecord(alice, 'profile', { ...profileBody('statistics'), inboxKey: inbox0.sealTo }, T0),
+      ownerRecord(alice, 'profile', { ...profileBody('statistics'), inboxKey: inbox0.encryptTo }, T0),
     ]
     const two = [
       hostsRecord(aliceBuyer, ['https://big-host.example'], T0),
-      ownerRecord(aliceBuyer, 'profile', { ...profileBody('geometry'), role: 'buyer', inboxKey: inbox1.sealTo }, T0),
+      ownerRecord(aliceBuyer, 'profile', { ...profileBody('geometry'), role: 'buyer', inboxKey: inbox1.encryptTo }, T0),
     ]
     const tokens = (records: object[]) => {
       const out = new Set<string>()

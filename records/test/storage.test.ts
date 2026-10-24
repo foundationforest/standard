@@ -42,10 +42,10 @@ const deleteAs = (key: typeof alice, bytes: Uint8Array, time = T0) => blobReques
 const putBoth = async (url: string) => [...(await putBlob([url], putAs(alice, photo, 'image/jpeg'), photo)), ...(await putBlob([url], putAs(bob, clip, 'video/mp4'), clip))].map((o) => o.ok)
 
 const [aliceInbox, bobInbox] = await Promise.all([inboxKey(alice.secret), inboxKey(bob.secret)])
-const aliceProfile: Body = { ...profileBody('calculus'), inboxKey: aliceInbox.sealTo, inbox: { senders: 'anyone' } }
+const aliceProfile: Body = { ...profileBody('calculus'), inboxKey: aliceInbox.encryptTo, inbox: { senders: 'anyone' } }
 /** Alice's offer pointing at her photo, by a field of its own: where a record points at a blob is the market's. */
 const photoOffer = ownerRecord(alice, 'offer/photo', { ...offerBody('5'), files: [blobNameOf(photo, 'image/jpeg')] }, T0)
-const bobProfile: Body = { ...profileBody('chemistry'), role: 'buyer', inboxKey: bobInbox.sealTo, inbox: { senders: 'anyone' } }
+const bobProfile: Body = { ...profileBody('chemistry'), role: 'buyer', inboxKey: bobInbox.encryptTo, inbox: { senders: 'anyone' } }
 const withClip = (about: string): Body => ({ ...offerBody(about), files: [blobNameOf(clip, 'video/mp4')] })
 
 /** Every page of the feed, as [cursor, ids]: what a crawler sees, number for number. */

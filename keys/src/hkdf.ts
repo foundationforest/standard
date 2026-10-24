@@ -13,7 +13,7 @@ export const INFO = {
   inbox: 'forest/v1/inbox',
   /**
    * A profile's pay key for one address type, mixed from the seed. The label is used exactly as
-   * given. For solana this is, byte for byte, the string the standard mixed its one payment key
+   * given. For solana this is, byte for byte, the string the standard mixed its one pay key
    * with before evm was added, so every Solana address stays as it was.
    */
   pay: (type: 'solana' | 'evm', label: string) => `forest/v1/pay/${type}/${label}`,

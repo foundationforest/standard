@@ -156,7 +156,7 @@ test('a public value outside the field, or a proof changed, fails', async () => 
 })
 
 test("a verifier may sign with keys/'s signWithScalar: circomlib's EdDSAPoseidonVerifier, inside the proof, takes it", async () => {
-  // An independent check of keys/'s signer: the circuit's EdDSAPoseidonVerifier accepts it.
+  // An independent check of keys/'s signing: the circuit's EdDSAPoseidonVerifier accepts it.
   const scalar = keyScalar(fieldHash('example verifier scalar'))
   const key = publicKeyOf(scalar)
   const unsigned = { stampNumber: stamp.stampNumber, facts: stamp.facts }

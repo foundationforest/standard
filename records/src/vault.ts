@@ -1,7 +1,7 @@
 // The vault: what a new device needs and the seed alone cannot give back, kept on hosts in a folder
 // of the person's own (README.md, The vault). The folder's main key is keys/'s vault key, mixed from
 // the seed, so a new device finds the vault with the seed and one host's address. The folder holds
-// its hosts record and one private record at `vault`, sealed to the vault's own inbox key alone
+// its hosts record and one private record at `vault`, encrypted to the vault's own inbox key alone
 // (vaultRecord and openVault in private.ts). Inside: the labels of the person's profiles and where
 // each lives, their verifiers' stamps, the person's permissions, and apps' settings.
 //

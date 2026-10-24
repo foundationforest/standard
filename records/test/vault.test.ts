@@ -1,5 +1,5 @@
-// The vault: what a person's devices keep, sealed on a host in a folder of its own; and a new device
-// that has nothing but the seed and one host's address getting all of it back.
+// The vault: what a person's devices keep, encrypted on a host in a folder of its own; and a new
+// device that has nothing but the seed and one host's address getting all of it back.
 
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
@@ -28,10 +28,10 @@ describe('the vault', () => {
   test('its folder is the vault key’s, no profile’s; only the vault’s inbox key opens it', async () => {
     assert.equal(vault.address, KEYS.vault.address)
     for (const p of KEYS.mainKeys) assert.notEqual(vault.address, p.address)
-    const record = await vaultRecord(vault, vaultInbox.sealTo, { settings: { theme: 'dark' } }, T0)
+    const record = await vaultRecord(vault, vaultInbox.encryptTo, { settings: { theme: 'dark' } }, T0)
     assert.equal(record.path, VAULT_PATH)
     assert.equal(record.profile, vault.address)
-    assert.equal(readerCount(record.body as { private: string }), 1, 'sealed to the vault alone')
+    assert.equal(readerCount(record.body as { private: string }), 1, 'encrypted to the vault alone')
     assert.deepEqual(await openVault(record.body!, vaultInbox.identity), { settings: { theme: 'dark' } })
     const seller = await inboxKey((await mainKey(SEED, 'tutoring/seller')).secret)
     await assert.rejects(openVault(record.body!, seller.identity), 'a profile’s inbox key opens nothing in it')
@@ -39,12 +39,12 @@ describe('the vault', () => {
 
   test('every field may be missing, and an app keeps the fields it does not know, at the top and in settings', async () => {
     const contents = { tickets: [{ for: 'later' }], settings: { theme: 'dark', anotherApp: { a: 1 } } }
-    const record = await vaultRecord(vault, vaultInbox.sealTo, contents as Vault, T0)
+    const record = await vaultRecord(vault, vaultInbox.encryptTo, contents as Vault, T0)
     assert.deepEqual(await openVault(record.body!, vaultInbox.identity), contents)
     checkVault({})
   })
 
-  test('a bad entry is refused, before it is sealed and after it is opened', async () => {
+  test('a bad entry is refused, before it is encrypted and after it is opened', async () => {
     checkVault({ profiles: [{ label: 'tutoring/seller', hosts: ['https://a.example'] }], stamps: [{ verifier: 'issuer-a.example', stamp }], settings: {} })
     const bad: [string, unknown][] = [
       ['an array', []],
@@ -59,7 +59,7 @@ describe('the vault', () => {
       ['settings is an object', { settings: [] }],
     ]
     for (const [why, v] of bad) assert.throws(() => checkVault(v), code('vault'), why)
-    await assert.rejects(vaultRecord(vault, vaultInbox.sealTo, { settings: [] } as never, T0), code('vault'))
+    await assert.rejects(vaultRecord(vault, vaultInbox.encryptTo, { settings: [] } as never, T0), code('vault'))
   })
 
   test('a full restore: a new device with only the seed and one host gets every profile, stamp and setting back', async () => {
@@ -70,7 +70,7 @@ describe('the vault', () => {
       const seller = await mainKey(SEED, 'tutoring/seller')
       const buyer = await mainKey(SEED, 'tutoring/buyer')
       const sellerInbox = await inboxKey(seller.secret)
-      const sellerProfile = { ...profileBody('maths'), inboxKey: sellerInbox.sealTo, inbox: { senders: 'anyone' } }
+      const sellerProfile = { ...profileBody('maths'), inboxKey: sellerInbox.encryptTo, inbox: { senders: 'anyone' } }
       await publish([a.url], [hostsRecord(seller, [a.url], T0), ownerRecord(seller, 'profile', sellerProfile, T0), ownerRecord(seller, 'offer/maths', offerBody('30'), T0)])
       await publish([b.url], [hostsRecord(buyer, [b.url], T0), ownerRecord(buyer, 'profile', { ...profileBody('maths'), role: 'buyer' }, T0)])
 
@@ -81,7 +81,7 @@ describe('the vault', () => {
         bookmarks: [{ url: 'https://shop.example', since: T0 }],
         settings: { indexes: ['https://index.example'], theme: 'dark' },
       }
-      await publish([c.url], [hostsRecord(vault, [c.url], T0), await vaultRecord(vault, vaultInbox.sealTo, kept, T0)])
+      await publish([c.url], [hostsRecord(vault, [c.url], T0), await vaultRecord(vault, vaultInbox.encryptTo, kept, T0)])
       const disk = c.dump().join('\n')
       for (const secret of ['tutoring/seller', 'issuer-a.example', 'index.example', stamp.stampNumber]) assert.ok(!disk.includes(secret), `the host holds no ${secret}`)
 
@@ -102,7 +102,7 @@ describe('the vault', () => {
 
       // A later write, from either device, after the one read: the newer vault counts.
       const later = { ...found.vault, settings: { ...found.vault.settings, theme: 'light' } }
-      await publish([c.url], [await vaultRecord(v2, vaultInbox.sealTo, later, Math.max(now(), found.time + 1))])
+      await publish([c.url], [await vaultRecord(v2, vaultInbox.encryptTo, later, Math.max(now(), found.time + 1))])
       assert.deepEqual((await readVault([c.url], { address: v2.address, identity: vaultInbox.identity }, now()))?.vault.settings, { indexes: ['https://index.example'], theme: 'light' })
 
       // A host with no vault: nothing found.
@@ -119,7 +119,7 @@ describe('the vault', () => {
     try {
       const reader = { address: vault.address, identity: vaultInbox.identity }
       await assert.rejects(readVault([up.url, down.url], reader, now()), code('host'))
-      await publish([up.url], [hostsRecord(vault, [up.url], T0), await vaultRecord(vault, vaultInbox.sealTo, { settings: { theme: 'dark' } }, T0)])
+      await publish([up.url], [hostsRecord(vault, [up.url], T0), await vaultRecord(vault, vaultInbox.encryptTo, { settings: { theme: 'dark' } }, T0)])
       const found = await readVault([up.url, down.url], reader, now())
       assert.deepEqual(found?.vault.settings, { theme: 'dark' })
       assert.deepEqual(found?.failed.map((f) => f.host), [down.url])
@@ -160,7 +160,7 @@ describe('permissions', () => {
   test('a connection and a profile, each with limits, go in the vault and come back as they were', async () => {
     const contents = vaultOf(assistant, partner)
     checkVault(contents)
-    const record = await vaultRecord(vault, vaultInbox.sealTo, contents, T0)
+    const record = await vaultRecord(vault, vaultInbox.encryptTo, contents, T0)
     assert.deepEqual(await openVault(record.body!, vaultInbox.identity), contents)
     assert.deepEqual([knowsPermission(assistant), knowsPermission(partner)], [true, true])
     // The same connection id through two connectors is two connections.
@@ -218,7 +218,7 @@ describe('permissions', () => {
     for (const [why, p] of unknown) {
       const contents = vaultOf(p)
       checkVault(contents)
-      const back = await openVault((await vaultRecord(vault, vaultInbox.sealTo, contents, T0)).body!, vaultInbox.identity)
+      const back = await openVault((await vaultRecord(vault, vaultInbox.encryptTo, contents, T0)).body!, vaultInbox.identity)
       assert.deepEqual(back, contents, `${why}: kept`)
       assert.equal(knowsPermission(p as Permission), false, why)
     }

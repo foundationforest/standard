@@ -8,10 +8,10 @@ Part of Forest's standard: [the top README](../README.md). The profile record's 
 How a Forest profile says things, and how anyone reads them. Everything a profile says (its profile
 record, which shows it; its offers; its reviews of others) is a record: a small signed JSON value at
 a path in the profile's folder. A profile record shows the profile's market and role, and may carry
-its payment addresses, its inbox and its proofs. Hosts keep folders and serve them to anyone. Any
+its pay addresses, its inbox and its proofs. Hosts keep folders and serve them to anyone. Any
 app, index (a service that reads records and scores profiles) or AI reads them and checks every
 signature itself, so a host can withhold a record but never forge one. Beside each folder a host
-keeps the profile's inbox, where anyone may leave a sealed message, and its blobs: photos and
+keeps the profile's inbox, where anyone may leave an encrypted message, and its blobs: photos and
 videos the folder's main key puts there.
 
 This README is the standard. The library in `src/` does every MUST in it, and `test/` checks it;
@@ -26,15 +26,15 @@ A profile is one main key, mixed from the person's seed (32 bytes every key come
 `<market>/<role>`, such as `tutoring/seller` ([keys/](../keys/README.md)). The main key is a key on
 Baby Jubjub, the curve the proofs work on, and its address is its name on the network: the public
 key packed into 32 bytes, in base58. Its inbox key, mixed from the profile's secret, opens what is
-sealed to it, and its payment keys, one for each address type, give its Solana and EVM addresses.
-Nothing else is needed: no account, no sign-up, no directory.
+encrypted to it, and its pay keys, one for each address type, give its Solana and EVM addresses.
+Nothing else is needed: no sign-up, no directory.
 
 Its folder is everything signed for it, one current record per path:
 
 | Path | What it holds |
 |---|---|
 | `hosts` | where the folder lives |
-| `profile` | the profile record: market, role, payment addresses, inbox, proofs |
+| `profile` | the profile record: market, role, pay addresses, inbox, proofs |
 
 - Every record in it is signed by the profile's main key, and by no other key.
 - `hosts` is the control path, the one record every host reads. Every other path is content.
@@ -92,7 +92,7 @@ signers, the devices that hold the seed, which signs with the main key
 ([keys](../keys/README.md#signers)). The signed bytes of each begin with `0xff`, then each with its
 own text (`forest/v1/record\n`, `forest/v1/message\n`, `forest/v1/pull\n`, `forest/v1/blob\n`), so
 no signature is ever two of them, nor an index's (`forest/v1/reputation\n`,
-[proofs/reputation](../proofs/reputation/README.md)). Payments are the payment keys', on their
+[proofs/reputation](../proofs/reputation/README.md)). Payments are the pay keys', on their
 chains.
 
 **Which record counts.** A reader's view of a profile is a pure function of the records it holds
@@ -110,26 +110,26 @@ Beyond step 1, readers check no clock. An app sets `time = max(now, newest known
 
 A private record's body is `{ "private": <base64url of an age file> }` and nothing else. The age
 file is the envelope: the canonical text of an object under a random key made for that record,
-and that key sealed once to each reader.
+and that key encrypted once to each reader.
 
-- The owner seals it to its own inbox key, to open its copy; the profile record's `inboxKey` is
+- The owner encrypts it to its own inbox key, to open its copy; the profile record's `inboxKey` is
   its public half.
-- It may be sealed to other people's inbox keys besides the owner's, each the `inboxKey` of a
+- It may be encrypted to other people's inbox keys besides the owner's, each the `inboxKey` of a
   profile of theirs: that is how a person lets someone read. A signer does it by the person's
   permissions (The vault, Permissions).
-- Each key an envelope is sealed to is an age post-quantum hybrid key (`age1pq1…`, stanza
-  `mlkem768x25519`); an app MUST NOT seal an envelope to any other kind, since one classic key
+- Each key an envelope is encrypted to is an age post-quantum hybrid key (`age1pq1…`, stanza
+  `mlkem768x25519`); an app MUST NOT encrypt an envelope to any other kind, since one classic key
   among them would let a quantum computer open it for all. Each adds about 2 KB.
 - A host checks a private record like any other and cannot open it. Anyone can see that it
-  exists, its path, time and size, and how many keys it is sealed to, never which: each key's
+  exists, its path, time and size, and how many keys it is encrypted to, never which: each key's
   stanza holds only its encapsulation, and no piece of a reader's key is in the file.
 - Removing someone stops new versions only: the owner writes the next version for the rest, and
   they keep what they already opened (Limits).
 
 ### Inbox
 
-A message is a sealed envelope anyone delivers to a profile's hosts, and only its main key pulls.
-It is not a record: it has no path and no versions, and it is in no one's folder.
+A message is an encrypted envelope anyone delivers to a profile's hosts, and only its main key
+pulls. It is not a record: it has no path and no versions, and it is in no one's folder.
 
 **Declaring it.** The profile record's optional `inbox` field:
 
@@ -139,7 +139,7 @@ It is not a record: it has no path and no versions, and it is in no one's folder
 ```
 
 - No `inbox` field means no inbox: hosts refuse deliveries. A profile with an inbox gives
-  `inboxKey`, since senders seal to it.
+  `inboxKey`, since senders encrypt to it.
 - `senders` is `"anyone"`, or `{ "verifier" }`: the sender's profile record carries a stamp proof
   from that verifier (Proofs) that holds for the sender's key, under any label. The verifier is
   named by its key's address, as the proof shows it. Today the only requirement is a stamp from a
@@ -149,7 +149,7 @@ It is not a record: it has no path and no versions, and it is in no one's folder
 - A host refuses deliveries to an inbox it cannot read: a field, a rule or a value it does not
   know. So a new rule can be added without an old host taking what it should refuse. A
   sender's app does not deliver to one either: a field it does not know could name more keys to
-  seal to.
+  encrypt to.
 
 **Messages.**
 
@@ -161,8 +161,8 @@ It is not a record: it has no path and no versions, and it is in no one's folder
 - `v` is 1. No other field is allowed, in the message or in its body.
 - `to` is the profile it is to. `from` is the sender's key: a main key, or any other key on Baby
   Jubjub.
-- `body` is one envelope sealed to `to`'s inbox key. The object sealed in it is any JSON object the
-  two apps agree on; the request kinds our MCP server sends and reads are its own, in
+- `body` is one envelope encrypted to `to`'s inbox key. The object encrypted in it is any JSON
+  object the two apps agree on; the request kinds our MCP server sends and reads are its own, in
   [foundationforest/services](https://github.com/foundationforest/services/tree/main/mcp).
 - `host` is one of `from`'s hosts, an origin as its hosts record writes it: where a receiving host
   reads `from`'s records. It MUST be there for an inbox with a verifier's rule; otherwise it MAY be.
@@ -171,8 +171,8 @@ It is not a record: it has no path and no versions, and it is in no one's folder
 - The id is lowercase hex of SHA-256(signing input), as a record's.
 
 **Deliver.** The sender reads the profile record of the profile it writes to, for its `inbox` and
-`inboxKey`, and its hosts record. It seals the body, signs, and posts the message to each host the
-hosts record names (`POST /v1/inbox`). Anyone may deliver, with no login; each host checks the
+`inboxKey`, and its hosts record. It encrypts the body, signs, and posts the message to each host
+the hosts record names (`POST /v1/inbox`). Anyone may deliver, with no login; each host checks the
 message on its own (Hosts).
 
 **Pull.** A profile asks each of its hosts for what arrived after a cursor, the number a host
@@ -186,14 +186,14 @@ gives the last message on a page, so the next ask starts after it (`POST /v1/inb
   UTF-8(canonical text without `sig`).
 - `after` is the `forest-cursor` of the last page; 0 for everything.
 - `time` is within 600,000 ms of the host's clock, either way.
-- It is signed because each body is sealed but `from`, `to` and the time are not: unsigned,
+- It is signed because each body is encrypted but `from`, `to` and the time are not: unsigned,
   anyone could list who wrote to whom. It is a POST and not a GET because hosting platforms log
   URLs, and a signed URL would be a log of pulls.
 
 ### The vault
 
-The vault is one folder on a host, sealed to the vault's own inbox key, holding what the seed cannot
-recompute: which profiles exist and where each lives, their verifiers' stamps (the stamp each
+The vault is one folder on a host, encrypted to the vault's own inbox key, holding what the seed
+cannot recompute: which profiles exist and where each lives, their verifiers' stamps (the stamp each
 verifier signed to the seed), the person's permissions, and settings. Its main key is the vault key,
 mixed from the seed ([keys](../keys/README.md#the-vault-key)), so a new device finds it with the
 seed and one host's address; like any folder, its hosts record may name more than one host.
@@ -206,7 +206,7 @@ seed and one host's address; like any folder, its hosts record may name more tha
 ```
 
 - The folder holds its hosts record and one private record at `vault`, its body the object above,
-  sealed to the vault's own inbox key alone. It has no profile record and no inbox.
+  encrypted to the vault's own inbox key alone. It has no profile record and no inbox.
 - Every field may be missing. An app keeps every field it does not know, at the top and inside
   `settings`, so two apps share one vault.
 - `profiles`: each label once, with the hosts its folder lived on when written; the signed hosts
@@ -259,9 +259,9 @@ profile's main key.
   $100 a day across all" is two limits. An entry whose `can` has `pay` gives at least one: no limit
   never means unlimited.
 - `until`: when the entry ends, if it does.
-- `read` and sharing: for a profile, the signer seals the private records the entry covers to that
-  profile's inbox key, from their next version on (Private records), and removing the entry stops
-  new versions only. For a connection, the signer opens records when it asks.
+- `read` and sharing: for a profile, the signer encrypts the private records the entry covers to
+  that profile's inbox key, from their next version on (Private records), and removing the entry
+  stops new versions only. For a connection, the signer opens records when it asks.
 - An app keeps every field and value it does not know, and a signer acts on no entry it does not
   know whole, a field at any level, an action, a currency or a period among them: it asks the
   person, since what it skipped could be a limit (`knowsPermission`).
@@ -328,7 +328,7 @@ what field, is the market's.
 ### Hosts
 
 A host is an address that answers eight requests, the host socket, however many machines stand
-behind it. It has no keys, no accounts and no login: a record's signature is all it asks for, and
+behind it. It has no keys, no sign-up and no login: a record's signature is all it asks for, and
 a pull's and a blob request's are the main key's of the profile they are for. It is open: it takes
 signed records for any profile and serves them to anyone; it takes messages for any profile whose
 profile record on it declares an inbox, and serves them only to that profile's main key; it takes
@@ -456,8 +456,8 @@ it to look now. An app sends the hosts record to the indexes the person chose.
   publish, a delivery and a pull go through the caller's own `fetch` if given, and refuse a host
   that redirects with `redirect: 'error'`. No server, database or encryption library is in it. The
   keys themselves, `mainKey` among them, are keys/'s.
-- `@foundationforest/records/private`: `makePrivate`, `openPrivate`, `readerCount`; `message` (seal
-  to a profile record's inbox key, and sign) and `openMessage`; the vault (`vaultRecord`,
+- `@foundationforest/records/private`: `makePrivate`, `openPrivate`, `readerCount`; `message`
+  (encrypt to a profile record's inbox key, and sign) and `openMessage`; the vault (`vaultRecord`,
   `openVault`, `readVault`, `checkVault`, `VAULT_PATH`) and its permissions' words (`ACTIONS`,
   `CURRENCIES`, `PERIODS`, `knowsPermission`). The inbox key itself is keys/'s `inboxKey`, and the
   vault's keys/'s `vaultKey`.
@@ -579,11 +579,11 @@ in `keys/test/vectors.json`, and checked there. It also holds a message from key
 `tutoring/buyer` profile to `tutoring/seller`, with its wire text, signing input and id; a pull
 request by `tutoring/seller`; and two blob requests, each with its wire text and signing input:
 `blobPut`, the main key putting the 26 letters `a` to `z` as `text/plain`, and `blobDelete`, the
-main key deleting them. The message's body is sealed to the inbox key of the profile it is to; age's
-sealing is random, so the sealed body is pinned as it was made. `test/vectors.test.ts` recomputes
-the records, the message, the pull and the blob requests, checks each with a second SHA-256
-(node:crypto) and a second EdDSA-Poseidon (zk-kit's, from the address and the 64 bytes on its own),
-and opens the message with the pinned inbox key it was sealed to. The profile is
+main key deleting them. The message's body is encrypted to the inbox key of the profile it is to;
+age's encryption is random, so the encrypted body is pinned as it was made. `test/vectors.test.ts`
+recomputes the records, the message, the pull and the blob requests, checks each with a second
+SHA-256 (node:crypto) and a second EdDSA-Poseidon (zk-kit's, from the address and the 64 bytes on
+its own), and opens the message with the pinned inbox key it was encrypted to. The profile is
 `9bpPbLYCPwNWq9BZqnJr3EqRNqymFZ4g58Zk9K86azDC`; every signing input begins `ff 66 6f 72 65 73 74 2f`
 (`0xff`, then `forest/`).
 
@@ -603,7 +603,7 @@ checks both with their proof checks.
   message, a pull or a blob request for a profile only when its main key signed it.
 - **A person can always move.** A profile's name is its key, not a host's address. A host never
   refuses a newer hosts record by its own choice but for its size.
-- **A host holds nothing secret of the people it serves.** No keys, no accounts, no login, and it
+- **A host holds nothing secret of the people it serves.** No keys, no sign-up, no login, and it
   cannot open a private record.
 - **Only a profile's main key can pull its inbox.**
 
@@ -625,8 +625,8 @@ checks both with their proof checks.
   bytes are the type their put names; a record that points at them says what it means them to be.
 - **A delete is a request.** What was public may already have been copied: whoever fetched the
   bytes has them.
-- **No forward secrecy.** An inbox key that leaks opens every message and private record sealed to
-  it, from any host or copy that still holds them.
+- **No forward secrecy.** An inbox key that leaks opens every message and private record encrypted
+  to it, from any host or copy that still holds them.
 - **Sharing reaches forward only.** Removing someone stops the versions written after; what they
   already opened, and an older version a host or a copy still holds, they can still open.
 - **An envelope holds about 30 keys on the reference host.** Each key adds about 2 KB, and the
@@ -677,9 +677,9 @@ main key puts and deletes its blobs, and a host reads no record's body to find t
 folder may put is the host's choice.
 
 **Why is a message not a record in the sender's folder?**
-Anyone reads a folder. A message there would need a field naming who it is to so hosts could
-route it, and that field would make every inquiry a public fact: who asked whom, and when. A
-message goes to the hosts of the profile it is to instead, sealed, and only that profile pulls it.
+Anyone reads a folder. A message there would need a field naming who it is to so hosts could route
+it, and that field would make every inquiry a public fact: who asked whom, and when. A message goes
+to the hosts of the profile it is to instead, encrypted, and only that profile pulls it.
 
 **How do I hear that a message arrived?**
 By default the app checks your inboxes itself, pulling from your hosts. A push service would see
@@ -693,9 +693,9 @@ added without breaking anything.
 **Why are the permissions in the vault, not a public record?**
 A public list would tell anyone which apps and which people act for a person, and since when, and
 one connection or one person listed under two profiles would link them. Nobody but the person's
-signers needs to read it: they alone act on it, and every host and reader checks only the main
-key's signature. In the vault it is sealed to the vault's own inbox key, which only the seed gives,
-and a new device gets it back with the rest.
+signers needs to read it: they alone act on it, and every host and reader checks only the main key's
+signature. In the vault it is encrypted to the vault's own inbox key, which only the seed gives, and
+a new device gets it back with the rest.
 
 **Why is the vault a folder of its own?**
 A new device has only the seed and a host's address. A record inside a profile's folder could be

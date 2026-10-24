@@ -35,7 +35,7 @@ test('the vectors are what this implementation computes', async () => {
 
 test("the profile is keys/'s pinned one, and its profile record gives its pinned inbox key", () => {
   assert.equal(pinned.profile, KEYS.mainKeys[0].address)
-  assert.equal(decodeRecord(pinned.profileRecord.wire).record.body!.inboxKey, KEYS.mainKeys[0].inbox.sealTo)
+  assert.equal(decodeRecord(pinned.profileRecord.wire).record.body!.inboxKey, KEYS.mainKeys[0].inbox.encryptTo)
 })
 
 test('each record checks with a second EdDSA-Poseidon and a second SHA-256', () => {

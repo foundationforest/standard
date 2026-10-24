@@ -18,12 +18,12 @@ import { Clock, startHost } from './helpers.ts'
 
 const bytesOf = (seed: number, length = 2000) => Uint8Array.from({ length }, (_, i) => (i * 7 + seed * 13) & 255)
 const nameOf = (bytes: Uint8Array) => blobNameOf(bytes, 'image/jpeg').sha256
-const putOf = (signer: Key, bytes: Uint8Array, type = 'image/jpeg', time = T0) => blobRequest(signer, { action: 'put', ...blobNameOf(bytes, type) }, time) as SignedBlobRequest & { action: 'put' }
-const deleteOf = (signer: Key, bytes: Uint8Array, time = T0) => blobRequest(signer, { action: 'delete', sha256: nameOf(bytes) }, time) as SignedBlobRequest & { action: 'delete' }
+const putOf = (key: Key, bytes: Uint8Array, type = 'image/jpeg', time = T0) => blobRequest(key, { action: 'put', ...blobNameOf(bytes, type) }, time) as SignedBlobRequest & { action: 'put' }
+const deleteOf = (key: Key, bytes: Uint8Array, time = T0) => blobRequest(key, { action: 'delete', sha256: nameOf(bytes) }, time) as SignedBlobRequest & { action: 'delete' }
 /** One host's answer, as its error code, or its message, or ok. */
 const answer = (outcomes: Array<{ ok: boolean; error?: string; message?: string }>) => outcomes[0]!.error ?? outcomes[0]!.message ?? 'ok'
-const put = async (h: Host, signer: Key, bytes: Uint8Array, type = 'image/jpeg') => answer(await putBlob([h.url], putOf(signer, bytes, type), bytes))
-const del = async (h: Host, signer: Key, bytes: Uint8Array) => answer(await deleteBlob([h.url], deleteOf(signer, bytes)))
+const put = async (h: Host, key: Key, bytes: Uint8Array, type = 'image/jpeg') => answer(await putBlob([h.url], putOf(key, bytes, type), bytes))
+const del = async (h: Host, key: Key, bytes: Uint8Array) => answer(await deleteBlob([h.url], deleteOf(key, bytes)))
 /** A request naming Alice's folder, signed by `key`, which is not her main key. */
 const posing = <R extends SignedBlobRequest>(request: R, key = stranger): R => {
   const { sig: _sig, ...unsigned } = { ...request, profile: alice.address }

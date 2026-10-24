@@ -1,5 +1,5 @@
 // A host: plain HTTP, a SQLite file per folder, and a blob store (storage.ts). It holds no keys,
-// has no accounts and asks for no login: a record's signature is its only credential, and a pull's
+// has no sign-up and asks for no login: a record's signature is its only credential, and a pull's
 // and a blob request's are the main key's of the profile they are for. It is open: it takes signed
 // records for any profile and serves them to anyone; it takes messages for any profile whose
 // profile record here declares an inbox, and serves them only to that profile's main key; it takes

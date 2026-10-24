@@ -1,6 +1,6 @@
-// A message: a sealed envelope any key delivers to a profile's inbox, on that profile's hosts. It is
-// not a record: no path, no versions, no newest-wins, and a host serves it only to the profile it is
-// to.
+// A message: an encrypted envelope any key delivers to a profile's inbox, on that profile's hosts.
+// It is not a record: no path, no versions, no newest-wins, and a host serves it only to the
+// profile it is to.
 //
 //   { v: 1, to, from, time, body: { private }, host?, sig }
 //
@@ -13,21 +13,21 @@
 // deletes them, signed by the folder's main key, over 0xff || "forest/v1/blob\n" || JCS(the rest).
 // Each signed text differs from a record's, so no signature is ever two of them.
 //
-// Nothing here seals or opens a body: that needs age, and is message() and openMessage() in
+// Nothing here encrypts or opens a body: that needs age, and is message() and openMessage() in
 // private.ts.
 
 import { sha256 } from '@noble/hashes/sha2.js'
 import { b64u, concat, hex, utf8 } from './bytes.ts'
 import { type Json, canonical, parseCanonical } from './canonical.ts'
 import { type Key, publicKeyFromAddress } from './keys.ts'
-import { type Body, MAX_FUTURE_MS, RecordError, SEAL_TO, checkSignature, normalizeOrigin, signAs } from './record.ts'
+import { type Body, ENCRYPT_TO, MAX_FUTURE_MS, RecordError, checkSignature, normalizeOrigin, signAs } from './record.ts'
 
 export const MESSAGE_PREFIX = concat(Uint8Array.of(0xff), utf8('forest/v1/message\n'))
 export const PULL_PREFIX = concat(Uint8Array.of(0xff), utf8('forest/v1/pull\n'))
 export const BLOB_PREFIX = concat(Uint8Array.of(0xff), utf8('forest/v1/blob\n'))
 
-/** A sealed body: an age file, base64url, that only the inbox key of the profile it is to opens. */
-export type SealedBody = { private: string }
+/** An encrypted body: an age file, base64url, that only the inbox key of the profile it is to opens. */
+export type EncryptedBody = { private: string }
 export type UnsignedMessage = {
   v: 1
   /** The address of the profile it is to. */
@@ -35,7 +35,7 @@ export type UnsignedMessage = {
   /** The sender's address: its main key, or any key. */
   from: string
   time: number
-  body: SealedBody
+  body: EncryptedBody
   /** One of from's hosts, where a receiving host reads from's profile record: needed only for an inbox with a verifier's rule. */
   host?: string
 }
@@ -121,12 +121,12 @@ export type HostSender = { from: Key; host: string }
 /** Who signs a message: the sender's own key (a main key, or any key), with one of its hosts or not. */
 export type Sender = Key | HostSender
 
-/** Sign a sealed body to `to`. Sealing it is message() in private.ts. */
-export function signMessage(sender: Sender, to: string, body: SealedBody, time: number): SignedMessage {
-  const signer = 'scalar' in sender ? sender : sender.from
+/** Sign an encrypted body to `to`. Encrypting it is message() in private.ts. */
+export function signMessage(sender: Sender, to: string, body: EncryptedBody, time: number): SignedMessage {
+  const key = 'scalar' in sender ? sender : sender.from
   const unsigned: UnsignedMessage = 'scalar' in sender ? { v: 1, to, from: sender.address, time, body } : { v: 1, to, from: sender.from.address, time, body, host: sender.host }
   checkMessageShape(unsigned, false)
-  return { ...unsigned, sig: signAs(signer, unsigned.from, messageSigningInput(unsigned)) }
+  return { ...unsigned, sig: signAs(key, unsigned.from, messageSigningInput(unsigned)) }
 }
 
 /** A message's wire form: exactly its canonical text. */
@@ -310,14 +310,14 @@ export function inboxOf(body: Body | null | undefined): Inbox | null | 'unsuppor
 }
 
 /**
- * The key a message to a profile is sealed to, from its profile record's body: its inbox key. Throws
- * when the profile record gives no inbox key, or declares no inbox this code can read: a field it
- * does not know could name more keys to seal to.
+ * The key a message to a profile is encrypted to, from its profile record's body: its inbox key.
+ * Throws when the profile record gives no inbox key, or declares no inbox this code can read: a
+ * field it does not know could name more keys to encrypt to.
  */
 export function inboxKeyOf(profileBody: Body | null | undefined): string {
   const inbox = inboxOf(profileBody)
   if (inbox === null || inbox === 'unsupported') fail('no_inbox', 'the profile record declares no inbox this code can read')
   const inboxKey = profileBody!.inboxKey
-  if (typeof inboxKey !== 'string' || !SEAL_TO.test(inboxKey)) fail('no_inbox', 'the profile record gives no inbox key')
+  if (typeof inboxKey !== 'string' || !ENCRYPT_TO.test(inboxKey)) fail('no_inbox', 'the profile record gives no inbox key')
   return inboxKey
 }
