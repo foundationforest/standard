@@ -96,8 +96,8 @@ describe('messages', () => {
     assert.equal(inboxOf(profileWith()), null)
     assert.equal(inboxOf({ private: 'abc' }), null, 'a private profile record declares nothing a host can read')
     assert.deepEqual(inboxOf(profileWith(ANYONE)), { senders: 'anyone' })
-    assert.deepEqual(inboxOf(profileWith({ senders: { verifier: VERIFIER }, once: true, maxBytes: 4000 })), { senders: { verifier: VERIFIER }, once: true, maxBytes: 4000 })
-    for (const inbox of ['anyone', {}, { senders: 'everyone' }, { senders: { deposit: '5' } }, { senders: { verifier: 'x' } }, { senders: { verifier: pointOf(VERIFIER).map((n) => n.toString(16).padStart(64, '0')).join('') } }, { senders: { verifier: pointOf(VERIFIER).map(String) } }, { senders: { verifier: VERIFIER.slice(1) } }, { senders: { verifier: VERIFIER + '1' } }, { senders: { verifier: VERIFIER, label: 'x' } }, { ...ANYONE, once: false }, { ...ANYONE, maxBytes: -1 }, { ...ANYONE, deposit: '5' }, { ...ANYONE, readers: [aliceBuyerInbox.encryptTo] }]) {
+    assert.deepEqual(inboxOf(profileWith({ senders: { verifier: VERIFIER }, maxBytes: 4000 })), { senders: { verifier: VERIFIER }, maxBytes: 4000 })
+    for (const inbox of ['anyone', {}, { senders: 'everyone' }, { senders: { deposit: '5' } }, { senders: { verifier: 'x' } }, { senders: { verifier: pointOf(VERIFIER).map((n) => n.toString(16).padStart(64, '0')).join('') } }, { senders: { verifier: pointOf(VERIFIER).map(String) } }, { senders: { verifier: VERIFIER.slice(1) } }, { senders: { verifier: VERIFIER + '1' } }, { senders: { verifier: VERIFIER, label: 'x' } }, { ...ANYONE, once: true }, { ...ANYONE, maxBytes: -1 }, { ...ANYONE, deposit: '5' }, { ...ANYONE, readers: [aliceBuyerInbox.encryptTo] }]) {
       assert.equal(inboxOf(profileWith(inbox as Body)), 'unsupported', JSON.stringify(inbox))
     }
   })
@@ -184,9 +184,9 @@ describe('deliver and pull', () => {
     }
   })
 
-  test('a message from the profile it is to skips the inbox’s rules: its verifier rule, an inbox the host cannot read, once and maxBytes', async () => {
+  test('a message from the profile it is to skips the inbox’s rules: its verifier rule, an inbox the host cannot read, and maxBytes', async () => {
     const toSelf = async (text: string) => signMessage(alice, alice.address, await makePrivate({ text }, [aliceInbox.encryptTo]), T0)
-    for (const inbox of [{ senders: { verifier: VERIFIER }, once: true, maxBytes: 100 }, { ...ANYONE, deposit: '5' }] as Body[]) {
+    for (const inbox of [{ senders: { verifier: VERIFIER }, maxBytes: 100 }, { ...ANYONE, deposit: '5' }] as Body[]) {
       const h = await hostWith(inbox)
       try {
         assert.deepEqual(await errors(h, [await toSelf('From my phone'), await toSelf('From my laptop')]), ['ok', 'ok'], JSON.stringify(inbox))
@@ -268,35 +268,13 @@ describe('deliver and pull', () => {
   })
 
   test('an inbox the host cannot read is refused as rule_unsupported, never taken as open to anyone', async () => {
-    for (const inbox of [{ senders: { deposit: '5' } }, { ...ANYONE, deposit: '5' }, { ...ANYONE, once: 'yes' }, 'anyone']) {
+    for (const inbox of [{ senders: { deposit: '5' } }, { ...ANYONE, deposit: '5' }, { ...ANYONE, once: true }, 'anyone']) {
       const h = await hostWith(inbox as Body, { readSender, checkStamp: async () => true })
       try {
         assert.deepEqual(await errors(h, [await stamp()]), ['rule_unsupported'], JSON.stringify(inbox))
       } finally {
         await h.close()
       }
-    }
-  })
-
-  test('once: a second message from the same sender is refused, ever; a refused first does not use it up; the pair is kept only while the inbox says once', async () => {
-    const clock = new Clock(T0)
-    const h = await startHost({ now: clock.now })
-    try {
-      await publish([h.url], [ownerRecord(alice, 'profile', profileWith({ ...ANYONE, once: true, maxBytes: 4000 }), T0)])
-      assert.deepEqual(await errors(h, [await stamp(bob, 'x'.repeat(3000))]), ['too_big'])
-      assert.deepEqual(await errors(h, [await stamp(bob), await stamp(bob, 'And Wednesday?')]), ['ok', 'once'])
-      assert.deepEqual(await errors(h, [await stamp(aliceBuyer)]), ['ok'], 'another sender')
-      await h.prune(T0 + 31 * DAY)
-      assert.equal((await pulled(h)).messages.length, 0, 'the messages went after keep days')
-      assert.deepEqual(await errors(h, [await stamp(bob, 'Still there?')]), ['once'], 'the pair did not')
-
-      // While the inbox is open, no pair is kept: turning once on later gives each sender one more.
-      await publish([h.url], [ownerRecord(alice, 'profile', profileWith(ANYONE), T0 + 1)])
-      assert.deepEqual(await errors(h, [await stamp(stranger)]), ['ok'])
-      await publish([h.url], [ownerRecord(alice, 'profile', profileWith({ ...ANYONE, once: true }), T0 + 2)])
-      assert.deepEqual(await errors(h, [await stamp(stranger, 'Hello again'), await stamp(stranger, 'And again')]), ['ok', 'once'])
-    } finally {
-      await h.close()
     }
   })
 

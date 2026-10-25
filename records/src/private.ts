@@ -13,22 +13,24 @@
 // opened. No forward secrecy: a key that leaks later opens every envelope ever encrypted to it.
 //
 // A message's body is one of these envelopes, encrypted to the inbox key of the profile it is to.
-// message() encrypts and signs one; openMessage() checks one and opens it. The
-// vault, what a new device needs and the seed cannot give back, is one private record at `vault` in
-// a folder of its own, encrypted to the vault's own inbox key alone (vault.ts).
+// message() encrypts and signs one; openMessage() checks one and opens it. A profile's rules are
+// private records in its own folder, each encrypted to its own inbox key alone (rules.ts).
 
+import { INFO, hkdf, inboxKey } from '@foundationforest/keys'
+import { hmac } from '@noble/hashes/hmac.js'
+import { sha256 } from '@noble/hashes/sha2.js'
 import { Decrypter, Encrypter } from 'age-encryption'
-import { b64u } from './bytes.ts'
-import { canonical, parseCanonical } from './canonical.ts'
-import { readProfile, type ReadHow } from './client.ts'
+import { b64u, hex, utf8 } from './bytes.ts'
+import { type Json, canonical, parseCanonical } from './canonical.ts'
 import type { Key } from './keys.ts'
 import { type Sender, type SignedMessage, decodeMessage, encodeMessage, inboxKeyOf, signMessage } from './message.ts'
-import { type Body, RecordError, type SignedRecord, isPrivate } from './record.ts'
-import { VAULT_PATH, type Vault, checkVault } from './vault.ts'
+import { type Body, type SignedRecord, isPrivate } from './record.ts'
+import { RULE_PREFIX, type Rule, type Who, checkRule } from './rules.ts'
+import type { View } from './view.ts'
 import { ownerRecord } from './write.ts'
 
 export { isPrivate }
-export * from './vault.ts'
+export * from './rules.ts'
 
 /** A private body: `body` in an envelope encrypted to these keys (`age1pq1…`), which only they open. */
 export async function makePrivate(body: Body, readers: string[]): Promise<{ private: string }> {
@@ -76,38 +78,52 @@ export async function openMessage(message: SignedMessage | string, identity: str
   return { id, from: m.from, to: m.to, time: m.time, body: await openPrivate(m.body, identity) }
 }
 
-/**
- * The vault record: the vault's contents, checked, encrypted to the vault's own inbox key alone, at
- * `vault` in the vault's folder, signed by the vault key (keys/'s vaultKey; inboxKey of its secret
- * gives `inboxKey`, what it is encrypted to). Write it after reading the current one, at a time
- * past its time (readVault gives it), to every host the vault's hosts record names.
- */
-export async function vaultRecord(vault: Key, inboxKey: string, contents: Vault, time: number): Promise<SignedRecord> {
-  checkVault(contents)
-  return ownerRecord(vault, VAULT_PATH, await makePrivate(contents as Body, [inboxKey]), time)
-}
+/** A profile's main key, as keys/'s mainKey gives it: with the profile's secret, which its inbox key and rule key come from. */
+export type ProfileKey = Key & { secret: Uint8Array }
 
-/** The vault in a vault record's body, opened with the vault's inbox key identity, checked. */
-export async function openVault(body: Body, identity: string): Promise<Vault> {
-  const inside = await openPrivate(body, identity)
-  checkVault(inside)
-  return inside
+/**
+ * A rule's id, the last segment of its path: the first 32 hex characters of HMAC-SHA256, keyed by
+ * the profile's rule key (keys/'s `hkdf(secret, INFO.rule)`), of the canonical text of `who`
+ * without `key` and `name`. So one who has one rule per profile, whatever the person calls it; and
+ * since only the person's signers hold the rule key, a path names no who, and one who's rules on two
+ * profiles never share a path.
+ */
+export async function ruleId(owner: { secret: Uint8Array }, who: Who): Promise<string> {
+  const { key: _key, name: _name, ...named } = who as { [field: string]: Json }
+  return hex.encode(hmac(sha256, await hkdf(owner.secret, INFO.rule), utf8(canonical(named)))).slice(0, 32)
 }
 
 /**
- * The vault, read from hosts: the folder at the vault key's `address`, on the hosts given and every
- * host its hosts record names, by POST so the address is in no URL; its current `vault` record
- * opened with the vault's inbox key `identity`. With it, the folder's hosts, the record's time, for
- * the next write, and the hosts that failed, as readProfile lists them: one may hold a newer vault.
- * Null when every host asked answered and none has it. When none has it and a host failed, it
- * throws: the vault may be there.
+ * A rule's record: the rule, checked, encrypted to the profile's own inbox key alone, at
+ * `rule/<id>` in its folder, signed by its main key. Write it at a time past the current one's at
+ * that path (nextTime). A null body at the same path removes the rule.
  */
-export async function readVault(hosts: string[], vault: { address: string; identity: string }, now: number, how: ReadHow = {}): Promise<{ vault: Vault; hosts: string[]; time: number; failed: Array<{ host: string; error: string }> } | null> {
-  const view = await readProfile(hosts, vault.address, now, { ...how, post: true })
-  const current = view.current.get(VAULT_PATH)
-  if (!current?.record.body) {
-    if (!view.failed.length) return null
-    throw new RecordError('host', `no vault read, and a host that may hold it failed: ${view.failed.map((f) => `${f.host} (${f.error})`).join(', ')}`)
+export async function ruleRecord(owner: ProfileKey, rule: Rule, time: number): Promise<SignedRecord> {
+  checkRule(rule)
+  const { encryptTo } = await inboxKey(owner.secret)
+  return ownerRecord(owner, RULE_PREFIX + (await ruleId(owner, rule.who)), await makePrivate(rule as unknown as Body, [encryptTo]), time)
+}
+
+/**
+ * A profile's rules, by id, from its view (readProfile's, read by POST), opened with its inbox key.
+ * A rule that does not open, does not check, or sits at a path its who does not give is left out: a
+ * rule a signer cannot read is no rule, so it asks the person, as for any ask no rule covers. A
+ * signer reads them before it acts on any ask for the profile, so a rule removed on another device
+ * stops here too.
+ */
+export async function readRules(view: View, owner: { secret: Uint8Array }): Promise<Map<string, Rule>> {
+  const { identity } = await inboxKey(owner.secret)
+  const rules = new Map<string, Rule>()
+  for (const [path, { record }] of view.current) {
+    if (!path.startsWith(RULE_PREFIX) || record.body === null) continue
+    const id = path.slice(RULE_PREFIX.length)
+    try {
+      const rule = await openPrivate(record.body, identity)
+      checkRule(rule)
+      if ((await ruleId(owner, rule.who)) === id) rules.set(id, rule)
+    } catch {
+      // Left out: no rule, so the signer asks.
+    }
   }
-  return { vault: await openVault(current.record.body, vault.identity), hosts: view.hosts, time: current.record.time, failed: view.failed }
+  return rules
 }

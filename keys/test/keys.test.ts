@@ -3,11 +3,12 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { hkdf as nobleHkdf } from '@noble/hashes/hkdf.js'
 import { sha256 } from '@noble/hashes/sha2.js'
-import { createECDH, createHash } from 'node:crypto'
+import { createECDH, createHash, createPublicKey, verify as nodeVerify } from 'node:crypto'
 import { keccak_256 } from '@noble/hashes/sha3.js'
 import { blake512 } from '@noble/hashes/blake1.js'
 import { base58, bech32, hex } from '@scure/base'
 import { ed25519 } from '@noble/curves/ed25519.js'
+import { secp256k1 } from '@noble/curves/secp256k1.js'
 import { MLKEM768X25519 } from '@noble/post-quantum/hybrid.js'
 import { Decrypter, Encrypter } from 'age-encryption'
 import { Base8, addPoint, inCurve, mulPointEscalar, packPoint as zkPack, subOrder } from '@zk-kit/baby-jubjub'
@@ -25,8 +26,10 @@ import {
   WORD_COUNT,
   addressOf,
   bytesMessage,
+  checkPaySig,
   evmAddressOf,
   exportWords,
+  fieldHash,
   hkdf,
   importWords,
   inboxKey,
@@ -46,11 +49,11 @@ import {
   scopeOf,
   seedScalar,
   serviceKey,
+  signPay,
   signWithScalar,
   tagOf,
   unpackPoint,
   unpackSignature,
-  vaultKey,
   checkBytes,
   checkWithPublicKey,
   type Point,
@@ -81,6 +84,7 @@ const pack = (x: bigint, y: bigint) => {
   return base58.encode(out)
 }
 const big = (p: string[]): Point => [BigInt(p[0]), BigInt(p[1])]
+const base64urlDecode = (text: string) => new Uint8Array(Buffer.from(text, 'base64url'))
 
 // The mixing table
 
@@ -90,9 +94,8 @@ test('the info strings and the prefixes are exactly the standard', () => {
   assert.equal(INFO.inbox, 'forest/v1/inbox')
   assert.equal(INFO.pay('solana', 'tutoring/seller'), 'forest/v1/pay/solana/tutoring/seller')
   assert.equal(INFO.pay('evm', 'tutoring/seller'), 'forest/v1/pay/evm/tutoring/seller')
-  assert.equal(INFO.vault, 'forest/v1/vault')
+  assert.equal(INFO.rule, 'forest/v1/rule')
   assert.equal(INFO.seed, vectors.seedScalar.info)
-  assert.equal(INFO.vault, vectors.vault.info)
   for (const p of vectors.mainKeys) assert.equal(INFO.profile(p.label), p.info)
   for (const p of vectors.payKeys) assert.equal(INFO.pay(p.type, p.label), p.info)
   for (const [name, prefix] of Object.entries(vectors.prefixes) as [keyof typeof PREFIX, { text: string; value: string }][]) {
@@ -102,7 +105,7 @@ test('the info strings and the prefixes are exactly the standard', () => {
 })
 
 test('HKDF agrees with an independent implementation', async () => {
-  for (const info of [INFO.seed, INFO.profile('tutoring/seller'), INFO.profile(''), INFO.inbox, INFO.pay('solana', 'tutoring/seller'), INFO.pay('evm', 'tutoring/seller'), INFO.vault]) {
+  for (const info of [INFO.seed, INFO.profile('tutoring/seller'), INFO.profile(''), INFO.inbox, INFO.pay('solana', 'tutoring/seller'), INFO.pay('evm', 'tutoring/seller'), INFO.rule]) {
     assert.equal(hex.encode(await hkdf(seed, info)), hex.encode(mix(seed, info)), info)
   }
 })
@@ -214,7 +217,7 @@ test('a main key needs a 32-byte seed and a label that is text', async () => {
 })
 
 test('an address names its key and nothing else, in one spelling', () => {
-  for (const p of [...vectors.mainKeys, vectors.vault]) {
+  for (const p of vectors.mainKeys) {
     assert.deepEqual(pointOf(p.address), big(p.publicKey))
     assert.equal(addressOf(pointOf(p.address)), p.address)
   }
@@ -267,6 +270,24 @@ test('the signature, checked without the library: S·Base8 = R8 + 8·Poseidon(R8
   assert.ok(BigInt(v.S) < subOrder)
 })
 
+test('the nonce, byte by byte: SHA-512 of the 15 bytes of forest/v1/nonce as they are, then the scalar and the message, each 32 bytes little-endian; read little-endian, mod l', () => {
+  const v = vectors.signature
+  const le32 = (n: bigint) => Buffer.from(n.toString(16).padStart(64, '0'), 'hex').reverse()
+  const input = Buffer.concat([Buffer.from('forest/v1/nonce'), le32(BigInt(seller.scalar)), le32(BigInt(v.message))])
+  assert.equal(input.length, 79, 'no 0xff, no newline, no length')
+  const digest = createHash('sha512').update(input).digest()
+  const r = BigInt('0x' + Buffer.from(digest).reverse().toString('hex')) % subOrder
+  assert.deepEqual(mulPointEscalar(Base8, r), big(v.R8))
+})
+
+test('fieldHash: keccak256 of the namespace and each part joined with nothing between, text as UTF-8 and bytes as they are, read big-endian, shifted right 8 bits', () => {
+  assert.equal(fieldHash('forest/v1/label/', seller.label), field('forest/v1/label/' + seller.label))
+  assert.equal(fieldHash('forest/v1/label/', 'tutoring/', 'seller'), BigInt(seller.scope), 'parts are joined, not hashed one by one')
+  const bytes = Uint8Array.of(0, 0xff, 7)
+  const byHand = BigInt('0x' + hex.encode(keccak_256(new Uint8Array([...utf8('ns/é'), ...bytes])))) >> 8n
+  assert.equal(fieldHash('ns/', 'é', bytes), byHand)
+})
+
 test("a signature in 64 bytes: R8 packed, then S, as zk-kit packs it; and back, strictly", () => {
   const v = vectors.signature
   const sig = { R8: big(v.R8), S: BigInt(v.S) }
@@ -281,7 +302,7 @@ test("a signature in 64 bytes: R8 packed, then S, as zk-kit packs it; and back, 
   assert.equal(unpackSignature(noPoint), null, 'R8 not on the curve')
   assert.equal(unpackSignature(bytes.subarray(1)), null, '63 bytes')
   // A point packs as zk-kit packs it, and unpacks to itself.
-  for (const p of [...vectors.mainKeys, vectors.vault]) {
+  for (const p of vectors.mainKeys) {
     const point = big(p.publicKey)
     const packed = packPoint(point)
     let n = 0n
@@ -346,6 +367,18 @@ test('age encrypts to the inbox key, and only that profile opens it', async () =
 
 test('an inbox key needs a 32-byte secret', async () => {
   await assert.rejects(inboxKey(new Uint8Array(64)), /secret must be 32 bytes/)
+})
+
+// Rule keys
+
+test("each profile gives the pinned rule key: HKDF of its secret, by an independent implementation", async () => {
+  for (const expected of vectors.mainKeys) {
+    const key = await mainKey(seed, expected.label)
+    assert.equal(hex.encode(await hkdf(key.secret, INFO.rule)), expected.ruleKey)
+    assert.equal(hex.encode(mix(mix(seed, expected.info), 'forest/v1/rule')), expected.ruleKey)
+  }
+  assert.notEqual(seller.ruleKey, buyer.ruleKey)
+  assert.notEqual(seller.ruleKey, seller.inbox.privateKey)
 })
 
 // Pay keys
@@ -414,35 +447,78 @@ test("an EVM address: key 1's is the well-known one, and EIP-55's checksum is it
   }
 })
 
-// The vault key
+// Pay signatures
 
-test('the seed gives the pinned vault key, recomputed without the library, and its inbox key', async () => {
-  for (let round = 0; round < 2; round++) {
-    const key = await vaultKey(seed)
-    assert.equal(key.scalar.toString(), vectors.vault.scalar)
-    assert.equal(key.address, vectors.vault.address)
-    assert.equal(hex.encode(key.secret), vectors.vault.secret)
-    assert.equal('label' in key, false, 'it belongs to no label')
-    const { privateKey, ...inbox } = vectors.vault.inbox
-    assert.deepEqual(await inboxKey(key.secret), inbox)
-    assert.equal(hex.encode(await hkdf(key.secret, INFO.inbox)), privateKey)
+/** What a pay key signs, by hand: 0xff, then "forest/v1/pay\n" and the profile's address in UTF-8. */
+const payBytes = (address: string) => new Uint8Array([0xff, ...utf8('forest/v1/pay\n' + address)])
+const addressOfLabel = (label: string) => vectors.mainKeys.find((m: { label: string }) => m.label === label).address
+const N = secp256k1.Point.CURVE().n
+const modN = (v: bigint) => ((v % N) + N) % N
+/** a^(n-2) mod n: an inverse mod the prime n. */
+const invN = (a: bigint) => {
+  let out = 1n
+  for (let b = modN(a), e = N - 2n; e > 0n; e >>= 1n, b = (b * b) % N) if (e & 1n) out = (out * b) % N
+  return out
+}
+/** The key an EVM pay signature (r || s || recovery id) recovers, by hand: Q = r^-1 (s R - z G). */
+const recoverByHand = (bytes: Uint8Array, sig: Uint8Array) => {
+  const r = BigInt('0x' + hex.encode(sig.subarray(0, 32)))
+  const s = BigInt('0x' + hex.encode(sig.subarray(32, 64)))
+  const z = BigInt('0x' + hex.encode(keccak_256(bytes)))
+  const R = secp256k1.Point.fromHex((sig[64]! & 1 ? '03' : '02') + hex.encode(sig.subarray(0, 32)))
+  const Q = R.multiply(modN(s)).subtract(secp256k1.Point.BASE.multiply(modN(z))).multiply(invN(r))
+  return hex.encode(Q.toBytes(false))
+}
+
+test("each pay key's pinned signature over its profile's address, made again and checked without the library: Ed25519 by node:crypto, the EVM key recovered by hand", async () => {
+  for (const expected of vectors.payKeys) {
+    const profile = addressOfLabel(expected.label)
+    const key = await payKey(seed, expected.label, expected.type)
+    assert.equal(signPay(key, profile), expected.paySig, 'deterministic, and pinned')
+    assert.equal(checkPaySig(expected.type, expected.address, profile, expected.paySig), true)
+    const sig = base64urlDecode(expected.paySig)
+    if (expected.type === 'solana') {
+      assert.equal(sig.length, 64)
+      const publicKey = createPublicKey({ key: { kty: 'OKP', crv: 'Ed25519', x: Buffer.from(base58.decode(expected.address)).toString('base64url') }, format: 'jwk' })
+      assert.equal(nodeVerify(null, payBytes(profile), publicKey, sig), true)
+    } else {
+      assert.equal(sig.length, 65)
+      assert.ok(sig[64]! < 4, 'the recovery id is last, as Ethereum writes it')
+      assert.equal(recoverByHand(payBytes(profile), sig), expected.publicKey)
+    }
   }
-  const raw = poseidon2([PREFIX.vault, S])
-  assert.equal(raw.toString(), vectors.vault.raw)
-  const point = times(raw % 2n ** 250n)
-  assert.equal(pack(point.x, point.y), vectors.vault.address)
-  assert.equal(hex.encode(mix(seed, 'forest/v1/vault')), vectors.vault.secret)
 })
 
-test("the vault key is no profile's, and another seed gives another", async () => {
-  // Its mix has its own prefix and two inputs, a profile's three, so no label can give it.
-  assert.notEqual(PREFIX.vault, PREFIX.profile)
-  for (const label of ['', 'vault', '../vault', 'tutoring/seller']) {
-    assert.notEqual((await mainKey(seed, label)).address, vectors.vault.address)
-    assert.notEqual(INFO.profile(label), INFO.vault)
+test('a pay signature holds for its own address, type and profile only, in its one spelling', async () => {
+  for (const expected of vectors.payKeys) {
+    const profile = addressOfLabel(expected.label)
+    const other = vectors.mainKeys.find((m: { label: string }) => m.label !== expected.label).address
+    const otherType = expected.type === 'solana' ? 'evm' : 'solana'
+    const sameTypeOther = vectors.payKeys.find((p: { type: string; label: string }) => p.type === expected.type && p.label !== expected.label)
+    const sig = base64urlDecode(expected.paySig)
+    const flipped = sig.slice()
+    flipped[10]! ^= 1
+    for (const [what, ok] of [
+      ['another profile', checkPaySig(expected.type, expected.address, other, expected.paySig)],
+      ['another type', checkPaySig(otherType, expected.address, profile, expected.paySig)],
+      ['another pay address', checkPaySig(expected.type, sameTypeOther.address, profile, expected.paySig)],
+      ['a byte changed', checkPaySig(expected.type, expected.address, profile, Buffer.from(flipped).toString('base64url'))],
+      ['a byte short', checkPaySig(expected.type, expected.address, profile, Buffer.from(sig.subarray(1)).toString('base64url'))],
+      ['padded', checkPaySig(expected.type, expected.address, profile, expected.paySig + '=')],
+      ['not base64url', checkPaySig(expected.type, expected.address, profile, expected.paySig.replace(/.$/, '!'))],
+    ] as const) assert.equal(ok, false, `${expected.type}: ${what}`)
   }
-  assert.notEqual((await vaultKey(otherSeed)).address, vectors.vault.address)
-  await assert.rejects(vaultKey(new Uint8Array(31)), /seed must be 32 bytes/)
+  const evm = vectors.payKeys.find((p: { type: string }) => p.type === 'evm')
+  const lower = evm.address.toLowerCase()
+  assert.equal(checkPaySig('evm', lower, addressOfLabel(evm.label), evm.paySig), false, 'an EVM address in any spelling but EIP-55')
+  // The twin spelling, n - s with the other recovery id, recovers the same key: it is not refused,
+  // since only the profile's main key puts a signature in its profile record.
+  const sig = base64urlDecode(evm.paySig)
+  const twin = new Uint8Array(65)
+  twin.set(sig.subarray(0, 32))
+  twin.set(hex.decode((N - BigInt('0x' + hex.encode(sig.subarray(32, 64)))).toString(16).padStart(64, '0')), 32)
+  twin[64] = sig[64]! ^ 1
+  assert.equal(checkPaySig('evm', evm.address, addressOfLabel(evm.label), Buffer.from(twin).toString('base64url')), true)
 })
 
 // Verifier secrets, stamp numbers and tags
@@ -481,7 +557,7 @@ test('two verifiers, two unrelated stamp numbers and tags; and none of it is a k
   const b = await verifierSecret(seed, verifierB.name)
   assert.notEqual(a.stampNumber, b.stampNumber)
   assert.notEqual(tagOf(a.scalar, 'tutoring/seller'), tagOf(b.scalar, 'tutoring/seller'))
-  const all = [verifierA.scalar, verifierB.scalar, seller.scalar, buyer.scalar, vectors.vault.scalar, vectors.seedScalar.scalar, seller.raw, buyer.raw]
+  const all = [verifierA.scalar, verifierB.scalar, seller.scalar, buyer.scalar, vectors.seedScalar.scalar, seller.raw, buyer.raw]
   assert.equal(new Set(all).size, all.length)
 })
 

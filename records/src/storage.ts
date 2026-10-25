@@ -2,8 +2,7 @@
 // SQLite file for what crosses folders, and a blob store with two drivers.
 //
 //   <dir>/folders/<address>.sqlite   one folder: its records (current, and replaced within keep
-//                                    days), the messages to its inbox, its once pairs, and the
-//                                    blobs it holds
+//                                    days), the messages to its inbox, and the blobs it holds
 //   <dir>/host.sqlite                the log, numbering every record across folders in the order
 //                                    taken, and the blob index: which folders hold which bytes,
 //                                    and which bytes are stored
@@ -99,15 +98,17 @@ class Db {
  * The version of the layout FOLDER_SCHEMA makes. A change to that layout raises it, and adds to
  * STEPS what turns a file of the version before into this one.
  */
-const VERSION = 2
+const VERSION = 3
 
 /**
  * What turns a folder file of each older version into the next. Version 1's blobs said who put
  * each one, the main key or a write key; only the main key puts a folder's blobs now, so a blob a
- * write key put is the folder's like any other.
+ * write key put is the folder's like any other. Version 2 kept who had written to an inbox that took
+ * one message from each sender; no inbox says that now, so the table goes.
  */
 const STEPS: Record<number, string> = {
   1: 'ALTER TABLE blobs DROP COLUMN by',
+  2: 'DROP TABLE once',
 }
 
 // A folder file keeps SQLite's default rollback journal, not WAL: no -wal file is left beside it
@@ -128,10 +129,6 @@ const FOLDER_SCHEMA = `
     bytes INTEGER NOT NULL,
     arrived INTEGER NOT NULL   -- this host's clock
   );
-  -- Who has written to this inbox while it takes one message from each sender. Recorded only while
-  -- the inbox says so, so who wrote to whom is not kept past the messages for other inboxes. Kept
-  -- for as long as the folder is: this host never deletes a current record.
-  CREATE TABLE once (sender TEXT PRIMARY KEY) WITHOUT ROWID;
   -- The bytes this folder holds, by hash: put by its main key, and kept until it deletes them.
   CREATE TABLE blobs (
     sha256 TEXT PRIMARY KEY,
@@ -401,15 +398,6 @@ export class Storage {
   *messagesAfter(folder: string, after: number): Generator<Row> {
     const db = this.folder(folder)
     if (db) yield* db.fresh('SELECT seq, text, bytes FROM messages WHERE seq > ? ORDER BY seq').iterate(after) as Iterable<Row>
-  }
-
-  hasOnce(folder: string, sender: string): boolean {
-    return this.folder(folder)?.q('SELECT 1 FROM once WHERE sender = ?').get(sender) !== undefined
-  }
-
-  /** False when that sender is here already. */
-  addOnce(folder: string, sender: string): boolean {
-    return this.folder(folder, true)!.q('INSERT OR IGNORE INTO once (sender) VALUES (?)').run(sender).changes > 0
   }
 
   // ----------------------------------------------------------------------------------------

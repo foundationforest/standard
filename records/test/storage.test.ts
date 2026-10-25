@@ -251,7 +251,8 @@ describe('host.sqlite holds nothing that exists only there', () => {
 
 /**
  * Make a folder file version 1 again, its blobs table as version 1 had it: `by` said who put each
- * blob, here a write key. `more` runs after.
+ * blob, here a write key; and with the table of senders versions 1 and 2 kept for inboxes that took
+ * one message from each. `more` runs after.
  */
 function toVersion1(file: string, more = '') {
   const db = new DatabaseSync(file)
@@ -266,17 +267,23 @@ function toVersion1(file: string, more = '') {
       arrived INTEGER NOT NULL
     ) WITHOUT ROWID;
     INSERT INTO blobs SELECT sha256, type, size, '${stranger.address}', arrived FROM held;
+    CREATE TABLE once (sender TEXT PRIMARY KEY) WITHOUT ROWID;
+    INSERT INTO once VALUES ('${stranger.address}');
     PRAGMA user_version = 1;
     ${more}
   `)
   db.close()
 }
 
-/** A folder file's version and its blobs table's columns. */
-const shapeOf = (file: string) => [query<{ user_version: number }>(file, 'PRAGMA user_version')[0]!.user_version, query<{ name: string }>(file, `SELECT name FROM pragma_table_info('blobs')`).map((c) => c.name)]
+/** A folder file's version, its blobs table's columns, and whether it has the table of senders. */
+const shapeOf = (file: string) => [
+  query<{ user_version: number }>(file, 'PRAGMA user_version')[0]!.user_version,
+  query<{ name: string }>(file, `SELECT name FROM pragma_table_info('blobs')`).map((c) => c.name),
+  query(file, `SELECT name FROM sqlite_master WHERE name = 'once'`).length === 1,
+]
 
 describe('a folder file of an older version', () => {
-  test('is migrated when it opens: version 1 loses the column that said who put each blob, and keeps its records and blobs', async () => {
+  test('is migrated when it opens: version 1 loses the column that said who put each blob, then version 2 its table of senders, and it keeps its records and blobs', async () => {
     const dir = scratch()
     const options = { dir, now: () => T0 }
     let h = await startHost(options)
@@ -290,7 +297,7 @@ describe('a folder file of an older version', () => {
     }
     const file = join(dir, 'folders', `${alice.address}.sqlite`)
     toVersion1(file)
-    assert.deepEqual(shapeOf(file), [1, ['sha256', 'type', 'size', 'by', 'arrived']])
+    assert.deepEqual(shapeOf(file), [1, ['sha256', 'type', 'size', 'by', 'arrived'], true])
     h = await startHost(options)
     try {
       assert.deepEqual(await pages(h.url), was)
@@ -300,7 +307,7 @@ describe('a folder file of an older version', () => {
     } finally {
       await h.close()
     }
-    assert.deepEqual(shapeOf(file), [2, ['sha256', 'type', 'size', 'arrived']])
+    assert.deepEqual(shapeOf(file), [3, ['sha256', 'type', 'size', 'arrived'], false])
   })
 })
 
@@ -328,7 +335,7 @@ describe('a folder file in another layout', () => {
       await again.close()
     }
     await assert.rejects(rebuild(dir), /is not a folder file in this host's layout/)
-    assert.deepEqual([shapeOf(aliceFile), shapeOf(bobFile)], [[1, []], [1, ['sha256', 'type', 'size', 'by', 'arrived']]])
+    assert.deepEqual([shapeOf(aliceFile), shapeOf(bobFile)], [[1, [], false], [1, ['sha256', 'type', 'size', 'by', 'arrived'], true]])
   })
 })
 

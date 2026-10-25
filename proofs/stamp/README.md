@@ -50,11 +50,12 @@ number, facts*.
   nothing a verifier signs for another purpose can pass as a stamp.
 - The verifier's key is an address, as every key in the standard is: its point packed into 32 bytes,
   in base58. `keys/`'s `pointOf` gives x and y back.
-- The person keeps the stamp, in their vault (the folder a new device restores from,
-  [records](../../records/README.md#the-vault)), as JSON: `{ stampNumber, facts, verifier,
-  signature: { r8: [x, y], s } }`, big numbers in decimal text, the verifier's key as its address
+- The person keeps the stamp on their device, as JSON: `{ stampNumber, facts, verifier, signature:
+  { r8: [x, y], s } }`, big numbers in decimal text, the verifier's key as its address
   (`stampToJson`, `stampFromJson`). Fields the verifier adds beside them pass through unchanged, so
-  the person keeps what `facts` was made from.
+  the person keeps what `facts` was made from. A verifier that keeps what it signed can hand a stamp
+  back by its stamp number, so a lost stamp need not mean a new check; whether it does is the
+  verifier's.
 - **The verifier's key is the verifier's to keep.** Whoever holds it can sign stamps for people who
   do not exist. A verifier never signs a raw number someone hands it: it hashes the stamp itself,
   with the prefix, so nothing it signs for another purpose can pass as a stamp.
@@ -130,7 +131,7 @@ unchanged.
 |---|---|
 | `signStamp(privateKey, stamp)`, `verifierKeyOf(privateKey)` | For a verifier: the signed stamp, and its key's address |
 | `stampNumberOf(seedScalar, verifierName)`, `stampHash(stamp)`, `stampSigned(stamp)` | The stamp number, what a verifier signs, and whether its verifier signed it |
-| `stampToJson(stamp)`, `stampFromJson(json)` | The stamp as JSON, as a vault keeps it, and back; `stampFromJson` refuses the stamp's own fields in any other shape, a verifier key that is not an address among them, passes the verifier's added fields through unchanged, and leaves the signature to `stampSigned` |
+| `stampToJson(stamp)`, `stampFromJson(json)` | The stamp as JSON, as the person's device keeps it, and back; `stampFromJson` refuses the stamp's own fields in any other shape, a verifier key that is not an address among them, passes the verifier's added fields through unchanged, and leaves the signature to `stampSigned` |
 | `proveStamp({ seedScalar, verifierName, stamp, label, artifacts })` | The proof, on the device, for the profile the seed gives for `label`. Refuses a stamp for another seed or verifier name, or one its verifier did not sign |
 | `checkStamp({ proof, verifier, verifierName, label, profile, tag })` | Whether the proof holds for that verifier's key (its address or its point) and name, label, profile (its address or its key) and tag |
 | `proofBytes(proof)`, `proofFromBytes(bytes)` | The proof as the 256 bytes a profile record carries, and back; `checkStamp` takes either |
@@ -223,8 +224,8 @@ Measured in Node 22 on a 4-core machine:
 
 - **The standard:** the stamp, the proof, the circuit and its public signals.
 - **A verifier:** whom it signs stamps for, how many each gets, what its facts hold, what it adds
-  beside them, and its name. The name is text the tag recipe uses, so a verifier that changes its
-  key keeps its people's tags.
+  beside them, whether it hands back a stamp it signed, and its name. The name is text the tag
+  recipe uses, so a verifier that changes its key keeps its people's tags.
 - **Each reader:** which verifier keys count is its own list, and how much each weighs.
 - **An app, with the person:** which proofs to show on which profile, made on the device.
 

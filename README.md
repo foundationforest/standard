@@ -24,13 +24,13 @@ Four things stay outside: what a stamp means is the reader's; what a record says
 
 ## The directories
 
-A **label** is any text; markets set the convention, `<market>/<role>`, such as `plumbing/seller`, and each market defines its roles, its content paths and their bodies in [markets](https://github.com/foundationforest/markets). A **tag** is a number made from a person's seed for one label at one verifier, so an index's score tree can track the profile without linking it to others. Every profile has one **folder** kept on one or more hosts; the **vault** is one more folder on a host, encrypted to the vault's own inbox key, which only the person's seed gives, holding what the seed cannot recompute: which profiles exist, stamps, the person's permissions and settings. A new device finds it with the seed and one host's address.
+A **label** is any text; markets set the convention, `<market>/<role>`, such as `plumbing/seller`, and each market defines its roles, its content paths and their bodies in [markets](https://github.com/foundationforest/markets). A **tag** is a number made from a person's seed for one label at one verifier, so an index's score tree can track the profile without linking it to others. Every profile has one **folder** kept on one or more hosts.
 
 | Directory | What it is | What runs | Where |
 |---|---|---|---|
 | [`keys/`](keys/README.md) | The recipe that mixes every main key, pay address, inbox key and verifier secret from the person's seed | a library | on the person's device |
 | [`proofs/`](proofs/README.md) | The zero-knowledge proofs a device makes and anyone can check: [`stamp/`](proofs/stamp/README.md) (proving a profile's key and tag come from a seed a verifier signed a stamp to) and [`reputation/`](proofs/reputation/README.md) (proving a score across hidden profiles from an index's tree) | circuits and client libraries | made on the device; checked by anyone in milliseconds |
-| [`records/`](records/README.md) | How a profile speaks: versioned folder entries (`profile`, `hosts`, the market's content paths, and private records), all signed by its main key, the encrypted `inbox`, the `vault`, the blobs a folder holds (photos and videos its main key puts and deletes), and the reference host | a library and reference host | wherever an app, AI, host or index runs |
+| [`records/`](records/README.md) | How a profile speaks: versioned folder entries (`profile`, `hosts`, the market's content paths, and private records), all signed by its main key, the encrypted `inbox`, the blobs a folder holds (photos and videos its main key puts and deletes), and the reference host | a library and reference host | wherever an app, AI, host or index runs |
 | [`escrows/`](escrows/README.md) | On-chain lockboxes that release money when a side gives it to the other, both sides agree, a chosen arbiter decides, or the schedule set at the start says so (one directory per chain; only [`solana/`](escrows/solana/README.md) has one) | an on-chain program and client library | on chain when a deal uses escrow |
 
 ## Who decides what
@@ -43,9 +43,9 @@ A **label** is any text; markets set the convention, `<market>/<role>`, such as 
 
 ## For builders
 
-- **Check a profile.** Read the profile's record at `profile` from its folder on any host. It holds the profile's `market`, `role`, `inboxKey` (what others encrypt to), seed-derived `pay` addresses (`solana` and `evm`, one per address type), and its `proofs` array. The array takes any circuit's proofs, and a reader skips the ones it does not know: `stamp` and `reputation` are ours, and anyone can add one. Check each `stamp` proof against the verifier's key to see which verifiers signed a stamp to the seed behind the profile.
+- **Check a profile.** Read the profile's record at `profile` from its folder on any host. It holds the profile's `market`, `role`, `inboxKey` (what others encrypt to), seed-derived `pay` addresses (`solana` and `evm`, one per address type) with `paySig`, each address signed by its own pay key so a profile cannot list an address that is not its own, and its `proofs` array. The array takes any circuit's proofs, and a reader skips the ones it does not know: `stamp` and `reputation` are ours, and anyone can add one. Check each `stamp` proof against the verifier's key to see which verifiers signed a stamp to the seed behind the profile.
 - **Find a profile's folder.** A profile's address is the public half of its main key (`Baby Jubjub`). Ask any host you know for its records, and check its signed `hosts` record to see every host that mirrors the folder.
-- **Act for a person.** Ask one of their signers, the devices that hold their seed: an AI app through its connection, a person or a business by a message signed by its own profile's main key. The signer acts by the person's permissions and signs with the profile's main key; no key is ever handed out (`keys/`, Signers).
+- **Act for a person.** Ask one of their signers, the devices that hold their seed: an AI app through its connection, a person or a business by a message signed by its own profile's main key. The signer acts by the profile's rules and signs with the profile's main key; no key is ever handed out (`keys/`, Signers).
 - **Write offers and reviews.** Their paths and bodies are defined by the market the profile lives in ([markets](https://github.com/foundationforest/markets)); the standard names none of them. A photo or a video is a blob the folder holds, put and deleted by its keys; where a record points at one is the market's.
 
 ## Privacy
@@ -60,7 +60,7 @@ What others can still see:
 - Everything in a profile's public records (`profile`, `hosts` and the market's content paths) is open for any index or person to read.
 - On-chain payments and escrow receipts are public on the payment chain. Moving money directly between two of your own profiles' `pay` addresses links them on chain.
 - A host sees when a folder is written or read and the network address of the connection, unless a VPN or relay is used.
-- The connector, a relay AI apps call from their cloud, holds no keys and sees what is asked; anyone can run their own. It sees each request in plain text and any token passed through it, so it can act as any connection it carries, within that connection's permissions: that is why permissions have limits (`keys/`, Signers).
+- The connector, a relay AI apps call from their cloud, holds no keys and sees what is asked; anyone can run their own. It sees each request in plain text and any token passed through it, so it can act as any connection it carries, within that connection's rules: that is why a rule has limits (`keys/`, Signers).
 - A verifier sees the person's stamp number, a stable number for them at that verifier.
 
 ## Promises
@@ -76,7 +76,7 @@ What others can still see:
 - **The escrow runs on Solana's devnet,** so no real money moves through it (`escrows/`).
 - **Both circuits' setups were made by one party** (`proofs/`).
 - **No seed recovery.** Lose the seed and the profiles made from it are gone; nothing can give them back (`keys/`).
-- **The connector can act as any connection it carries,** within that connection's permissions: it sees each request in plain text and any token passed through it. Anyone can run their own (`keys/`, Signers).
+- **The connector can act as any connection it carries,** within that connection's rules: it sees each request in plain text and any token passed through it. Anyone can run their own (`keys/`, Signers).
 
 ## What it is built from
 

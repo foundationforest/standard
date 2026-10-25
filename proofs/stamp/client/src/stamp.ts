@@ -113,10 +113,10 @@ export function signStamp(privateKey: Uint8Array, stamp: Stamp & { [field: strin
 }
 
 /**
- * A signed stamp as JSON: the form a person's vault keeps it in (records/README.md, The vault), and
- * a verifier may hand it over in. Big numbers in decimal text, the verifier's key as its address.
- * Every key starts in lower case, so it fits inside a record. Any other field is the verifier's, as
- * it wrote it.
+ * A signed stamp as JSON: the form a person's device keeps it in (README.md, The stamp and the stamp
+ * proof), and a verifier may hand it over in. Big numbers in decimal text, the verifier's key as its
+ * address. Every key starts in lower case, so it fits inside a record. Any other field is the
+ * verifier's, as it wrote it.
  */
 export type StampJson = {
   stampNumber: string

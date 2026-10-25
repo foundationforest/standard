@@ -1,4 +1,4 @@
-// Keys on Baby Jubjub: a profile's or the vault's public key, its address, and EdDSA-Poseidon
+// Keys on Baby Jubjub: a profile's public key, its address, and EdDSA-Poseidon
 // signatures made from the scalar itself. The circuits check the same curve and the same
 // signature equation, circomlib's, so what signs a record is what a proof can derive.
 //

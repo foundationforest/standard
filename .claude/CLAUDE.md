@@ -5,8 +5,8 @@ Read `README.md` and the README of the directory you work in before any task.
 
 Use these words: seed, seed scalar, main key, profile, profile record, address, label, scope,
 prefix, tag, verifier, verified, stamp, stamp number, facts, stamp proof, reputation proof, check,
-record, folder, host, service key, signer, connection, connector, permissions, private, envelope,
-encrypted (an envelope), message, inbox key, inbox, pull, vault, blob, pay address, pay key, escrow,
+record, folder, host, service key, signer, connection, connector, rules, private, envelope,
+encrypted (an envelope), message, inbox key, inbox, pull, blob, pay address, pay key, escrow,
 receipt, deal, index, fee payer, app, market, role. Plain words, no em-dashes.
 
 - Check, never verify: a reader checks a proof or a signature. The tooling keeps its own names

@@ -1,8 +1,8 @@
-// The example profile record's proofs (schemas/examples/profile.json): a stamp proof and a
-// reputation proof for keys/'s test person, tutoring/seller, made with the circuits' setups. A
-// proof is made with fresh randomness, so running this again gives other proofs for the same
-// statements; the example keeps the ones made once, and test/schemas.test.ts checks them with both
-// proof checks.
+// The example profile record (schemas/examples/profile.json): its pay addresses, each signed by its
+// pay key, and a stamp proof and a reputation proof for keys/'s test person, tutoring/seller, made
+// with the circuits' setups. A proof is made with fresh randomness, so running this again gives
+// other proofs for the same statements; the example keeps the ones made once, and
+// test/schemas.test.ts checks them with both proof checks, and the pay signatures with checkPay.
 //
 //   node scripts/example-profile.ts
 //
@@ -11,7 +11,7 @@
 
 import { readFileSync, writeFileSync } from 'node:fs'
 import { sha256 } from '@noble/hashes/sha2.js'
-import { fieldHash, inboxKey, mainKey, packSignature, payAddresses, scopeOf, seedScalar, serviceKey, signBytes, tagOf, verifierSecret } from '@foundationforest/keys'
+import { PAY_TYPES, fieldHash, inboxKey, mainKey, packSignature, payAddresses, payKey, scopeOf, seedScalar, serviceKey, signBytes, signPay, tagOf, verifierSecret } from '@foundationforest/keys'
 import { proofBytes, proveStamp, signStamp, stampNumberOf, toBytes32 } from '@foundationforest/stamp'
 import { type Leaf, proveReputation, signedBytes } from '@foundationforest/reputation'
 import { b64u, hex } from '../src/bytes.ts'
@@ -58,6 +58,7 @@ const profile = {
   market: 'tutoring',
   role: 'seller',
   pay: await payAddresses(seed, LABEL),
+  paySig: Object.fromEntries(await Promise.all(PAY_TYPES.map(async (type) => [type, signPay(await payKey(seed, LABEL, type), me.address)]))),
   inboxKey: (await inboxKey(me.secret)).encryptTo,
   inbox: { senders: 'anyone', maxBytes: 16384 },
   proofs: [
