@@ -33,11 +33,14 @@ Two mixers, each a standard one-way mix:
   something is true of a secret without showing the secret). Every Poseidon mix starts with a fixed
   prefix, so no mix can give another's number.
 
-Text enters Poseidon as a number: `keccak256` of its UTF-8 bytes, shifted right one byte so it fits
-the proofs' numbers. A label's number is its **scope**,
-`keccak256("forest/v1/label/" ‖ label) >> 8`; a verifier's name's is its **name hash**,
-`keccak256("forest/v1/issuer/" ‖ name) >> 8`; the three prefixes are `keccak256` of
-`forest/v1/issuer`, `forest/v1/profile` and `forest/v1/vault`, `>> 8`.
+Text enters Poseidon as a number: `keccak256` of its UTF-8 bytes, read big-endian and shifted right
+one byte so it fits the proofs' numbers (`fieldHash`). Text in parts, a namespace then a label, is
+joined with nothing between the parts, no separator and no length, and hashed once: text as UTF-8,
+bytes as they are. A label's number is its **scope**, `keccak256("forest/v1/label/" ‖ label) >> 8`;
+a verifier's name's is its **name hash**, `keccak256("forest/v1/issuer/" ‖ name) >> 8`; the two
+prefixes are `keccak256` of `forest/v1/issuer` and `forest/v1/profile`, `>> 8`. The stamp's own
+prefix, which a verifier signs under, is proofs/stamp's
+([stamp](../proofs/stamp/README.md#the-stamp-and-the-stamp-proof)).
 
 The table uses words from the rest of the standard:
 
@@ -46,8 +49,8 @@ The table uses words from the rest of the standard:
 - **stamp:** what a verifier, anyone who signs stamps, signs to a person's seed;
 - **tag:** the number an index's tree knows a profile by, one for each verifier that signed the
   person a stamp;
-- **vault:** a folder of the person's own on a host, which a new device restores from. A folder is
-  the signed records kept under one key, and a host is a server that keeps folders.
+- **rule:** a private record in a profile's folder, the signed records kept under its main key,
+  saying who may ask the person's devices to act as that profile, and for what.
 
 | From | Mixed with | Gives |
 |---|---|---|
@@ -55,10 +58,9 @@ The table uses words from the rest of the standard:
 | the seed scalar | Poseidon, the profile prefix and the label's scope | a main key: one profile's name and signature |
 | the seed | HKDF, `forest/v1/profile/<label>` | that profile's secret, which its inbox key comes from |
 | a profile's secret | HKDF, `forest/v1/inbox` | that profile's inbox key, which opens what is encrypted to it |
+| a profile's secret | HKDF, `forest/v1/rule` | that profile's rule key, which names the paths of its rules ([records](../records/README.md#rules)) |
 | the seed | HKDF, `forest/v1/pay/<type>/<label>` | that profile's pay key for one address type, `solana` or `evm`, and its address |
 | the seed scalar | Poseidon, the verifier prefix and the verifier's name hash | the person's secret for one verifier, which their stamp number and tags come from |
-| the seed scalar | Poseidon, the vault prefix | the vault key: the main key of the person's vault |
-| the seed | HKDF, `forest/v1/vault` | the vault's secret, which its inbox key comes from |
 
 The texts and prefixes are part of every key, so they never change: a new one would give everyone
 new keys. That is why two of them still say issuer, a verifier's old name.
@@ -68,9 +70,7 @@ new keys. That is why two of them still say issuer, a verifier's old name.
 By default, nothing mixed from the seed is stored, only the seed. When the person acts, the app
 mixes the one key that action needs (a profile's main key from its label, its inbox key, the seed
 scalar for a proof), uses it, and drops it; JavaScript cannot promise its bytes are erased
-(Limits). The vault is not used day to day: a new device reads it to learn which profiles exist,
-and the app writes it when what it holds changes, such as a new profile
-([records](../records/README.md#the-vault)).
+(Limits).
 
 ### The seed scalar
 
@@ -111,9 +111,10 @@ A main key signs with EdDSA-Poseidon on Baby Jubjub, the signature circomlib's
 `EdDSAPoseidonVerifier` checks inside a proof, made from the scalar itself.
 
 - The message is a field element, a number below BN254's scalar order.
-- The nonce `r` is SHA-512 of `forest/v1/nonce`, the scalar and the message (each 32 bytes
-  little-endian), read little-endian, mod `l`: the same message always gets the same signature,
-  and no two messages share a nonce.
+- The nonce `r` is SHA-512 of 79 bytes: the 15 bytes of `forest/v1/nonce` in UTF-8, as they are
+  (no `0xff`, no newline, no length), then the scalar and the message, each 32 bytes
+  little-endian. The 64 bytes out are read little-endian, mod `l`: the same message always gets the
+  same signature, and no two messages share a nonce.
 - `R8 = r · Base8`, `hm = Poseidon(R8x, R8y, Ax, Ay, message)`, and `S = r + 8 · hm · scalar mod
   l`. A signature holds when `S < l` and `S · Base8 = R8 + 8 · hm · A`, the equation zk-kit's
   `verifySignature` and circomlib's `EdDSAPoseidonVerifier` check. The key must be in the
@@ -160,6 +161,14 @@ key of each type.
   EIP-55's mixed-case checksum: that is its one spelling, and any other, all lower case included, is
   refused (`isEvmAddress`).
 - The profile's `pay` is both addresses, `{ solana, evm }` (`payAddresses`).
+- Each pay key signs the address of the profile it pays, for the profile record's `paySig`
+  (`signPay`, `checkPaySig`), over `0xff` ‖ UTF-8(`forest/v1/pay\n`) ‖ UTF-8(the profile's
+  address), in base64url without padding. `solana`: an Ed25519 signature (RFC 8032), 64 bytes,
+  checked strictly, with no ZIP-215 leniency. `evm`: secp256k1 over keccak256 of the bytes, 65
+  bytes, r ‖ s ‖ the recovery id (0 to 3, not Ethereum's 27 or 28), checked by recovering the key
+  and comparing its EIP-55 address; a high s is not refused, since only the main key puts a
+  signature in its profile record. A reader checks them, so a profile cannot list an address that is
+  not its own ([records](../records/README.md#folders)).
 
 ### The verifier secret
 
@@ -188,21 +197,6 @@ profiles whose tags are the person's ([proofs](../proofs/README.md)).
   work it out.
 - Tags for two labels, or for two verifiers, cannot be matched to each other.
 
-### The vault key
-
-The vault is one folder on a host, encrypted to the vault's own inbox key, holding what the seed
-cannot recompute: which profiles exist, stamps, the person's permissions, and settings
-([records](../records/README.md#the-vault)). Its keys are mixed from the seed, so a new device
-finds the vault with the seed and one host's address.
-
-- It is a main key with no label: its scalar is the lowest 250 bits of `Poseidon(vault prefix, seed
-  scalar)`, its address is the vault folder's name, and it signs the vault's records as a main key
-  does. Its mix has its own prefix and no scope, so no label gives it.
-- Its inbox key is mixed from the vault's secret, `hkdf(seed, "forest/v1/vault")`, by
-  `forest/v1/inbox` as a profile's is, and opens what the vault holds.
-- Its address ties to no profile: one profile's keys say nothing about the vault's, and the vault's
-  say nothing about any profile's.
-
 ### Service keys
 
 A service key is the signing key of an index or a verifier: 32 random bytes the service makes for
@@ -227,16 +221,15 @@ Everyone else asks a signer:
 - a person or a business, by a message to the person's inbox, signed by the main key of a profile
   of their own ([records](../records/README.md#inbox)).
 
-The signer decides by the person's permissions, a list kept in their vault
-([records](../records/README.md#permissions)). It never acts on a request no entry covers without
-the person's yes; how it asks, a prompt or a message waiting in the inbox, is the app's. Whatever it
-does, it signs with the profile's main key, so a host or a reader checks one key per profile.
+The signer decides by the rules of the profile it is asked to act as: private records in that
+profile's folder, which only the person's signers read ([records](../records/README.md#rules)). It
+never acts on an ask no rule covers without the person's yes; how it asks, a prompt or a message
+waiting in the inbox, is the app's. Whatever it does, it signs with the profile's main key, so a
+host or a reader checks one key per profile.
 
-A permission's `post` never covers a profile's profile record, its hosts record or the vault: a
-signer always asks the person for those. The vault holds the permissions, so an AI allowed to post
-there could raise its own limits; the profile record holds the pay addresses, which no reader can
-check against the seed; and the hosts record says where the folder lives. An AI could change any of
-them after reading an offer written to trick it.
+A rule's `post` never covers a profile's profile record, its hosts record or a rule: a signer always
+asks the person for those, since an AI allowed to write them could move the folder, change the pay
+addresses or raise its own limits after reading an offer written to trick it.
 
 ### What an app that holds keys should know
 
@@ -247,12 +240,12 @@ is what an app that holds the seed, a signer, should know, and what ours does:
    the Forest app uses, is a passkey, the device's own unlock, so there is no password to keep; an
    OS keychain or a hardware key are others. The recipe is the same whichever is used.
 2. The signer asks for the person's device unlock whenever the person acts with the seed: to sign
-   with a main key or the vault key, or to make a proof. What others ask, it does only within the
-   person's permissions, and it asks the person about the rest.
+   with a main key, or to make a proof. What others ask, it does only within the profile's rules,
+   and it asks the person about the rest.
 3. No key ever leaves a signer, to an app, a server, an AI or another person. What leaves is
-   signatures, proofs, and what the person's permissions let others read.
+   signatures, proofs, and what the profile's rules let others read.
 4. An AI app asks through its connection, and a person or a business by a message signed by its
-   own profile's main key; the signer acts on either only by the person's permissions.
+   own profile's main key; the signer acts on either only by the profile's rules.
 5. Neither the AI app nor the connector ever receives the person's own profiles' addresses, keys
    or folders (hosts keep folders and indexes read addresses, by design). An AI asks in words; the
    signer picks the profile, signs and publishes straight to the host; answers carry no addresses.
@@ -260,7 +253,8 @@ is what an app that holds the seed, a signer, should know, and what ours does:
 7. The app works with any host, and its host with any app.
 8. The app that holds the seed is open source.
 9. The app keeps a copy of every record it signs; a host may drop one, and the copy puts it back.
-10. The app keeps the verifier's stamp as safely as a key, in the vault.
+10. The app keeps the verifier's stamp on the device, as JSON; a verifier that keeps what it signed
+    can hand a lost one back by its stamp number, if it chooses.
 
 ### Use it
 
@@ -274,20 +268,20 @@ mixes from the seed scalar is not.
 | `seedScalar(seed)` | The seed scalar |
 | `mainKey(seed, label)` | The main key: `label`, `scope`, `scalar`, `publicKey`, `address`, and the profile's `secret` |
 | `profileScalarOf(seedScalar, label)` | A main key's scalar, from the seed scalar |
-| `inboxKey(secret)` | The inbox key, from a profile's `secret` or the vault's: age's `identity`, and `encryptTo`, what others encrypt to |
+| `inboxKey(secret)` | The inbox key, from a profile's `secret`: age's `identity`, and `encryptTo`, what others encrypt to |
 | `payKey(seed, label, type)`, `payAddresses(seed, label)`, `PAY_TYPES` | A pay key of one type: `label`, `type`, `privateKey`, `publicKey`, `address`; the profile's address of each type; and the types |
 | `evmAddressOf(publicKey)`, `isEvmAddress(text)` | A secp256k1 key's EVM address, in EIP-55; and whether text is one, in that spelling |
+| `signPay(payKey, profileAddress)`, `checkPaySig(type, payAddress, profileAddress, sig)` | A pay key's signature over its profile's address, for `paySig`; and whether one holds |
 | `verifierSecret(seed, name)` | The verifier's `name`, its `nameHash`, the person's `scalar` for it, and the `stampNumber` |
 | `verifierScalarOf(seedScalar, name)`, `tagOf(verifierScalar, label)` | The verifier secret from the seed scalar, and a tag |
-| `vaultKey(seed)`, `vaultScalarOf(seedScalar)` | The vault key: `scalar`, `publicKey`, `address`, `secret`; and its scalar |
 | `serviceKey(secret)` | A service key from its 32 random bytes: `secret`, `scalar`, `publicKey`, `address` |
 | `signWithScalar(scalar, message)`, `checkWithPublicKey(key or address, message, signature)` | A signature `{ R8, S }` on a field element, and its check |
 | `signBytes(scalar, bytes)`, `checkBytes(key or address, bytes, signature)`, `bytesMessage(bytes)` | A signature over bytes, its check, and the field element it signs |
 | `packSignature(signature)`, `unpackSignature(bytes)` | A signature's 64 bytes, and the signature back, or null |
 | `publicKeyOf(scalar)`, `addressOf(publicKey)`, `pointOf(address)` | A public key, its address, and the key an address names |
 | `packPoint(point)`, `unpackPoint(bytes)` | A point's 32 packed bytes, and the point back, or null |
-| `scopeOf(label)`, `nameHashOf(name)`, `fieldHash(namespace, ...parts)`, `PREFIX` | Text as the proofs' numbers, and the three prefixes |
-| `hkdf(ikm, info)`, `INFO` | The mixer and its info strings |
+| `scopeOf(label)`, `nameHashOf(name)`, `fieldHash(namespace, ...parts)`, `PREFIX` | Text as the proofs' numbers, and the two prefixes |
+| `hkdf(ikm, info)`, `INFO` | The mixer and its info strings; a profile's rule key is `hkdf(secret, INFO.rule)` |
 
 ```
 npm ci && npm run build   # at the root: every package; keys/ to dist/, for the packages that import it
@@ -300,18 +294,20 @@ Node 22.18 or later runs the TypeScript directly.
 
 ### Test vectors
 
-`test/vectors.json` pins, for the seed `00 01 … 1f`: its words; its seed scalar; the three prefixes;
-the main keys for `tutoring/seller` and `tutoring/buyer`, each with its secret and inbox key, and
-their pay keys of both types; for two verifiers, `issuer-a.example` and `issuer-b.example`, the name
-hash, the person's secret, the stamp number and a tag for each label; the vault key, with its secret
-and inbox key; one signature by the `tutoring/seller` main key; and a service key, from 32 bytes of
-`0x2a`. `npm test` checks each value and recomputes it without the library: HKDF and keccak from
-`@noble/hashes`, the seed scalar step by step without zk-kit, Baby Jubjub's points and signatures
-from zk-kit (`@zk-kit/baby-jubjub`, `@zk-kit/eddsa-poseidon`), the address packed by hand, the
-signature's equation, ed25519 from `@noble/curves`, secp256k1 from Node's own crypto with keccak256
-and EIP-55 by hand, the hybrid key others encrypt to from `@noble/post-quantum`, age's bech32 by
-hand, and an envelope encrypted and opened through age. The stamp proof's tests check the circuit
-derives the same main key and tag ([proofs/stamp](../proofs/stamp/README.md)).
+`test/vectors.json` pins, for the seed `00 01 … 1f`: its words; its seed scalar; the two prefixes;
+the main keys for `tutoring/seller` and `tutoring/buyer`, each with its secret, its rule key and its
+inbox key, and their pay keys of both types, each with its signature over its profile's address; for
+two verifiers, `issuer-a.example` and `issuer-b.example`, the name hash, the person's secret, the
+stamp number and a tag for each label; one signature by the `tutoring/seller` main key; and a
+service key, from 32 bytes of `0x2a`. `npm test` checks each value and recomputes it without the
+library: HKDF and keccak from `@noble/hashes`, the seed scalar step by step without zk-kit, Baby
+Jubjub's points and signatures from zk-kit (`@zk-kit/baby-jubjub`, `@zk-kit/eddsa-poseidon`), the
+address packed by hand, the signature's equation, its nonce byte by byte with Node's own SHA-512,
+`fieldHash` byte by byte, ed25519 from `@noble/curves` and each Solana pay signature with Node's own
+crypto, secp256k1 from Node's own crypto with keccak256 and EIP-55 by hand and each EVM pay
+signature's key recovered by hand, the hybrid key others encrypt to from `@noble/post-quantum`,
+age's bech32 by hand, and an envelope encrypted and opened through age. The stamp proof's tests
+check the circuit derives the same main key and tag ([proofs/stamp](../proofs/stamp/README.md)).
 
 ## Promises
 
@@ -321,8 +317,8 @@ derives the same main key and tag ([proofs/stamp](../proofs/stamp/README.md)).
 - **Nothing ties two verifiers together.** Each verifier is its own mix, so the same person's stamp
   numbers for two verifiers are unrelated, and two verifiers comparing what they hold cannot match
   them.
-- **No key gives the seed back.** Every mix is one way. A profile's secret gives its inbox key, and
-  nothing else.
+- **No key gives the seed back.** Every mix is one way. A profile's secret gives its inbox key and
+  its rule key, and nothing else.
 - **Nothing leaves the device.** The library talks to no network and stores nothing.
 
 ## Limits
@@ -360,8 +356,7 @@ Then that app has everything the seed opens, and nothing takes it back:
   mix the main key of every profile and sign as it, and every pay key and move its money;
 - every inbox key, so it can open the person's private records and messages;
 - the seed scalar, so it can make stamp proofs for the person's profiles with their stamps, and
-  reputation proofs from their scores;
-- the vault, with their verifiers' stamps.
+  reputation proofs from their scores.
 
 There is no rotation, so the only way out is a new seed and new profiles, moving the money first if
 there is still time. An app that holds the seed is trusted with all of that.
@@ -385,7 +380,8 @@ record's signature, so nothing asks for Poseidon there.
 device, from the seed: it is a standard, built into every browser's Web Crypto, and well studied.
 Inside a zero-knowledge proof, SHA-256 costs far more than Poseidon. So what a proof must work out
 (the verifier secret, the stamp number, a tag, a main key) is Poseidon of the seed scalar, and what
-no proof needs (the profiles' secrets, the pay keys, the vault's secret) is HKDF of the seed.
+no proof needs (the profiles' secrets, the pay keys, the rule keys) is HKDF of the seed or of a
+profile's secret.
 Neither is ours; both are used unchanged.
 
 **What if a main key leaks?**

@@ -59,7 +59,7 @@ export async function mainKey(seed: Uint8Array, label: string): Promise<MainKey>
 }
 
 /**
- * An inbox key, from a profile's 32-byte secret or the vault's. The 32 mixed bytes are used
+ * An inbox key, from a profile's 32-byte secret. The 32 mixed bytes are used
  * unchanged as age's hybrid identity (its seed, which age expands into the ML-KEM-768 and X25519
  * keys); age's own library computes what others encrypt to (identityToRecipient).
  */

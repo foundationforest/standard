@@ -278,8 +278,6 @@ export type Inbox = {
    * verifier, under any label. The verifier is named by its key's address.
    */
   senders: 'anyone' | { verifier: string }
-  /** One message from each sender, ever. */
-  once?: true
   /** The largest message it takes, as canonical text in bytes. */
   maxBytes?: number
 }
@@ -294,17 +292,15 @@ export type Inbox = {
 export function inboxOf(body: Body | null | undefined): Inbox | null | 'unsupported' {
   if (!body || !('inbox' in body)) return null
   const inbox = body.inbox
-  if (!isObject(inbox) || Object.keys(inbox).some((key) => !['senders', 'once', 'maxBytes'].includes(key))) return 'unsupported'
-  const { senders, once, maxBytes } = inbox
+  if (!isObject(inbox) || Object.keys(inbox).some((key) => !['senders', 'maxBytes'].includes(key))) return 'unsupported'
+  const { senders, maxBytes } = inbox
   let rule: Inbox['senders']
   if (senders === 'anyone') rule = 'anyone'
   else if (isObject(senders) && Object.keys(senders).length === 1 && publicKeyFromAddress(senders.verifier)) rule = { verifier: senders.verifier as string }
   else return 'unsupported'
-  if ('once' in inbox && once !== true) return 'unsupported'
   if ('maxBytes' in inbox && (!Number.isSafeInteger(maxBytes) || (maxBytes as number) < 0)) return 'unsupported'
   return {
     senders: rule,
-    ...(once === true && { once }),
     ...('maxBytes' in inbox && { maxBytes: maxBytes as number }),
   }
 }

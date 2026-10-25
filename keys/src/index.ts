@@ -26,7 +26,6 @@ export {
   type Signature,
 } from './curve.ts'
 export { mainKey, inboxKey, profileScalarOf, type MainKey, type InboxKey } from './profile.ts'
-export { PAY_TYPES, evmAddressOf, isEvmAddress, payAddresses, payKey, type PayAddresses, type PayKey, type PayType } from './pay.ts'
+export { PAY_TYPES, checkPaySig, evmAddressOf, isEvmAddress, payAddresses, payKey, signPay, type PayAddresses, type PayKey, type PayType } from './pay.ts'
 export { verifierSecret, verifierScalarOf, tagOf, type VerifierSecret } from './verifier.ts'
-export { vaultKey, vaultScalarOf, type VaultKey } from './vault.ts'
 export { serviceKey, type ServiceKey } from './service.ts'

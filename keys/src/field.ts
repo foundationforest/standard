@@ -40,7 +40,6 @@ export function fieldHash(namespace: string, ...parts: (string | Uint8Array)[]):
 export const PREFIX = {
   verifier: fieldHash('forest/v1/issuer'),
   profile: fieldHash('forest/v1/profile'),
-  vault: fieldHash('forest/v1/vault'),
 } as const
 
 /** A label as a number: `keccak256("forest/v1/label/" || label) >> 8`. */

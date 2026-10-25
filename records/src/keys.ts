@@ -13,7 +13,7 @@ import { type Point, addressOf, pointOf, publicKeyOf } from '@foundationforest/k
 
 export type { Point } from '@foundationforest/keys/curve'
 
-/** Anything that signs: keys/'s main key, vault key or service key. Held in memory only. */
+/** Anything that signs: keys/'s main key or service key. Held in memory only. */
 export type Key = {
   /** The scalar that signs. */
   scalar: bigint

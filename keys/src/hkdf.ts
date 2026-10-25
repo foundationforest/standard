@@ -9,7 +9,7 @@ export const INFO = {
   seed: 'forest/v1/seed',
   /** A profile's secret, which its inbox key is mixed from. The label is used exactly as given. */
   profile: (label: string) => `forest/v1/profile/${label}`,
-  /** An inbox key, mixed from a profile's secret or the vault's. */
+  /** An inbox key, mixed from a profile's secret. */
   inbox: 'forest/v1/inbox',
   /**
    * A profile's pay key for one address type, mixed from the seed. The label is used exactly as
@@ -17,8 +17,8 @@ export const INFO = {
    * with before evm was added, so every Solana address stays as it was.
    */
   pay: (type: 'solana' | 'evm', label: string) => `forest/v1/pay/${type}/${label}`,
-  /** The vault's secret, which its inbox key is mixed from. */
-  vault: 'forest/v1/vault',
+  /** A profile's rule key, mixed from its secret: it names the paths of the profile's rules (records/README.md, Rules). */
+  rule: 'forest/v1/rule',
 } as const
 
 /** The seed is 32 bytes. */

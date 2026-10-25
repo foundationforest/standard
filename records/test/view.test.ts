@@ -83,11 +83,12 @@ describe('one key', () => {
     assert.equal(view([bobs]).current.size, 0, 'Bob’s record is in Bob’s folder')
   })
 
-  test('permissions is a content path like any other: the newest record there is current, and a delete deletes it', () => {
-    const one = ownerRecord(alice, 'permissions', { anything: 'a market or an app may put here' }, T0)
-    const two = ownerRecord(alice, 'permissions', null, T0 + 1)
-    assert.equal(view([one]).current.get('permissions')!.id, idOf(one))
-    assert.equal(liveContent(view([one, two])).has('permissions'), false)
+  test('a rule is a content path like any other: the newest record there is current, and a delete deletes it', () => {
+    const path = 'rule/0123456789abcdef0123456789abcdef'
+    const one = ownerRecord(alice, path, { anything: 'what a rule says is private: any body here' }, T0)
+    const two = ownerRecord(alice, path, null, T0 + 1)
+    assert.equal(view([one]).current.get(path)!.id, idOf(one))
+    assert.equal(liveContent(view([one, two])).has(path), false)
     assert.deepEqual([...view([two, one]).ignored], [[idOf(one), 'older']])
   })
 })

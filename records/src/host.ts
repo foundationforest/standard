@@ -64,8 +64,9 @@ const BLOB_PATH = /^\/v1\/blobs\/([0-9a-f]{64})$/
 const MAX_BLOB_REQUEST_BYTES = 1024
 
 /**
- * A host's own choice for content records: null takes the record, a reason refuses it. It is
- * never asked about a hosts record, so a person can always move.
+ * A host's own choice for content records, and for the first hosts record of a folder it holds no
+ * record of yet: null takes the record, a reason refuses it. So joining can cost; a hosts record for
+ * a folder it holds is never asked about, so a person can always leave or update.
  */
 export type RecordChoice = (record: SignedRecord, stored: { records: number; bytes: number }) => string | null | Promise<string | null>
 /** A host's own choice for messages, from the message and what it holds for the profile it is to. */
@@ -191,7 +192,7 @@ export class Host {
     // Kept only if it becomes the newest at its path, by the rule every reader follows (view.ts).
     const view = viewProfile(record.profile, [...this.stored(record.profile), c], now)
     if (view.current.get(record.path)?.id !== c.id) return { ok: false, error: 'older', message: 'a newer version is already here' }
-    if (this.recordChoice && !isControlPath(record.path)) {
+    if (this.recordChoice && (!isControlPath(record.path) || this.storage.recordTotals(record.profile).records === 0)) {
       const refused = await this.recordChoice(record, this.storage.recordTotals(record.profile))
       if (refused) return { ok: false, error: 'refused', message: refused }
     }
@@ -323,15 +324,13 @@ export class Host {
       }
       if (!held) return refuse('sender', 'from’s profile record carries no stamp proof from the inbox’s verifier that holds')
     }
-    if (rules?.once && this.storage.hasOnce(m.to, m.from)) return refuse('once', 'this inbox takes one message from each sender')
     if (rules?.maxBytes !== undefined && utf8(line).length > rules.maxBytes) return refuse('too_big', `this inbox takes messages of at most ${rules.maxBytes} bytes`)
     if (this.messageChoice) {
       const refused = await this.messageChoice(m, this.storage.messageTotals(m.to))
       if (refused) return refuse('refused', refused)
     }
-    // Checked again here, with no wait in between: another request may have taken the same id or
-    // pair during a lookup or its own choice.
-    if (rules?.once && !this.storage.addOnce(m.to, m.from)) return refuse('once', 'this inbox takes one message from each sender')
+    // Checked again here, with no wait in between: another request may have taken the same id
+    // during a lookup or its own choice.
     if (!this.storage.addMessage(m.to, id, line, now)) return refuse('duplicate', 'this message is already here')
     return { id, ok: true }
   }
