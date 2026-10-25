@@ -95,6 +95,21 @@ class Db {
   }
 }
 
+/**
+ * The version of the layout FOLDER_SCHEMA makes. A change to that layout raises it, and adds to
+ * STEPS what turns a file of the version before into this one.
+ */
+const VERSION = 2
+
+/**
+ * What turns a folder file of each older version into the next. Version 1's blobs said who put
+ * each one, the main key or a write key; only the main key puts a folder's blobs now, so a blob a
+ * write key put is the folder's like any other.
+ */
+const STEPS: Record<number, string> = {
+  1: 'ALTER TABLE blobs DROP COLUMN by',
+}
+
 // A folder file keeps SQLite's default rollback journal, not WAL: no -wal file is left beside it
 // that could come back into a new file after the folder is deleted.
 const FOLDER_SCHEMA = `
@@ -124,7 +139,7 @@ const FOLDER_SCHEMA = `
     size INTEGER NOT NULL,
     arrived INTEGER NOT NULL   -- this host's clock
   ) WITHOUT ROWID;
-  PRAGMA user_version = 1;
+  PRAGMA user_version = ${VERSION};
 `
 
 const HOST_SCHEMA = `
@@ -176,15 +191,16 @@ function nextNumber(db: Db, table: string, now: number): number {
   return Math.max(last + 1, now * 1000)
 }
 
+const versionOf = (db: DatabaseSync) => (db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version
+
 /**
  * A SQLite file's layout: its version, each table's columns and each index's name. Not the text
  * that made them, so a comment changed in FOLDER_SCHEMA changes no layout.
  */
 function layoutOf(db: DatabaseSync): string {
-  const { user_version } = db.prepare('PRAGMA user_version').get() as { user_version: number }
   const columns = db.prepare(`SELECT m.name AS tbl, p.name, p.type, p."notnull", p.pk FROM sqlite_master m JOIN pragma_table_info(m.name) p WHERE m.type = 'table' ORDER BY m.name, p.cid`).all()
   const indexes = db.prepare(`SELECT name, tbl_name FROM sqlite_master WHERE type = 'index' ORDER BY name`).all()
-  return JSON.stringify({ user_version, columns, indexes })
+  return JSON.stringify({ user_version: versionOf(db), columns, indexes })
 }
 
 /** The layout of a new file, and of a folder file as FOLDER_SCHEMA makes it. */
@@ -198,13 +214,32 @@ const [NEW_LAYOUT, FOLDER_LAYOUT] = ['', FOLDER_SCHEMA].map((schema) => {
   }
 })
 
-/** A folder's file, its tables made the first time it opens. A file in any other layout is refused, never migrated. */
+/**
+ * A folder's file, its tables made the first time it opens. A file of an older version is migrated
+ * in one transaction, by each step from its version to this one. A file with no step for its
+ * version, a step that fails, or a result in any layout but this host's is refused and left as it
+ * was, so a file from a newer host is never changed.
+ */
 function openFolder(file: string): Db {
   const folder = new Db(file)
   try {
     const layout = layoutOf(folder.db)
     if (layout === NEW_LAYOUT) folder.db.exec(FOLDER_SCHEMA)
-    else if (layout !== FOLDER_LAYOUT) throw new Error(`${file} is not a folder file in this host's layout`)
+    else if (layout !== FOLDER_LAYOUT) {
+      const refused = (cause?: unknown) => new Error(`${file} is not a folder file in this host's layout`, { cause })
+      folder.tx(() => {
+        for (let version = versionOf(folder.db); version < VERSION; version++) {
+          const step = STEPS[version]
+          if (step === undefined) throw refused()
+          try {
+            folder.db.exec(`${step}; PRAGMA user_version = ${version + 1}`)
+          } catch (cause) {
+            throw refused(cause)
+          }
+        }
+        if (layoutOf(folder.db) !== FOLDER_LAYOUT) throw refused()
+      })
+    }
     return folder
   } catch (err) {
     folder.close()
