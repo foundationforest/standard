@@ -44,7 +44,7 @@ pub enum EscrowError {
     PartyIsTheEscrow,
     #[msg("a party has already stopped this escrow; it takes one stop")]
     AlreadyStopped,
-    #[msg("a party stopped this escrow: the schedule is off; the money moves only by a side giving, both agreeing, or the arbiter")]
+    #[msg("a party stopped this escrow: end does not run; the money moves by a side giving, a take-back inside a window, both agreeing, or the arbiter")]
     Stopped,
     #[msg("a token with a transfer fee is not accepted: the fee would take part of every payment in and out")]
     TransferFee,

@@ -1,7 +1,7 @@
 // The escrow on devnet, used for real: deals between the devnet parties through
-// escrows/solana/devnet/deploy.sh's deploy, in the classic test dollar the record names and in a
-// Token-2022 dollar made here with Open USD's extensions. The `buyer` key is each escrow's payer and
-// the `seller` key its recipient; the labels are the key recipe's.
+// escrows/solana/devnet/deploy.sh's deploy, in a classic test dollar and in a Token-2022 dollar with
+// Open USD's extensions. The `buyer` key is each escrow's payer and the `seller` key its recipient;
+// the labels are the key recipe's.
 //
 //   FOREST_DEVNET_KEYS=<dir> node scripts/devnet.ts        (after escrows/solana/devnet/deploy.sh)
 //
@@ -19,23 +19,23 @@
 //    a plain transfer lands; the mark and the default are refused; the payer closes it, and
 //    everything goes back.
 // In the Open USD-shaped Token-2022 dollar (every extension Open USD has on mainnet, the payer key
-// holding every role of the dollar's maker, made on the first run): deals 1 and 3 again, so a one
-// tap and both payouts of a split cross Token-2022.
+// holding every role of the dollar's maker): deals 1 and 3 again, so a one tap and both payouts of
+// a split cross Token-2022.
 //
-// Before the deals, the payer is topped up if it holds less than they need: test dollars sent back
-// by the recipient (the test dollar's mint authority is gone), Open USD-shaped dollars minted.
+// Each dollar is the record's (`testDollar`, `openUsdShaped`) if the payer key holds its mint
+// authority on chain; otherwise it is made here, with the payer key as its maker and a mint key
+// made for it and kept nowhere, since once the mint is made nothing needs that key again. Before
+// the deals, the payer is topped up by minting if it holds less than they need.
 //
 // The `payer` key pays every network fee and fronts every rent, the way a fee payer would, and is
 // recorded as each escrow's sponsor. <dir> holds payer.json, buyer.json and seller.json, as
-// escrows/solana/devnet/deploy.sh writes them, read and never printed, and on the first run
-// open-usd-shaped-mint.json, the Token-2022 mint's key, made there; from then on the record names
-// the mint, and its key is not needed. The keys must be the ones escrows/solana/devnet/devnet.json
-// names in `keys`, and the classic mint is its `testDollar`. Everything public goes into
+// escrows/solana/devnet/deploy.sh writes them, read and never printed. The keys must be the ones
+// escrows/solana/devnet/devnet.json names in `keys`. Everything public goes into
 // escrows/solana/devnet/devnet.json. Each step checks the chain first, so the script can be run again
-// after a failure; a deal's schedule is written down before its escrow opens, so a second run
-// finds the same address. FOREST_DEVNET_RPC points it at another devnet RPC.
+// after a failure; a mint, and a deal's schedule, are written down before they are sent, so a
+// second run finds the same addresses. FOREST_DEVNET_RPC points it at another devnet RPC.
 
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -52,7 +52,9 @@ import {
   ExtensionType,
   getAccount,
   getExtensionTypes,
+  getMinimumBalanceForRentExemptMint,
   getMintLen,
+  MINT_SIZE,
   tokenMetadataInitializeWithRentTransfer,
   unpackMint,
 } from '@solana/spl-token'
@@ -85,8 +87,10 @@ import {
   takeBackIx,
   termsFor,
   TOKEN_2022_PROGRAM_ID,
+  TOKEN_PROGRAM_ID,
   tokenOf,
   transferIx,
+  VERSION,
   type EscrowAccount,
   type EscrowKeys,
   type PostTerms,
@@ -103,7 +107,6 @@ const connection = new Connection(process.env.FOREST_DEVNET_RPC ?? record.rpc, '
 const programId = new PublicKey(record.escrow.programId)
 const earlier = (record.earlier ?? []).map((e: { escrow: { programId: string } }) => e.escrow.programId)
 if (earlier.includes(programId.toBase58())) throw new Error("that is an earlier escrow program's id")
-const classicMint = new PublicKey(record.testDollar.mint)
 
 function key(name: string): Keypair {
   return Keypair.fromSecretKey(Uint8Array.from(JSON.parse(readFileSync(join(keysDir!, `${name}.json`), 'utf8'))))
@@ -121,7 +124,7 @@ function save(): void {
 
 function note(deal: Record<string, unknown>, what: string, signature: string): void {
   record.transactions ??= []
-  record.transactions.push({ program: 'escrow-v3', what, signature })
+  record.transactions.push({ program: `escrow-v${VERSION}`, what, signature })
   ;(deal.signatures as Record<string, string>)[what.split(':')[0]] = signature
   save()
   console.log(`  ${signature}  ${what}`)
@@ -338,7 +341,7 @@ async function stopDeal(name: string, token: Token, label: string): Promise<void
     if (!canStop(e, await chainNow())) throw new Error('the end time has passed: too late to stop')
     const sig = await send([stopIx({ account: e, party: payer.publicKey, programId })], [sponsor, payer])
     if ((await kinds(sig)) !== 'stopped') throw new Error('the stop logged something else')
-    note(d, 'stop: the payer stops it before the end time; the schedule is off', sig)
+    note(d, 'stop: the payer stops it before the end time; the default is off', sig)
     e = (await escrowAt(keys.escrow))!
   }
   if (e.status !== 'ended') {
@@ -458,26 +461,63 @@ function initializePausableIx(mint: PublicKey, authority: PublicKey): Transactio
 /** Open USD's extension types on mainnet, in order: close authority, permanent delegate, default account state, confidential transfer mint, transfer hook, metadata pointer, pausable, token metadata. */
 const OPEN_USD_EXTENSIONS = [3, 12, 6, 4, 14, 18, 26, 19]
 
-/** The Token-2022 deals' mint: made once with Open USD's extensions, the sponsor key holding every role of the dollar's maker; three of it for the payer. */
+/** Whether `mint` is on chain under `program` and the sponsor key, this phrase's payer key, holds its mint authority. */
+async function ours(mint: string | undefined, program: PublicKey): Promise<boolean> {
+  if (!mint) return false
+  const address = new PublicKey(mint)
+  const info = await connection.getAccountInfo(address)
+  if (!info || !info.owner.equals(program)) return false
+  return unpackMint(address, info, program).mintAuthority?.equals(sponsor.publicKey) ?? false
+}
+
+/** The classic deals' mint: the record's if the sponsor key can mint it, else made here in one transaction, with both parties' standard accounts and six of it for the payer. */
+async function testDollar(): Promise<Token> {
+  if (!(await ours(record.testDollar?.mint, TOKEN_PROGRAM_ID))) {
+    const mintKey = Keypair.generate()
+    const mint = mintKey.publicKey
+    record.testDollar = {
+      what: 'The classic test dollar: an SPL Token mint, 6 decimals, the devnet payer key its mint authority, no freeze authority; six of it minted to the buyer.',
+      mint: mint.toBase58(),
+      decimals: 6,
+      authority: sponsor.publicKey.toBase58(),
+      signatures: {},
+    }
+    save()
+    const payerTokens = payerAccount(payer.publicKey, mint, TOKEN_PROGRAM_ID)
+    const lamports = await getMinimumBalanceForRentExemptMint(connection)
+    const sig = await send(
+      [
+        SystemProgram.createAccount({ fromPubkey: sponsor.publicKey, newAccountPubkey: mint, lamports, space: MINT_SIZE, programId: TOKEN_PROGRAM_ID }),
+        createInitializeMint2Instruction(mint, 6, sponsor.publicKey, null, TOKEN_PROGRAM_ID),
+        createAssociatedTokenAccountIdempotentInstruction(sponsor.publicKey, payerTokens, payer.publicKey, mint, TOKEN_PROGRAM_ID),
+        createAssociatedTokenAccountIdempotentInstruction(sponsor.publicKey, recipientAccount(recipient.publicKey, mint, TOKEN_PROGRAM_ID), recipient.publicKey, mint, TOKEN_PROGRAM_ID),
+        createMintToCheckedInstruction(mint, payerTokens, sponsor.publicKey, 6_000_000n, 6, [], TOKEN_PROGRAM_ID),
+      ],
+      [sponsor, mintKey],
+    )
+    record.testDollar.signatures['mint, accounts and six to the buyer'] = sig
+    save()
+    console.log(`  ${sig}  the classic test dollar, both parties' standard accounts, six to the payer`)
+  }
+  return readToken(new PublicKey(record.testDollar.mint))
+}
+
+/** The Token-2022 deals' mint: Open USD's extensions, the sponsor key holding every role of the dollar's maker; three of it for the payer. The record's if the sponsor key can mint it, else made here. */
 async function openUsdShaped(): Promise<Token> {
   const issuer = sponsor.publicKey
-  // Once made, the mint is the record's; its key is needed only to make it, so any machine holding
-  // the phrase can run the deals again.
-  if (!record.openUsdShaped) {
-    const file = join(keysDir!, 'open-usd-shaped-mint.json')
-    if (!existsSync(file)) writeFileSync(file, JSON.stringify([...Keypair.generate().secretKey]), { mode: 0o600 })
+  let mintKey: Keypair | null = null
+  if (!(await ours(record.openUsdShaped?.mint, TOKEN_2022_PROGRAM_ID))) {
+    mintKey = Keypair.generate()
     record.openUsdShaped = {
       what: "A Token-2022 mint with every extension Open USD (ousd2mJsPEckLHcSCDxyKD7NDGARZcfLbDZkKiatYHB) has on mainnet, in its order, six decimals, the devnet payer key holding every role of the dollar's maker; three of it minted to the buyer.",
-      mint: key('open-usd-shaped-mint').publicKey.toBase58(),
+      mint: mintKey.publicKey.toBase58(),
       issuer: issuer.toBase58(),
       signatures: {},
     }
     save()
   }
   const mint = new PublicKey(record.openUsdShaped.mint)
-  if (!(await connection.getAccountInfo(mint))) {
-    const mintKey = key('open-usd-shaped-mint')
-    if (!mintKey.publicKey.equals(mint)) throw new Error('the record names an Open USD-shaped mint that this keys directory cannot make')
+  if (mintKey) {
     const fixed = getMintLen([
       ExtensionType.MintCloseAuthority,
       ExtensionType.PermanentDelegate,
@@ -551,7 +591,8 @@ async function topUp(token: Token, label: string, need: bigint, how: string, giv
   const held = await tokens(payerAccount(payer.publicKey, token.mint, token.program), token)
   if (held >= need) return
   const sig = await give(need - held)
-  record.transactions.push({ program: 'escrow-v3', what: `top-up: ${how} ${Number(need - held) / 1e6} ${label} to the payer key for the v3 deals`, signature: sig })
+  record.transactions ??= []
+  record.transactions.push({ program: `escrow-v${VERSION}`, what: `top-up: ${how} ${Number(need - held) / 1e6} ${label} to the payer key for the v${VERSION} deals`, signature: sig })
   save()
   console.log(`  ${sig}  ${how} ${need - held} base units of ${label} to the payer key`)
 }
@@ -563,12 +604,9 @@ console.log(`escrow ${programId.toBase58()}`)
 
 // In the classic test dollar. The payer needs 5.20 at most at once: what deals 1 to 5 put in,
 // less what 2, 3 and 5 give back before the next one.
-const classic = await readToken(classicMint)
-if (!done('invoice', 'takeBack', 'stop', 'end', 'late')) await topUp(classic, 'test dollar', 6_000_000n, 'the recipient key sends back', (amount) =>
-  send(
-    [transferIx({ from: recipientAccount(recipient.publicKey, classic.mint, classic.program), to: payerAccount(payer.publicKey, classic.mint, classic.program), owner: recipient.publicKey, mint: classic.mint, amount, decimals: classic.decimals, tokenProgram: classic.program })],
-    [sponsor, recipient],
-  ),
+const classic = await testDollar()
+if (!done('invoice', 'takeBack', 'stop', 'end', 'late')) await topUp(classic, 'test dollar', 6_000_000n, 'the payer key mints', (amount) =>
+  send([createMintToCheckedInstruction(classic.mint, payerAccount(payer.publicKey, classic.mint, classic.program), sponsor.publicKey, amount, 6, [], classic.program)], [sponsor]),
 )
 await invoiceDeal('invoice', classic, 'test dollar')
 await takeBackDeal(classic, 'test dollar')

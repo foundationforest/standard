@@ -23,8 +23,8 @@
 //!   recipient gives everything back), in every live state, a stop included;
 //! - selfish, by the schedule: `take_back`, the payer taking back the share of the window in
 //!   force, the rest to the recipient;
-//! - `stop`, by either side, once, before the end time: it moves nothing, and from then on neither
-//!   `take_back` nor `end` runs;
+//! - `stop`, by either side, once, before the end time: it moves nothing, and from then on `end`
+//!   does not run; `take_back` still runs by the windows, which both sides agreed at the start;
 //! - `agree` (both sign any split) and `decide` (the arbiter named at creation signs any split), in
 //!   every live state;
 //! - `end`, by anyone, from the end time on, if the funding was marked before it and nobody
@@ -70,11 +70,15 @@ pub mod state;
 use errors::EscrowError;
 use state::*;
 
+// Version 3's id for local work, kept as it is: no keypair for it exists, each deploy puts its own
+// id in its place (`escrows/solana/devnet/deploy.sh` replaces this exact line), and clients and
+// tests name it.
 declare_id!("FoRE3EscrowV3scheduLeWindowsPayRefund3333333");
 
 /// Written into every escrow: which program's rules it follows. v2 had a timer and buyer and
-/// seller; v3 has the schedule and the payer and the recipient.
-pub const VERSION: u8 = 3;
+/// seller; v3 has the schedule and the payer and the recipient; v4 keeps v3's account and lets a
+/// stop turn off only `end`, so the payer's take-back runs by its windows, stop or no stop.
+pub const VERSION: u8 = 4;
 pub const ESCROW_SEED: &[u8] = b"escrow";
 /// Wrapped SOL. A classic SPL Token mint, and refused at `create`: SOL sent to its deposit account
 /// by a plain transfer counts only after someone syncs it, and whatever arrives after the last sync
@@ -270,10 +274,11 @@ pub mod forest_escrow {
     }
 
     /// A party stops the escrow. The payer or the recipient signs; once per escrow, by either, at
-    /// any time while it is live and before its end time. It moves no money. From then on neither
-    /// `take_back` nor `end` runs: the money moves only by a side giving (`pay`, `refund`), both
-    /// agreeing, or the arbiter if one was named. `close_unfunded` still closes an escrow that never
-    /// held the amount, and `recover_late` is unchanged.
+    /// any time while it is live and before its end time. It moves no money. From then on `end`
+    /// does not run, nor the late close of money nobody marked: the money moves by a side giving
+    /// (`pay`, `refund`), the payer's take-back inside a window, both agreeing, or the arbiter if one
+    /// was named. `close_unfunded` still closes an escrow that holds less than the amount, and
+    /// `recover_late` is unchanged.
     ///
     /// "Before the end time" is `end_time`, the same deadline `end` reads: before it only a stop can
     /// land, from it on only the default, so the two never race. An escrow with no schedule can be
@@ -328,15 +333,15 @@ pub mod forest_escrow {
     }
 
     /// The payer takes back, alone, the share of the window in force: that many basis points of the
-    /// balance, rounded down, to the payer, the rest to the recipient. Only inside a window, only if
-    /// nobody stopped, and only where the share is above 0: in a window of 0, giving everything to
-    /// the recipient is `pay`, so each ending has one move.
+    /// balance, rounded down, to the payer, the rest to the recipient. Only inside a window, and
+    /// only where the share is above 0: in a window of 0, giving everything to the recipient is
+    /// `pay`, so each ending has one move. A stop changes nothing here: the windows are what both
+    /// sides agreed at the start, and a stop disputes only the ending by the clock.
     pub fn take_back<'info>(ctx: Context<'info, TakeBack<'info>>) -> Result<()> {
         let a = &ctx.accounts;
         require!(a.escrow.live(), EscrowError::Ended);
         require_keys_eq!(a.payer.key(), a.escrow.payer, EscrowError::NotThePayer);
         require!(a.escrow.end_time().is_some(), EscrowError::NoSchedule);
-        require!(!a.escrow.stopped(), EscrowError::Stopped);
         let now = Clock::get()?.unix_timestamp;
         let window = a.escrow.window_at(now).ok_or_else(|| error!(EscrowError::ScheduleOver))?;
         require!(window.payer_share > 0, EscrowError::BadShare);
@@ -1007,8 +1012,7 @@ pub struct Funded {
     pub funded_at: i64,
 }
 
-/// A party stopped the escrow. From here on neither `take_back` nor `end` runs; the receipt keeps
-/// who and when.
+/// A party stopped the escrow. From here on `end` does not run; the receipt keeps who and when.
 #[event]
 pub struct Stopped {
     pub escrow: Pubkey,

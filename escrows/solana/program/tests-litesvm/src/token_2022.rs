@@ -25,8 +25,8 @@ use spl_discriminator::SplDiscriminate;
 use spl_tlv_account_resolution::{account::ExtraAccountMeta, seeds::Seed, state::ExtraAccountMetaList};
 use spl_token_2022_interface::extension::transfer_hook::{TransferHook, TransferHookAccount};
 use spl_token_2022_interface::extension::{
-    confidential_transfer, default_account_state, interest_bearing_mint, metadata_pointer, pausable, scaled_ui_amount, transfer_fee,
-    transfer_hook, BaseStateWithExtensions, ExtensionType, StateWithExtensions,
+    confidential_transfer, default_account_state, interest_bearing_mint, memo_transfer, metadata_pointer, pausable, scaled_ui_amount,
+    transfer_fee, transfer_hook, BaseStateWithExtensions, ExtensionType, StateWithExtensions,
 };
 use spl_token_2022_interface::instruction as t22;
 use spl_token_2022_interface::state::{Account as TokenAccount22, AccountState, Mint as Mint22};
@@ -389,6 +389,22 @@ pub fn delegate_takes(h: &mut Harness, from: &Address, to: &Address, amount: u64
     let ix = t22::transfer_checked(&TOKEN_2022_PROGRAM, from, &h.mint, to, &delegate.pubkey(), &[], amount, h.decimals).unwrap();
     let ix = h.with_hook(ix, *from, &[*to], delegate.pubkey());
     h.send(&[ix], &[&delegate]).map(|_| ())
+}
+
+/// Token-2022's error for a transfer into an account that requires a memo when the instruction
+/// before it is not one (`TokenError::NoMemo`).
+pub const NO_MEMO: u32 = 36;
+
+/// The owner of a token account turns on its memo requirement, as any holder can: `Reallocate`, to
+/// make room for the extension, then `EnableRequiredMemoTransfers`, both signed by the owner. From
+/// then on Token-2022 refuses every transfer into it that does not follow a memo instruction, and
+/// the escrow sends none.
+pub fn require_memos(h: &mut Harness, owner: &Keypair, account: &Address) {
+    let ixs = [
+        t22::reallocate(&TOKEN_2022_PROGRAM, account, &h.sponsor.pubkey(), &owner.pubkey(), &[], &[ExtensionType::MemoTransfer]).unwrap(),
+        memo_transfer::instruction::enable_required_transfer_memos(&TOKEN_2022_PROGRAM, account, &owner.pubkey(), &[]).unwrap(),
+    ];
+    h.send(&ixs, &[owner]).expect("memos required");
 }
 
 /// A Token-2022 mint with a transfer fee (`bps`, any maximum) and nothing else, its fee

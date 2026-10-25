@@ -8,16 +8,17 @@ how this program applies it or why it does not apply, and every known limit. The
 `program/trident-tests/`. It runs on Solana's devnet, not on its mainnet, and no paid review has
 happened.
 
-This program writes version 3 into every escrow: a schedule of windows, the payer and the
-recipient. Version 2 (a timer, an objection, a buyer and a seller) ran at the same devnet id until
-the upgrade to this one, and version 1 before it at another; their sources and checklists are in
-git history.
+This program writes version 4 into every escrow: a schedule of windows, the payer and the
+recipient, and a stop that turns off only the default. Version 3, the same but for a stop that also
+turned off the take-back, runs on devnet; version 2 (a timer, an objection, a buyer and a seller)
+ran at the same devnet id until the upgrade to version 3, and version 1 before it at another; their
+sources and checklists are in git history.
 
 | | |
 |---|---|
-| Program | `forest_escrow`, version byte 3, `FoRE3EscrowV3scheduLeWindowsPayRefund3333333` for local work, `FA6ZodkyhMDj9yjzY27dk8JDCtcHnJx8mr45Mx9TfKg8` on devnet, upgraded in place four times (its first deploy, classic only, at `B3p13G8xvNvUrAnaXg9AUtwffBAUHcp6XoMwGV2jKPi7`, closed) |
+| Program | `forest_escrow`, version byte 4, `FoRE3EscrowV3scheduLeWindowsPayRefund3333333` for local work, not yet on devnet: the next deploy puts it at a new address. Version 3 runs on devnet at `FA6ZodkyhMDj9yjzY27dk8JDCtcHnJx8mr45Mx9TfKg8`, upgraded in place four times (its first deploy, classic only, at `B3p13G8xvNvUrAnaXg9AUtwffBAUHcp6XoMwGV2jKPi7`, closed) |
 | Framework | Anchor 1.2 with `anchor-spl`'s token interface, `cargo build-sbf --arch v3` (Solana CLI 4.2.2, platform-tools v1.54), no IDL, no build warning |
-| Testing | LiteSVM, 95 tests on every pull request: 71 on a classic mint, 24 on Token-2022 mints (one made with Open USD's mainnet extensions compared with the mainnet account's bytes; others with one extension each), with a builtin test hook and a builtin spy standing in for Token-2022; one of them sends every move in every state (`every_move_in_every_state`). A mutation check of each of the 17 rules version 3 added (each removed in turn fails at least one test), and of the hook rules, the non-transferable refusal and the terms in the address. A Trident fuzzer: seventeen invariants, 50,000 iterations nightly, on an SBPF v0 build and a classic mint. On devnet: seven deals through the client, two of them in a Token-2022 dollar with Open USD's extensions, and five refusals simulated there. **No local-validator test** |
+| Testing | LiteSVM, 97 tests on every pull request: 72 on a classic mint, 25 on Token-2022 mints (one made with Open USD's mainnet extensions compared with the mainnet account's bytes; others with one extension each), with a builtin test hook and a builtin spy standing in for Token-2022; one of them sends every move in every state (`every_move_in_every_state`). A mutation check of each of the 17 rules version 3 added (each removed in turn fails at least one test), and of the hook rules, the non-transferable refusal and the terms in the address; for version 4, putting `take_back`'s stop check back fails `a_stop_leaves_the_take_back_to_its_windows` and `every_move_in_every_state`. A Trident fuzzer: seventeen invariants, 50,000 iterations nightly, on an SBPF v0 build and a classic mint. On devnet, for version 3: seven deals through the client, two of them in a Token-2022 dollar with Open USD's extensions, and five refusals simulated there; version 4's run waits for its deploy. **No local-validator test** |
 | Risk level | 🟡 Medium by the skill's table (an escrow: token transfers, basic CPI, PDAs, no admin). Treated as 🔴 **Critical**, because it cannot change once deployed to Solana's mainnet and holds other people's money, so this checklist carries a High-Risk Decisions section |
 | Upgrade authority | Removed at mainnet deploy with `solana program set-upgrade-authority --final` (`README.md`). No admin key, no config, no pause, no fee. A change is a new program at a new address. On devnet the authority stays on the deploy key, whose phrase is lost, so the program cannot be upgraded in place |
 
@@ -33,7 +34,7 @@ Each is on purpose, and none can be changed after deploy.
    side from the last one. It is off by default, it is in the address, the account and the
    `Created` event, and the other side sees it before working or paying (the client's
    `optionsNotAgreed`). Its times are dates fixed at creation: nothing restarts or moves them
-   (§31.7). Either side can freeze it (7).
+   (§31.7). Either side can freeze its default (7).
 3. **The arbiter is never a party, and may be any other key.** `create` refuses the payer's or the
    recipient's key as arbiter (`ArbiterIsAParty`): a party as arbiter could split any way alone, and
    so take everything. Who holds any other key, the program cannot tell: a party can name a key it
@@ -47,12 +48,13 @@ Each is on purpose, and none can be changed after deploy.
 6. **Any mint of either token program is accepted,** but for those in 9, including one the payer
    minted itself; which tokens count is the index's call. Pinned by
    `finding_a_self_minted_token_makes_a_receipt_that_looks_like_real_money`.
-7. **Either party can freeze the schedule, alone.** A stop before the end time turns off the
-   take-back and the default for good, for both sides. So a schedule guarantees neither side
-   anything: the default pays its side only if the other side stays silent until the end time, and
-   the payer's take-back lasts only until the recipient stops. After a stop with no arbiter named,
-   the money moves only when the parties agree; each side alone can still give (everything to the
-   other), so the program never strands it, but neither side can take it.
+7. **Either party can freeze the default, alone.** A stop before the end time turns off the default
+   for good, for both sides, and nothing else the schedule gives: the payer's take-back runs by its
+   windows, stop or no stop, since both sides agreed them at the start. So the default pays its
+   side only if the other side stays silent until the end time. After a stop with no arbiter named,
+   once the last take-back window has closed, the money moves only when the parties agree; each
+   side alone can still give (everything to the other), so the program never strands it, but
+   neither side can take it.
 8. **Every rent goes back to whoever fronted it, not to the person who opened the escrow.** The
    deposit account's at every ending, both at `close_unfunded`, and what a sweep takes, all to the
    sponsor recorded at creation. When a fee payer fronts the rent and charges the person for it, it
@@ -108,11 +110,13 @@ Each is on purpose, and none can be changed after deploy.
   `a_sweep_returns_rent_above_the_minimum_to_the_sponsor_and_never_goes_below_it` and
   `every_rent_goes_back_to_the_sponsor`.
 - **1.4 Type cosplay. Applied.** Anchor's eight-byte discriminator on `Escrow` (`account:Escrow`,
-  the same as versions 1 and 2, at another size). On mainnet each version is its own program, and
-  each accepts only accounts it owns. On devnet, where version 3 replaced version 2 at the same id,
-  a version 2 account is 7 bytes short and fails to load (`AccountDidNotDeserialize`, simulated
-  there on each version 2 receipt). Token accounts and the mint by owner, length and initialized
-  state, as `InterfaceAccount` unpacks them.
+  the same as versions 1 and 2, at another size, and as version 3, at the same size). On mainnet
+  each version is its own program, and each accepts only accounts it owns. On devnet, where version
+  3 replaced version 2 at the same id, a version 2 account is 7 bytes short and fails to load
+  (`AccountDidNotDeserialize`, simulated there on each version 2 receipt); version 4 goes to its own
+  id, so a version 3 or version 2 account, owned by the program at `FA6Z…`, fails Anchor's owner
+  check (`substitution_an_escrow_shaped_account_owned_by_another_program_is_refused`). Token
+  accounts and the mint by owner, length and initialized state, as `InterfaceAccount` unpacks them.
 - **1.5 Reinitialization. Applied.** `init` on the escrow account. An escrow that ended by a way
   out is never closed, so its address can never be opened again; one closed by `close_unfunded` is
   closed whole. `init_if_needed` is used twice, both justified under anchor.md §2.4. Tested by
@@ -354,11 +358,12 @@ Every token that enters a deposit account has a way out: a funded one by the way
 unfunded one by `close_unfunded`, one that arrived after the end time without a mark by
 `close_unfunded` too (`money_that_arrives_after_the_end_time_never_counts_toward_the_default`), a
 late one after an ending by `recover_late`. Fuzzer I11 ends every live escrow with the parties'
-signatures alone at the end of every run, and I9 returns every late payment. A stop removes two
-ways out (the take-back and the default) and no other: after one, each party alone can still end a
-funded escrow by giving, both can agree, the arbiter can decide
-(`a_stop_freezes_the_schedule_and_the_money_leaves_by_giving_agreeing_or_the_arbiter`), and one
-that holds less than the amount still closes (`every_move_in_every_state`; fuzzer I16). With
+signatures alone at the end of every run, and I9 returns every late payment. A stop removes the
+default, and the late close of money nobody marked, and no other way out: after one, each party
+alone can still end a funded escrow by giving, both can agree, the arbiter can decide
+(`a_stop_freezes_the_default_and_the_money_leaves_by_giving_agreeing_or_the_arbiter`), the payer
+can take back inside a window (`a_stop_leaves_the_take_back_to_its_windows`), and one that holds
+less than the amount still closes (`every_move_in_every_state`; fuzzer I16). With
 Token-2022, a mint's permanent delegate can also take money out of a deposit account (Known limits
 17 and 18); an escrow that then holds less than its amount still has a way out, `close_unfunded`
 (`the_permanent_delegate_can_take_the_money_and_the_escrow_then_ends_only_by_close`). **Not
@@ -408,11 +413,11 @@ covered:** tokens of another mint sent to the escrow's address (Known limit 9).
   token program refuses to close it while anything is left, so an ending that does not pay the
   exact balance reverts whole.
 - **26.4 Allowlists. Applied:** `live()` is open or funded; `mark_funded` needs open; `stop` needs
-  live and no stop; `take_back` needs live and no stop; `end` needs funded and no stop;
-  `recover_late` needs ended.
+  live and no stop; `take_back` needs live and a window whose share is above 0, stop or no stop;
+  `end` needs funded and no stop; `recover_late` needs ended.
 - **26.5 Sub-state. Applied.** The stop is kept apart from the status, and no transition resets
   it: it survives the mark and the ending, and is on the receipt
-  (`a_stop_freezes_the_schedule_and_the_money_leaves_by_giving_agreeing_or_the_arbiter`,
+  (`a_stop_freezes_the_default_and_the_money_leaves_by_giving_agreeing_or_the_arbiter`,
   `a_stop_with_no_schedule_is_on_the_receipt_and_nothing_else`; fuzzer I8 and I15).
 - **26.6 One deadline source. Applied:** the end time is the single deadline. `stop` and
   `mark_funded` require `now < end_time`, and `take_back` a window with `now < until`; `end`
@@ -504,8 +509,8 @@ Every way out drains the whole balance and closes the deposit account; nothing i
   `token_interface::transfer_checked` drops a hook's accounts; decimals read from the mint.
 - **§5 CPI.** `Interface<TokenInterface>`; seeds from the stored bump.
 - **§6 Errors.** `#[error_code]` with a message on each of 31 errors, numbered from 6000 in the
-  order `program/src/errors.rs` lists them: version 3 numbers its own, as a new program would. The
-  `require!` family throughout.
+  order `program/src/errors.rs` lists them: each version numbers its own, as a new program would.
+  The `require!` family throughout.
 - **§8 Tooling.** Anchor 1.2 against platform-tools v1.54; `overflow-checks = true`; the features
   Anchor's macros test for (`custom-heap`, `custom-panic`, `anchor-debug`) are declared, so the
   build has no warnings.
@@ -523,8 +528,9 @@ Every way out drains the whole balance and closes the deposit account; nothing i
 - **Wrong signer. Done:** for every instruction that takes a signer, `stop` included.
 - **Re-initialization. Done:** over a live escrow and over an ended one's address.
 - **Before and after a deadline. Done:** `take_back` at each window's last second and at its
-  `until`; a stop and a mark a second before the end time and at it; the default a second early
-  and at the end time, to both sides; the default a thousand days after a stop.
+  `until`, and after a stop in each window and at the end time; a stop and a mark a second before
+  the end time and at it; the default a second early and at the end time, to both sides; the default
+  a thousand days after a stop.
 - **Over-limit arithmetic. Done:** `BadShare` at 10,001 and 65,535 for `agree` and `decide`, and
   above 10,000 in a window; splits at 1 unit and at `u64::MAX`; `take_back` refused at a share of
   0, and paid at 5,000 and 10,000.
@@ -538,7 +544,8 @@ Every way out drains the whole balance and closes the deposit account; nothing i
   prints its rows together in a `zz_cu_summary` test.
 
 What LiteSVM does not show is covered, in part, by the client's devnet script (seven deals sent
-through devnet, and five refusals simulated there). The fuzzer adds random flows, but Trident's
+through devnet, and five refusals simulated there, on version 3; version 4's run waits for its
+deploy). The fuzzer adds random flows, but Trident's
 runtime checks no signatures, so its signer rules hold on key comparisons alone; LiteSVM checks the
 real signatures. There is no local-validator test.
 
@@ -560,7 +567,7 @@ Each is reported, not fixed: fixing it would change a decided rule, or add one.
    without reading an invoice can lose to a short schedule paying the recipient
    (`finding_an_invoice_with_a_short_schedule_pays_the_recipient_whatever_the_payer_thinks`).
    `optionsNotAgreed` exists for this; the program cannot know what was agreed. A stop before the
-   end time turns either off.
+   end time turns off the default, never the take-back.
 3. **A party key nobody controls.** `create` refuses the two it can see, the escrow's own address
    and its deposit address (`PartyIsTheEscrow`). Any other key nobody can sign for (a lost key,
    another program's address, some other token account) cannot be told apart, and a party named as
@@ -572,7 +579,8 @@ Each is reported, not fixed: fixing it would change a decided rule, or add one.
    `a_deposit_address_never_adopts_money_meant_for_other_terms`). Money sent to an address counts
    only toward a deal with exactly the terms it was made from
    (`a_payment_to_an_address_lands_only_in_a_deal_with_its_terms`); the program cannot tell whose
-   money arrived, so a payer still pays only an escrow it has read (the client's checks).
+   money arrived, so a payer still pays only an escrow it has read (the client's checks), and pays
+   in one transaction (`createAndFund`, `fundInvoice`), which leaves no moment between parts.
 5. **An overpayment follows the balance** (High-risk decision 4).
 6. **A party's standard account must exist to be paid.** A recipient who has never held the token
    has none: whoever sends the way out makes it first, at their own cost
@@ -590,14 +598,15 @@ Each is reported, not fixed: fixing it would change a decided rule, or add one.
 10. **Self-minted tokens** make receipts of any size (High-risk decision 6).
 11. **A one-sided receipt.** A payer can pay a recipient who never signed anything, for one base
     unit. The receipt says the payer created it, so an index can weigh it as one-sided.
-12. **A stop makes the schedule a default, not a promise** (High-risk decision 7). A recipient who
-    works under a default to itself can have it stopped the second before the end time; a payer who
-    pays under a take-back window can have it stopped by the recipient at once, and then gets the
-    money back only if the recipient refunds, both agree, or the arbiter decides. The client's
-    `optionsNotAgreed` still reports the schedule; what an app says about it is the app's.
+12. **The default is not a promise** (High-risk decision 7). A recipient who
+    works under a default to itself can have it stopped the second before the end time, and then
+    gets paid only if the payer pays, both agree, or the arbiter decides. A take-back window is not
+    stopped: a recipient who works under one can lose the window's share until it closes, stop or
+    no stop. The client's `optionsNotAgreed` still reports the schedule; what an app says about it
+    is the app's.
 13. **A deadlock holds the money.** With no arbiter, if neither side gives and they do not agree,
-    the money stays in the deposit account for good: after a stop, or with no schedule at all.
-    Nothing in the program can break it.
+    the money stays in the deposit account for good: after a stop, once the last take-back window
+    has closed, or with no schedule at all. Nothing in the program can break it.
 14. **The fee payer gets every rent back, by decision.** When a fee payer signs as the sponsor,
     every rent goes back to the fee payer's key, which already charged the person for it, in
     dollars. Intended: the fee payer keeps what it fronted and says so to people. A product that
@@ -626,8 +635,13 @@ Taking both token programs:
     (`interest_bearing_and_scaled_mints_deal_in_raw_amounts_and_only_their_display_drifts`: 1.00
     shown as 1.051237 after a year at 5%, and as 3 instead of 2 after a rescale, paid as 1,000,000
     raw both times).
-21. **A party can block its own payouts.** A standard account that requires a memo on incoming
-    transfers is not paid until its owner turns that off: the escrow sends no memo.
+21. **A memo account blocks a split that pays it.** A standard account that requires a memo on
+    incoming transfers, which any holder of a Token-2022 account can turn on, is not paid until its
+    owner turns that off: the escrow sends no memo. In a split, that blocks the whole split, the
+    other side's share with it, so a recipient who turns it on blocks a partial take-back. A share
+    of zero sends no transfer, so a full take-back or a full decision to one side is never blocked
+    by the other's account
+    (`a_zero_share_sends_no_transfer_so_a_memo_account_blocks_only_a_split_that_pays_it`).
 22. **Hook accounts are the client's to find.** Missing ones fail the transfer and nothing moves.
     A hook that reads a destination's data cannot be resolved before that account exists: the
     client reads a deposit address the same transaction makes as planned. The test hook is a

@@ -143,7 +143,7 @@ fn expected(state: State, m: Move) -> Option<&'static str> {
 
         // A stop blocks no close of an escrow that holds less than the amount.
         (StoppedPartPaid, CloseUnfunded) => None,
-        (StoppedPartPaid, TakeBack | End) => Some("Stopped"),
+        (StoppedPartPaid, End) => Some("Stopped"),
         (StoppedPartPaid, Stop) => Some("AlreadyStopped"),
         (StoppedPartPaid, _) => Some("NotFunded"),
 
@@ -170,7 +170,10 @@ fn expected(state: State, m: Move) -> Option<&'static str> {
 
         (StoppedWindow1 | StoppedAfterTheEnd, MarkFunded) => Some("AlreadyFunded"),
         (StoppedUnmarkedAfterTheEnd, MarkFunded) => Some("ScheduleOver"),
-        (StoppedWindow1 | StoppedAfterTheEnd | StoppedUnmarkedAfterTheEnd, TakeBack | End) => Some("Stopped"),
+        // A stop turns off the default and leaves the take-back to its windows.
+        (StoppedWindow1, TakeBack) => None,
+        (StoppedAfterTheEnd | StoppedUnmarkedAfterTheEnd, TakeBack) => Some("ScheduleOver"),
+        (StoppedWindow1 | StoppedAfterTheEnd | StoppedUnmarkedAfterTheEnd, End) => Some("Stopped"),
         (StoppedWindow1 | StoppedAfterTheEnd | StoppedUnmarkedAfterTheEnd, Stop) => Some("AlreadyStopped"),
         (StoppedWindow1 | StoppedAfterTheEnd | StoppedUnmarkedAfterTheEnd, CloseUnfunded) => Some("StillFunded"),
     }
@@ -306,9 +309,10 @@ fn stop_and_mark_land_only_before_the_end_time_and_end_only_from_it() {
 }
 
 #[test]
-fn a_stop_freezes_the_schedule_and_the_money_leaves_by_giving_agreeing_or_the_arbiter() {
-    // Either side stops, once. After it neither take_back nor the default ever runs; each of the
-    // four other ways out still ends the escrow, and the receipt keeps who stopped it and when.
+fn a_stop_freezes_the_default_and_the_money_leaves_by_giving_agreeing_or_the_arbiter() {
+    // Either side stops, once. After it the default never runs; each of the four ways out that
+    // need no window still ends the escrow, and the receipt keeps who stopped it and when. The
+    // take-back's own test is the next one.
     let ways: [(&str, Box<dyn Fn(&mut Harness, &Address) -> Result<litesvm::types::TransactionMetadata, String>>, Outcome); 4] = [
         ("pay", Box::new(|h, e| h.pay(e)), Outcome::Pay),
         ("refund", Box::new(|h, e| h.refund(e)), Outcome::Refund),
@@ -331,8 +335,6 @@ fn a_stop_freezes_the_schedule_and_the_money_leaves_by_giving_agreeing_or_the_ar
         assert_eq!(events(&meta.logs), [Event::Stopped { escrow, by: side, stopped_at: T0 + 3_600 }]);
         let err = h.stop(&escrow, &other).expect_err("the other side, a second stop");
         assert!(err.contains("AlreadyStopped"), "{err}");
-        let err = h.take_back(&escrow).expect_err("take_back after a stop");
-        assert!(err.contains("Stopped"), "{err}");
         h.set_time(T0 + 1_000 * DAY);
         let err = h.end(&escrow, Side::Recipient).expect_err("the default after a stop, however long");
         assert!(err.contains("Stopped"), "{err}");
@@ -340,7 +342,46 @@ fn a_stop_freezes_the_schedule_and_the_money_leaves_by_giving_agreeing_or_the_ar
         let e = h.escrow(&escrow);
         assert_eq!((e.outcome, e.stop, e.stopped_at), (Some(*outcome), Some(side), T0 + 3_600), "{what}: the stop stays on the receipt");
     }
-    println!("a stop by either side, once: no take_back and no default, ever; pay, refund, agree and decide each still end it");
+    println!("a stop by either side, once: no default, ever; pay, refund, agree and decide each still end it");
+}
+
+#[test]
+fn a_stop_leaves_the_take_back_to_its_windows() {
+    // The windows are what both sides agreed at the start; a stop disputes only the ending by the
+    // clock. So after either side's stop the payer still takes back the share of the window in
+    // force, and from the end time on there is nothing to take back and no default.
+    // (when, what the payer gets back, or the error)
+    let cases: [(i64, Result<u64, &str>); 3] = [(T0 + 3_600, Ok(AMOUNT)), (T0 + DAY, Ok(AMOUNT / 2)), (T0 + 2 * DAY, Err("ScheduleOver"))];
+    for side in [Side::Payer, Side::Recipient] {
+        for (at, want) in cases {
+            let mut h = Harness::new();
+            let stopper = match side {
+                Side::Payer => h.payer.insecure_clone(),
+                Side::Recipient => h.recipient.insecure_clone(),
+            };
+            let escrow = h.marked(&terms(&h, 1));
+            h.set_time(T0 + 60);
+            h.stop(&escrow, &stopper).expect("stop");
+            h.set_time(at);
+            let before = h.balance(&h.payer_account());
+            match (h.take_back(&escrow), want) {
+                (Ok(_), Ok(back)) => {
+                    assert_eq!(h.balance(&h.payer_account()) - before, back, "{side:?} stopped, at {at}");
+                    assert_eq!(h.balance(&h.recipient_tokens), AMOUNT - back, "{side:?} stopped, at {at}: the rest to the recipient");
+                    let e = h.escrow(&escrow);
+                    assert_eq!((e.outcome, e.stop, e.stopped_at), (Some(Outcome::TakeBack), Some(side), T0 + 60), "the stop stays on the receipt");
+                }
+                (Err(err), Err(e)) => {
+                    assert!(err.contains(e), "{side:?} stopped, at {at}: expected {e}, got {err}");
+                    let err = h.end(&escrow, Side::Recipient).expect_err("the default after a stop");
+                    assert!(err.contains("Stopped"), "{err}");
+                    assert_eq!(h.vault_balance(&escrow), AMOUNT, "nothing moved");
+                }
+                (got, want) => panic!("{side:?} stopped, at {at}: got {got:?}, expected {want:?}"),
+            }
+        }
+    }
+    println!("after a stop by either side: all back in the first window, half in the second, from the end time neither the take-back nor the default");
 }
 
 #[test]
@@ -355,7 +396,7 @@ fn a_stop_with_no_schedule_is_on_the_receipt_and_nothing_else() {
     h.pay(&escrow).expect("giving still works");
     assert_eq!(h.escrow(&escrow).stop, Some(Side::Payer));
 
-    // A stop before any money comes in turns the schedule off all the same.
+    // A stop before any money comes in turns the default off all the same.
     let recipient = h.recipient.insecure_clone();
     h.set_time(T0);
     let escrow = h.address(&terms(&h, 2));
@@ -366,7 +407,7 @@ fn a_stop_with_no_schedule_is_on_the_receipt_and_nothing_else() {
     h.set_time(T0 + 2 * DAY);
     let err = h.end(&escrow, Side::Recipient).expect_err("stopped before the money");
     assert!(err.contains("Stopped"), "{err}");
-    println!("a stop with no schedule lands any time and changes only the receipt; one before the money freezes the schedule all the same");
+    println!("a stop with no schedule lands any time and changes only the receipt; one before the money freezes the default all the same");
 }
 
 #[test]

@@ -15,14 +15,14 @@
 #
 #    One label per key: `deploy` (pays for the deploy and keeps the upgrade authority), `payer`
 #    (pays every fee and deposit in escrows/solana/client/scripts/devnet.ts, as a fee payer would:
-#    each escrow's sponsor), `buyer` and `seller` (each escrow's payer and recipient), and
-#    `escrow-v2-program-2`, the program id, upgraded in place to v3 (the closed first deploy used
-#    `escrow-v2-program`). The labels are the recipe's, so they keep their names. The keypair files go to FOREST_DEVNET_KEYS (default
-#    ~/.forest-devnet/keys), never under the repo: the directory mode 700, the files 600, and a file
-#    holding another key is refused, not overwritten. Only public keys are printed, and the phrase
-#    is in no file. The public keys must be the ones escrows/solana/devnet/devnet.json names in `keys` (a
-#    missing record is started with them), and the id must be no program this record or
-#    registry/devnet/devnet.json names.
+#    each escrow's sponsor, and the authority of the test dollars it makes), `buyer` and `seller`
+#    (each escrow's payer and recipient), and `escrow-v4-program`, version 4's program id (version
+#    3's, upgraded in place from version 2, was `escrow-v2-program-2`; the closed first deploy's,
+#    `escrow-v2-program`). The labels are the recipe's, so they keep their names. The keypair files
+#    go to FOREST_DEVNET_KEYS (default ~/.forest-devnet/keys), never under the repo: the directory
+#    mode 700, the files 600, and a file holding another key is refused, not overwritten. Only
+#    public keys are printed, and the phrase is in no file. Any phrase works; the id must be no
+#    program this record or registry/devnet/devnet.json names but the record's own.
 # 2. Build. escrows/solana/program's Cargo.toml, Cargo.lock and src are copied into
 #    escrows/solana/devnet/target/ (ignored), `declare_id!` alone is replaced with the devnet id, checked to
 #    appear exactly once, and the copy is built for SBPF v3.
@@ -30,15 +30,17 @@
 #    exact cost computed first, the way Solana CLI 4.2.2 spends it, refused (exit 3) if the deploy
 #    key holds less. Writes go over RPC.
 # 4. Check the deployed bytes are the built ones, and record everything public in
-#    escrows/solana/devnet/devnet.json. The check needs the same toolchain: Solana CLI 4.2.2,
-#    cargo-build-sbf 4.1.0, platform-tools v1.54.
+#    escrows/solana/devnet/devnet.json. If the record names another program, that program's record
+#    (its keys, dollars, deals and transactions) first moves into `earlier`, whole, as it was, and
+#    the record starts again with this phrase's keys. The check needs the same toolchain: Solana CLI
+#    4.2.2, cargo-build-sbf 4.1.0, platform-tools v1.54.
 #
 # FOREST_DEVNET_RPC points the Solana CLI at another devnet RPC; the record always names the
 # public one, so a keyed URL never lands in the repo. On devnet the upgrade authority stays on the
 # deploy key, and this script never uses it; removing it is the mainnet step (`--final`, in
-# escrows/solana/README.md). A new phrase starts from nothing: its deploy key needs SOL sent by
-# hand, and the deals need a classic test dollar, the parties' token accounts and the buyer's
-# dollars, which no script here makes.
+# escrows/solana/README.md). A new phrase starts from nothing: its `deploy` key needs the SOL the
+# deploy costs (step 3 prints it, and sends nothing if the key holds less) and its `payer` key the
+# deals' fees and rents, both sent by hand; devnet.ts makes the test dollars.
 
 set -euo pipefail
 
@@ -57,7 +59,7 @@ mkdir -p "$keys" "$out"
 chmod 700 "$keys"
 
 # 1. Keys.
-label=escrow-v2-program-2
+label=escrow-v4-program
 node - "$keys" "$record" "$registry" "$label" <<'JS'
 const crypto = require('crypto')
 const fs = require('fs')
@@ -85,23 +87,12 @@ for (const label of ['deploy', 'payer', 'buyer', 'seller', idLabel]) {
   fs.chmodSync(file, 0o600)
   pk[label] = base58(pub)
 }
-const keys = { deploy: pk.deploy, payer: pk.payer, buyer: pk.buyer, seller: pk.seller }
 const record = fs.existsSync(own) ? JSON.parse(fs.readFileSync(own, 'utf8')) : null
-if (record) {
-  for (const [name, key] of Object.entries(keys)) {
-    if (record.keys?.[name] !== key) throw new Error(`the phrase gives ${name} key ${key}, not ${record.keys?.[name]}: another phrase`)
-  }
-} else {
-  fs.writeFileSync(own, JSON.stringify({
-    note: 'The devnet deploy of the escrow. Public keys, addresses and signatures only. Every key comes from the devnet phrase by the recipe in escrows/solana/devnet/deploy.sh, which writes the keypairs outside the repo and checks them against `keys`; the program id\'s label is escrow-v2-program-2. Written by escrows/solana/devnet/deploy.sh and escrows/solana/client/scripts/devnet.ts.',
-    cluster: 'devnet',
-    rpc: 'https://api.devnet.solana.com',
-    keys,
-  }, null, 2) + '\n')
-}
 const id = pk[idLabel]
 const other = fs.existsSync(registry) ? JSON.parse(fs.readFileSync(registry, 'utf8')) : {}
-const taken = [...(record?.earlier ?? []).map((e) => e.escrow.programId), other.registry?.programId, ...(other.earlier ?? []).map((e) => e.registry.programId)]
+// The record's own program is this id only on a second run of the same deploy.
+const previous = record?.escrow?.programId === id ? [] : [record?.escrow?.programId]
+const taken = [...previous, ...(record?.earlier ?? []).map((e) => e.escrow.programId), other.registry?.programId, ...(other.earlier ?? []).map((e) => e.registry.programId)]
 if (taken.includes(id)) throw new Error('the id is one already deployed for another program or version')
 console.log(`escrow program id ${id}, deploy key ${pk.deploy}, payer ${pk.payer}, buyer ${pk.buyer}, seller ${pk.seller}`)
 JS
@@ -189,13 +180,29 @@ deployed=$(head -c "$(wc -c <"$so")" "$out/dumped.so" | sha256sum | cut -d' ' -f
 [ "$built" = "$deployed" ] || { echo "the deployed bytes are not the built ones" >&2; exit 1; }
 echo "deployed bytes match the build ($built)"
 
-node - "$record" "$out" "$id" "$built" "$so" "$mode" <<'JS'
+keys_json=$(printf '{"deploy":"%s","payer":"%s","buyer":"%s","seller":"%s"}' \
+  "$(solana-keygen pubkey "$keys/deploy.json")" "$(solana-keygen pubkey "$keys/payer.json")" \
+  "$(solana-keygen pubkey "$keys/buyer.json")" "$(solana-keygen pubkey "$keys/seller.json")")
+node - "$record" "$out" "$id" "$built" "$so" "$mode" "$keys_json" "$root/escrows/solana/program/src/lib.rs" "$label" <<'JS'
 const fs = require('fs')
-const [recordPath, out, id, sha, so, mode] = process.argv.slice(2)
-const record = JSON.parse(fs.readFileSync(recordPath, 'utf8'))
+const [recordPath, out, id, sha, so, mode, keysJson, lib, label] = process.argv.slice(2)
+const keys = JSON.parse(keysJson)
+const version = Number(/^pub const VERSION: u8 = (\d+);$/m.exec(fs.readFileSync(lib, 'utf8'))[1])
+const note = `The devnet deploy of the escrow. Public keys, addresses and signatures only. Every key comes from the devnet phrase by the recipe in escrows/solana/devnet/deploy.sh, which writes the keypairs outside the repo; the program id's label is ${label}. Written by escrows/solana/devnet/deploy.sh and escrows/solana/client/scripts/devnet.ts. \`earlier\` keeps the records of the escrow's earlier programs on devnet, each as it was.`
+let record = fs.existsSync(recordPath) ? JSON.parse(fs.readFileSync(recordPath, 'utf8')) : { note, cluster: 'devnet', rpc: 'https://api.devnet.solana.com' }
+if (record.escrow && record.escrow.programId !== id) {
+  // Another program's record moves into `earlier` whole, as it was; the record starts again.
+  const { note: _, cluster, rpc, earlier = [], ...then } = record
+  const sameKeys = Object.entries(keys).every(([name, key]) => then.keys?.[name] === key)
+  const what = `The escrow program at ${then.escrow.programId}${then.escrow.version ? `, version ${then.escrow.version},` : ''} and everything this record held for it, moved here as it was when ${id} was deployed${sameKeys ? '' : '. Its keys came from another phrase than that deploy'}.`
+  record = { note, cluster, rpc, keys, escrow: {}, earlier: [{ note: what, ...then }, ...earlier] }
+}
+record.note = note
+record.keys = keys
 const show = JSON.parse(fs.readFileSync(`${out}/show.json`, 'utf8'))
 const p = (record.escrow ??= {})
 p.programId = id
+p.version = version
 p.programData = show.programdataAddress
 p.upgradeAuthority = show.authority
 p.lastDeploySlot = show.lastDeploySlot
@@ -209,7 +216,7 @@ if (mode === 'deploy') {
   record.transactions ??= []
   p.deploySignature = d.signature
   p.deployCost = cost
-  record.transactions.push({ program: 'escrow-v3', what: `deploy: the escrow (SBPF ${p.sbpfVersion}), upgrade authority kept on the deploy key`, signature: d.signature })
+  record.transactions.push({ program: `escrow-v${version}`, what: `deploy: the escrow (SBPF ${p.sbpfVersion}), upgrade authority kept on the deploy key`, signature: d.signature })
 }
 fs.writeFileSync(recordPath, JSON.stringify(record, null, 2) + '\n')
 JS

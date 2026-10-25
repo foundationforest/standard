@@ -37,7 +37,7 @@ pub const SYSTEM_PROGRAM: Address = solana_address::address!("111111111111111111
 pub const NATIVE_MINT: Address = solana_address::address!("So11111111111111111111111111111111111111112");
 pub const NATIVE_MINT_2022: Address = solana_address::address!("9pan9bMn5HatX4EJdBwg9VgCa7Uz5HL8N1m5D3NdXejP");
 
-pub const VERSION: u8 = 3;
+pub const VERSION: u8 = 4;
 /// The escrow account: Anchor's eight-byte discriminator and 304 bytes of state.
 pub const ESCROW_LEN: usize = 8 + 304;
 pub const BPS: u16 = 10_000;
