@@ -188,9 +188,9 @@ export function canMark(e: Pick<EscrowAccount, 'schedule' | 'status'>, now: bigi
   return end === null || now < end
 }
 
-/** Whether `take_back` lands at `now`, the balance aside: live, never stopped, and a window in force whose share is above 0. */
+/** Whether `take_back` lands at `now`, the balance aside: live, and a window in force whose share is above 0. A stop changes nothing here. */
 export function canTakeBack(e: Timing, now: bigint = nowSeconds()): boolean {
-  if (e.status === 'ended' || e.stop) return false
+  if (e.status === 'ended') return false
   const w = windowAt(e, now)
   return w !== null && w.payerShare > 0
 }

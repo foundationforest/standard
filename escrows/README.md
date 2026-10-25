@@ -59,10 +59,11 @@ Seven moves, and every one that moves money pays the whole balance and ends the 
 2. **Selfish moves, by the schedule.** `takeBack`: the payer, inside a window whose share is above
    0, takes back that share; the rest goes to the recipient. In a window whose share is 0 there is
    nothing to take back: giving everything to the recipient is `pay`.
-3. **Stop freezes.** `stop`: either side, once, before the end time. It moves no money. From then
-   on neither `takeBack` nor `end` runs, and the money leaves only by a side giving, by
-   `agree` (both sign any split), or by `decide` (the arbiter, if one was named, signs any split).
-   Those two run in any state, stopped or not.
+3. **Stop freezes the ending by the clock.** `stop`: either side, once, before the end time. It
+   moves no money. From then on `end` does not run; `takeBack` still runs by the schedule, since
+   the windows were agreed at the start. The money leaves by a side giving, by `takeBack` inside a
+   window, by `agree` (both sign any split), or by `decide` (the arbiter, if one was named, signs
+   any split). Those two run in any state, stopped or not.
 4. **A default at the end.** `end`: anyone, from the end time on, if nobody stopped: everything to
    the side `end` names.
 
@@ -82,10 +83,10 @@ same transaction.
 ## Limits
 
 - **One chain.** Only Solana has an escrow here, and only on devnet.
-- **Without an arbiter, a stop can hold the money for good.** After a stop, or with no schedule at
-  all, an escrow with no arbiter lets the money out only when one side gives it to the other or both
-  agree on a split. Nothing else can move it. A deal that may need a third view names an arbiter at
-  the start.
+- **Without an arbiter, a stop can hold the money for good once the last take-back window has
+  closed.** From then on after a stop, or at any time with no schedule at all, an escrow with no
+  arbiter lets the money out only when one side gives it to the other or both agree on a split.
+  Nothing else can move it. A deal that may need a third view names an arbiter at the start.
 - **One escrow, one payment.** A rule about many payments at once, such as a floor on how many
   tickets must sell before any is paid, cannot be written as one escrow's schedule.
 - Each escrow's other limits are in its own README: [solana](solana/README.md#limits).
@@ -108,8 +109,12 @@ A default that ended a stop would reward whoever waits. If you want someone to d
 arbiter at the start.
 
 **Why can't a side stop after the end time?**
-So that a stop and the default never race. Before the end time only a stop can freeze the escrow;
+So that a stop and the default never race. Before the end time only a stop can freeze the default;
 from it on, only the default can run. A side that wants to dispute does it inside the windows.
+
+**Why can't a stop block a take-back?**
+The windows are what both sides agreed; a stop is for disputing the ending by the clock, not for
+taking back a right given at the start.
 
 **Why can an escrow have no schedule?**
 A payment made and given in the same transaction needs none, and a deal with no default should not

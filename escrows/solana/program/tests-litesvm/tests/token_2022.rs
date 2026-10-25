@@ -161,14 +161,12 @@ fn take_back_and_the_default_to_either_side() {
 }
 
 #[test]
-fn a_stop_turns_the_schedule_off_and_the_parties_agree() {
+fn a_stop_turns_the_default_off_and_the_parties_agree() {
     for hook in HOOKS {
         let mut h = Harness::open_usd(hook);
         let escrow = h.marked(&h.scheduled(1, &[window(T0 + DAY, 10_000)], End::Pay));
         let recipient = h.recipient.insecure_clone();
         h.stop(&escrow, &recipient).expect("the recipient stops it");
-        let err = h.take_back(&escrow).expect_err("no take_back after a stop");
-        assert!(err.contains("Stopped"), "{err}");
         h.advance(DAY);
         let err = h.end(&escrow, Side::Recipient).expect_err("no default after a stop");
         assert!(err.contains("Stopped"), "{err}");
@@ -176,6 +174,56 @@ fn a_stop_turns_the_schedule_off_and_the_parties_agree() {
         let e = h.escrow(&escrow);
         assert_eq!((e.stop, e.outcome, e.to_recipient, e.to_payer), (Some(Side::Recipient), Some(Outcome::Agree), 500_000, 500_000));
     }
+}
+
+/// How many transfers Token-2022 ran in a transaction, by its own log lines.
+fn transfers_in(meta: &litesvm::types::TransactionMetadata) -> usize {
+    meta.logs.iter().filter(|l| l.as_str() == "Program log: Instruction: TransferChecked").count()
+}
+
+#[test]
+fn a_zero_share_sends_no_transfer_so_a_memo_account_blocks_only_a_split_that_pays_it() {
+    // Every split skips a zero share: the side paid nothing gets no transfer instruction at all.
+    // So a standard account that requires a memo on incoming transfers, which the escrow never
+    // sends, blocks only a split that pays it something, and the other side's share with it
+    // (security-checklist.md, Known limit 21: documented, not fixed).
+    let mut h = Harness::open_usd(HookProgram::None);
+    let recipient = h.recipient.insecure_clone();
+    let recipient_tokens = h.recipient_tokens;
+    require_memos(&mut h, &recipient, &recipient_tokens);
+    assert!(account_extensions(&h, &recipient_tokens).contains(&ExtensionType::MemoTransfer));
+
+    // Everything to the payer, by a full take-back and by both splits at 10,000: one transfer each,
+    // none to the recipient's account.
+    let full = h.marked(&h.scheduled(1, &[window(T0 + DAY, 10_000)], End::Pay));
+    let meta = h.take_back(&full).expect("a full take-back: nothing to the recipient, so no transfer to its account");
+    assert_eq!(transfers_in(&meta), 1, "take_back: one transfer, to the payer");
+    for (id, split) in [(2, "agree"), (3, "decide")] {
+        let escrow = h.marked(&Terms { arbiter: Some(h.arbiter.pubkey()), ..h.terms(id) });
+        let meta = if split == "agree" { h.agree(&escrow, 10_000) } else { h.decide(&escrow, 10_000) };
+        let meta = meta.unwrap_or_else(|e| panic!("{split} at 10,000: {e}"));
+        assert_eq!(transfers_in(&meta), 1, "{split}: one transfer, to the payer");
+    }
+    assert_eq!(h.balance(&recipient_tokens), 0);
+
+    // Half to each side: the recipient's transfer is refused, and the payer's half with it.
+    let half = h.marked(&h.scheduled(4, &[window(T0 + DAY, 5_000)], End::Pay));
+    let err = h.take_back(&half).expect_err("half to a recipient whose account requires a memo");
+    assert!(err.contains(&format!("Custom({NO_MEMO})")), "Token-2022's NoMemo: {err}");
+    assert_eq!(h.vault_balance(&half), AMOUNT, "nothing moved");
+
+    // The other way round: the payer's account requires a memo, and splits that give it nothing land.
+    let mut h = Harness::open_usd(HookProgram::None);
+    let payer = h.payer.insecure_clone();
+    let payer_tokens = h.payer_account();
+    require_memos(&mut h, &payer, &payer_tokens);
+    for (id, split) in [(5, "agree"), (6, "decide")] {
+        let escrow = h.marked(&Terms { arbiter: Some(h.arbiter.pubkey()), ..h.terms(id) });
+        let meta = if split == "agree" { h.agree(&escrow, 0) } else { h.decide(&escrow, 0) };
+        let meta = meta.unwrap_or_else(|e| panic!("{split} at 0: {e}"));
+        assert_eq!(transfers_in(&meta), 1, "{split}: one transfer, to the recipient");
+    }
+    println!("a zero share sends no transfer: a memo account blocks a 50/50 take-back, never a full one, nor a split that gives it nothing");
 }
 
 #[test]

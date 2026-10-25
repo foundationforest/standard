@@ -4,9 +4,9 @@
 // Everything here is fixed with the program, which cannot change once deployed to Solana's mainnet.
 // These bytes are what clients and indexes read and write forever, so this file is written out by hand rather than generated: a reader can check it
 // against `escrows/solana/program/src/lib.rs` line by line, and the Rust tests encode the same
-// bytes independently, so a drift on either side fails a test. An escrow of v2 or v1, earlier
+// bytes independently, so a drift on either side fails a test. An escrow of v3, v2 or v1, earlier
 // programs no longer in this repo, is read with that program's own client, in this repo's git
-// history.
+// history: v3's bytes are these, but its rules are not (a stop there also turns off `take_back`).
 
 import { sha256 } from '@noble/hashes/sha2.js'
 import {
@@ -37,7 +37,7 @@ export const NATIVE_MINT = new PublicKey('So111111111111111111111111111111111111
 export const NATIVE_MINT_2022 = new PublicKey('9pan9bMn5HatX4EJdBwg9VgCa7Uz5HL8N1m5D3NdXejP')
 
 /** Written into every escrow: which program's rules it follows. */
-export const VERSION = 3
+export const VERSION = 4
 /** One hundred percent. */
 export const BPS = 10_000
 /** The most windows a schedule holds. */
@@ -292,7 +292,7 @@ export function associatedTokenAddress(owner: PublicKey, mint: PublicKey, tokenP
  * token program. The standard derivation, so any wallet app that sends this token "to the escrow's
  * address" lands it here.
  */
-export function vaultAddress(escrow: PublicKey, mint: PublicKey, tokenProgram: PublicKey = TOKEN_PROGRAM_ID): PublicKey {
+export function depositAddress(escrow: PublicKey, mint: PublicKey, tokenProgram: PublicKey = TOKEN_PROGRAM_ID): PublicKey {
   return associatedTokenAddress(escrow, mint, tokenProgram)
 }
 
@@ -523,7 +523,7 @@ export function createIx(args: {
   }
   if (args.mint.equals(NATIVE_MINT) || args.mint.equals(NATIVE_MINT_2022)) throw new Error('NativeMint: wrapped SOL is not accepted')
   const escrow = escrowAddress({ payer: args.payer, mint: args.mint, terms: args.terms }, programId)
-  const vault = vaultAddress(escrow, args.mint, tokenProgram)
+  const vault = depositAddress(escrow, args.mint, tokenProgram)
   for (const party of [args.payer, args.terms.recipient]) {
     if (party.equals(escrow) || party.equals(vault)) {
       throw new Error("PartyIsTheEscrow: neither party can be the escrow's own address or its deposit address")
@@ -593,7 +593,7 @@ export type EscrowKeys = {
 export function keysOf(account: EscrowAccount, opts: { tokenProgram?: PublicKey; programId?: PublicKey } = {}): EscrowKeys {
   const escrow = escrowAddress(termsOf(account), opts.programId ?? PROGRAM_ID)
   const tokenProgram = opts.tokenProgram ?? TOKEN_PROGRAM_ID
-  if (!account.vault.equals(vaultAddress(escrow, account.mint, tokenProgram))) {
+  if (!account.vault.equals(depositAddress(escrow, account.mint, tokenProgram))) {
     throw new Error("the escrow's deposit account is not under that token program: name the program that owns the mint")
   }
   return { escrow, vault: account.vault, payer: account.payer, recipient: account.recipient, mint: account.mint, tokenProgram, sponsor: account.sponsor }
@@ -602,7 +602,7 @@ export function keysOf(account: EscrowAccount, opts: { tokenProgram?: PublicKey;
 export function keysFor(args: { payer: PublicKey; sponsor: PublicKey; mint: PublicKey; terms: Terms; tokenProgram?: PublicKey; programId?: PublicKey }): EscrowKeys {
   const tokenProgram = args.tokenProgram ?? TOKEN_PROGRAM_ID
   const escrow = escrowAddress({ payer: args.payer, mint: args.mint, terms: args.terms }, args.programId)
-  return { escrow, vault: vaultAddress(escrow, args.mint, tokenProgram), payer: args.payer, recipient: args.terms.recipient, mint: args.mint, tokenProgram, sponsor: args.sponsor }
+  return { escrow, vault: depositAddress(escrow, args.mint, tokenProgram), payer: args.payer, recipient: args.terms.recipient, mint: args.mint, tokenProgram, sponsor: args.sponsor }
 }
 
 /** Hook accounts, as the escrow takes them: after its own, and never signing. */
@@ -676,9 +676,9 @@ function bothAccounts(k: EscrowKeys): AccountMeta[] {
 }
 
 /**
- * `take_back`: the payer signs; inside a window whose share is above 0, nobody having stopped,
- * that share of the whole balance to the payer, rounded down, the rest to the recipient
- * (`windowAt`, `canTakeBack`). The share is the window's, so the instruction carries none. Each
+ * `take_back`: the payer signs; inside a window whose share is above 0, stopped or not, that
+ * share of the whole balance to the payer, rounded down, the rest to the recipient (`windowAt`,
+ * `canTakeBack`). The share is the window's, so the instruction carries none. Each
  * side's standard account must exist if its share is above zero.
  */
 export function takeBackIx(args: { keys: EscrowKeys; hookAccounts?: AccountMeta[]; programId?: PublicKey }): TransactionInstruction {
@@ -727,7 +727,7 @@ export function endIx(args: { account: EscrowAccount; tokenProgram?: PublicKey; 
   const a = args.account
   if (a.status === 'ended') throw new Error('Ended: this escrow has ended')
   if (!a.schedule) throw new Error('NoSchedule: this escrow has no schedule')
-  if (a.stop) throw new Error('Stopped: a party stopped this escrow; the schedule is off')
+  if (a.stop) throw new Error('Stopped: a party stopped this escrow; the default is off')
   if (a.status !== 'funded') throw new Error('FundingNotMarked: nobody marked the funding before the end time')
   const k = keysOf(a, { tokenProgram: args.tokenProgram, programId })
   const to = a.schedule.end === 'refund' ? payerAccount(k.payer, k.mint, k.tokenProgram) : recipientAccount(k.recipient, k.mint, k.tokenProgram)
@@ -809,8 +809,8 @@ export function sweepRentIx(args: { escrow: PublicKey; sponsor: PublicKey; progr
 
 /**
  * `stop`: the payer or the recipient, once per escrow, while it is live and before its end time
- * (`canStop`). It moves no money; from then on neither `take_back` nor `end` runs, and the money
- * moves only by a side giving, both agreeing, or the arbiter if one was named. Built only from the
+ * (`canStop`). It moves no money; from then on `end` does not run, and the money moves by a side
+ * giving, the payer's take-back inside a window, both agreeing, or the arbiter if one was named. Built only from the
  * escrow account as read from the chain, and refused here where the program would refuse it, but
  * for the time, which only the chain's clock decides.
  */
@@ -982,7 +982,7 @@ export type EscrowAccount = {
   /** What each party was paid at the end; 0 before. */
   toPayer: bigint
   toRecipient: bigint
-  /** Which party stopped it, or null. Once one has, neither take_back nor end runs. */
+  /** Which party stopped it, or null. Once one has, end does not run. */
   stop: Side | null
   /** When the stop was made, or null. */
   stoppedAt: bigint | null
@@ -1075,7 +1075,7 @@ export type EscrowEvent =
       createdAt: bigint
     }
   | { kind: 'funded'; escrow: PublicKey; balance: bigint; fundedAt: bigint }
-  /** A party stopped the escrow; from then on neither take_back nor end runs. */
+  /** A party stopped the escrow; from then on end does not run. */
   | { kind: 'stopped'; escrow: PublicKey; by: Side; stoppedAt: bigint }
   | {
       kind: 'ended'

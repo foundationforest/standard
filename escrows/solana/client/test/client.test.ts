@@ -73,7 +73,7 @@ import {
   tokenOf,
   transferIx,
   validateTerms,
-  vaultAddress,
+  depositAddress,
   windowAt,
   type EscrowAccount,
   type Schedule,
@@ -106,7 +106,7 @@ function baseEscrow(): PublicKey {
  */
 function escrowAccount(over: Partial<EscrowAccount> = {}): EscrowAccount {
   const e: EscrowAccount = {
-    version: 3,
+    version: VERSION,
     id: 7n,
     payer,
     recipient,
@@ -129,7 +129,7 @@ function escrowAccount(over: Partial<EscrowAccount> = {}): EscrowAccount {
     stoppedAt: null,
     ...over,
   }
-  return over.vault ? e : { ...e, vault: vaultAddress(escrowAddress(termsOf(e)), e.mint) }
+  return over.vault ? e : { ...e, vault: depositAddress(escrowAddress(termsOf(e)), e.mint) }
 }
 
 /** The same, opened by the recipient: an invoice, at the same address as the same terms the payer opens. */
@@ -190,7 +190,7 @@ test('the discriminators are pinned', () => {
 test('the deposit address is the standard associated token account of the escrow', () => {
   const escrow = baseEscrow()
   assert.ok(!PublicKey.isOnCurve(escrow.toBytes()), 'a program-derived address')
-  const vault = vaultAddress(escrow, mint)
+  const vault = depositAddress(escrow, mint)
   assert.deepEqual(vault, getAssociatedTokenAddressSync(mint, escrow, true, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID))
   assert.deepEqual(payerAccount(payer, mint), getAssociatedTokenAddressSync(mint, payer, false, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID))
   assert.deepEqual(recipientAccount(recipient, mint), getAssociatedTokenAddressSync(mint, recipient, false, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID))
@@ -266,7 +266,7 @@ test('create carries exactly the bytes the program reads', () => {
   const escrow = escrowAddress({ payer, mint, terms: t })
   assert.deepEqual(meta(ix), [
     [escrow.toBase58(), false, true],
-    [vaultAddress(escrow, mint).toBase58(), false, true],
+    [depositAddress(escrow, mint).toBase58(), false, true],
     [payer.toBase58(), true, false],
     [sponsor.toBase58(), true, true],
     [mint.toBase58(), false, false],
@@ -279,7 +279,7 @@ test('create carries exactly the bytes the program reads', () => {
   const inv = invoiceIx({ recipient, payer, sponsor, mint, terms: t })
   assert.equal(hex(inv.data), hex(ix.data))
   assert.deepEqual(inv.keys[0].pubkey, escrow)
-  assert.deepEqual(inv.keys[1].pubkey, vaultAddress(escrow, mint))
+  assert.deepEqual(inv.keys[1].pubkey, depositAddress(escrow, mint))
   assert.deepEqual([inv.keys[2].pubkey.toBase58(), inv.keys[2].isSigner], [recipient.toBase58(), true])
   assert.throws(() => createIx({ payer, sponsor, mint, terms: t, creator: arbiter }), /NotAParty/)
   assert.throws(() => createIx({ payer, sponsor, mint: NATIVE_MINT, terms: t }), /NativeMint/)
@@ -325,7 +325,7 @@ test('each move names the accounts it pays and the keys that sign it', () => {
   const account = escrowAccount({ arbiter, schedule: twoWindows })
   const k = keysOf(account)
   const escrow = escrowAddress({ payer, mint, terms: terms({ arbiter, schedule: twoWindows }) })
-  assert.deepEqual(k, { escrow, vault: vaultAddress(escrow, mint), payer, recipient, mint, tokenProgram: TOKEN_PROGRAM_ID, sponsor })
+  assert.deepEqual(k, { escrow, vault: depositAddress(escrow, mint), payer, recipient, mint, tokenProgram: TOKEN_PROGRAM_ID, sponsor })
   assert.deepEqual(keysFor({ payer, sponsor, mint, terms: terms({ arbiter, schedule: twoWindows }) }), k, 'from the terms, the same keys')
   // An invoice of the same terms: the same keys.
   assert.deepEqual(keysOf(invoiceAccount({ arbiter, schedule: twoWindows })), k)
@@ -333,7 +333,7 @@ test('each move names the accounts it pays and the keys that sign it', () => {
   const recipients = recipientAccount(recipient, mint).toBase58()
   const head = [
     [escrow.toBase58(), false, true],
-    [vaultAddress(escrow, mint).toBase58(), false, true],
+    [depositAddress(escrow, mint).toBase58(), false, true],
     [mint.toBase58(), false, false],
   ]
   // Every rent back to the sponsor.
@@ -453,12 +453,12 @@ test('the window in force, and when a take-back or a mark lands', () => {
   assert.deepEqual(windowAt(e, T0 + 3n * DAY - 1n), three.windows[2])
   assert.equal(windowAt(e, T0 + 3n * DAY), null, 'from the end time on, no window')
   assert.equal(windowAt(escrowAccount(), T0), null, 'no schedule')
-  // A take-back: a window whose share is above 0, never after a stop.
+  // A take-back: a window whose share is above 0, a stop or not.
   assert.equal(canTakeBack(e, T0), true)
   assert.equal(canTakeBack(e, T0 + 2n * DAY - 1n), true)
   assert.equal(canTakeBack(e, T0 + 2n * DAY), false, 'a share of 0: that is pay')
   assert.equal(canTakeBack(e, T0 + 3n * DAY), false, 'past the end')
-  assert.equal(canTakeBack({ ...e, stop: 'recipient' }, T0), false, 'stopped')
+  assert.equal(canTakeBack({ ...e, stop: 'recipient' }, T0), true, 'a stop leaves the take-back to its windows')
   assert.equal(canTakeBack({ ...e, status: 'ended' }, T0), false, 'ended')
   // A mark: once, before the end time; any time with no schedule.
   const open = escrowAccount({ schedule: three })
@@ -526,7 +526,7 @@ test('pay in one tap, fund with the mark, and an invoice either way: the deposit
   assert.deepEqual(meta(invTransfer), [
     [associatedTokenAddress(payer, mint).toBase58(), false, true],
     [mint.toBase58(), false, false],
-    [vaultAddress(invKeys.escrow, mint).toBase58(), false, true],
+    [depositAddress(invKeys.escrow, mint).toBase58(), false, true],
     [payer.toBase58(), true, false],
   ])
   assert.deepEqual(meta(invPay), meta(payIx({ keys: invKeys })))
@@ -591,7 +591,7 @@ function escrowBytes(o: {
   const data = Buffer.alloc(8 + ESCROW_LEN)
   Buffer.from(discriminator('account', 'Escrow')).copy(data, 0)
   const b = data.subarray(8)
-  b[0] = 3
+  b[0] = VERSION
   b.writeBigUInt64LE(7n, 1)
   payer.toBuffer().copy(b, 9)
   recipient.toBuffer().copy(b, 41)
@@ -620,7 +620,7 @@ function escrowBytes(o: {
   // The vault is the deposit account of the address these terms make, schedule and arbiter included.
   const schedule = windows.length > 0 ? { windows: windows.map(([until, payerShare]) => ({ until, payerShare })), end: o.end === 1 ? ('refund' as const) : ('pay' as const) } : null
   const escrow = escrowAddress({ payer, mint, terms: terms({ arbiter: o.arbiter ?? null, schedule }) })
-  vaultAddress(escrow, mint).toBuffer().copy(b, 137)
+  depositAddress(escrow, mint).toBuffer().copy(b, 137)
   return new Uint8Array(data)
 }
 
@@ -683,9 +683,9 @@ function eventBytes(name: string, size: number, fill: (b: Buffer) => void): Buff
 
 test('events decode from the log, in order', () => {
   const escrow = baseEscrow()
-  const vault = vaultAddress(escrow, mint)
+  const vault = depositAddress(escrow, mint)
   const created = eventBytes('Created', 300, (b) => {
-    b[40] = 3
+    b[40] = VERSION
     b.writeBigUInt64LE(7n, 41)
     payer.toBuffer().copy(b, 49)
     recipient.toBuffer().copy(b, 81)
@@ -755,7 +755,7 @@ test('events decode from the log, in order', () => {
     {
       kind: 'created',
       escrow,
-      version: 3,
+      version: VERSION,
       id: 7n,
       payer,
       recipient,
@@ -1006,8 +1006,8 @@ test('under Token-2022 every address is derived with it and every instruction na
   const t22 = TOKEN_2022_PROGRAM_ID
   const t = terms({ arbiter, schedule: twoWindows })
   const escrow = escrowAddress({ payer, mint, terms: t })
-  const vault = vaultAddress(escrow, mint, t22)
-  assert.notDeepEqual(vault, vaultAddress(escrow, mint), 'another address than under the classic program')
+  const vault = depositAddress(escrow, mint, t22)
+  assert.notDeepEqual(vault, depositAddress(escrow, mint), 'another address than under the classic program')
   assert.deepEqual(vault, getAssociatedTokenAddressSync(mint, escrow, true, t22, ASSOCIATED_TOKEN_PROGRAM_ID))
   assert.deepEqual(payerAccount(payer, mint, t22), getAssociatedTokenAddressSync(mint, payer, false, t22, ASSOCIATED_TOKEN_PROGRAM_ID))
   assert.deepEqual(recipientAccount(recipient, mint, t22), getAssociatedTokenAddressSync(mint, recipient, false, t22, ASSOCIATED_TOKEN_PROGRAM_ID))

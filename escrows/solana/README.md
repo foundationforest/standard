@@ -12,12 +12,13 @@ other, both sides agree, the arbiter named at the start decides, or the schedule
 says so. Every escrow that held the money leaves a receipt at its address, for good: its account,
 saying how the deal ended.
 
-It runs on devnet at `FA6ZodkyhMDj9yjzY27dk8JDCtcHnJx8mr45Mx9TfKg8` ([record](devnet/devnet.json)),
-where it can no longer be upgraded in place: its upgrade key came from a devnet phrase that is lost,
-so a new version goes to a new address, as on mainnet. It cannot change once deployed to Solana's
-mainnet, because money sits inside it and nobody, the Open Forest Foundation included, may change
-the rules around money already there: a new version is a new program beside it, at a new address,
-never an upgrade, and the old ones keep working.
+Version 3 runs on devnet at `FA6ZodkyhMDj9yjzY27dk8JDCtcHnJx8mr45Mx9TfKg8`
+([record](devnet/devnet.json)), where it can no longer be upgraded in place: its upgrade key came
+from a devnet phrase that is lost, so a new version goes to a new address, as on mainnet. This
+version, 4, is not deployed yet: the next deploy puts it at a new address and writes it in the
+record. It cannot change once deployed to Solana's mainnet, because money sits inside it and nobody,
+the Open Forest Foundation included, may change the rules around money already there: a new version
+is a new program beside it, at a new address, never an upgrade, and the old ones keep working.
 
 - `program/`: the program (Anchor 1.2), its LiteSVM tests and its fuzzer.
 - `client/`: builds every instruction and reads every account and event. It talks to no network
@@ -40,7 +41,7 @@ A payer pays a recipient for an hour of maths.
    ([Two ways to open it](#two-ways-to-open-it)).
 3. **The money waits.** Neither side can take it alone, but for the share the schedule lets the
    payer take back inside a window. Each side can always give it to the other, and either can stop
-   the schedule before its end time.
+   the default before the end time.
 4. **The money leaves.** The payer pays the recipient once the hour is done; or the recipient
    refunds; or the payer takes back its window's share; or both sign a split; or the arbiter
    decides; or, from the end time, if nobody stopped, anyone sends the default
@@ -127,10 +128,12 @@ are in the escrow, for both sides to read before anyone works or pays, and they 
   the clock at `create`, so a schedule already past opens; the app checks the dates before anyone
   pays.
 - **A stop.** Either side may stop the escrow, once, before the end time. It moves no money; from
-  then on neither `take_back` nor `end` runs, and the money leaves only by a side giving, both
-  agreeing, or the arbiter if one was named. The end time is the one deadline: before it a stop, a
-  mark and a take-back can land; from it on only the default and the late close. An escrow with no
-  schedule takes a stop at any time while it is live, and the stop then changes only the receipt.
+  then on `end` does not run, and the money leaves by a side giving, the payer's take-back inside a
+  window, both agreeing, or the arbiter if one was named. The take-back runs by its windows, stop or
+  no stop: they are what both sides agreed at the start. The end time is the one deadline: before it
+  a stop, a mark and a take-back can land; from it on only the default and the late close. An escrow
+  with no schedule takes a stop at any time while it is live, and the stop then changes only the
+  receipt.
 
 The program cannot tell whether the other side read the options. The app reads the escrow off the
 chain and shows every option the person did not set (`optionsNotAgreed`) before they work or pay;
@@ -145,9 +148,9 @@ Every way out pays the whole balance and ends the escrow:
 1. **A side gives.** `pay`: the payer, everything to the recipient. `refund`: the recipient,
    everything back to the payer. Receiving in full never needs the receiver's signature, so each
    side alone can always give, a stop included.
-2. **The payer takes back** (`take_back`), inside a window whose `payerShare` is above 0, if nobody
-   stopped: that share to the payer, the rest to the recipient. In a window of 0, giving
-   everything to the recipient is `pay`.
+2. **The payer takes back** (`take_back`), inside a window whose `payerShare` is above 0: that share
+   to the payer, the rest to the recipient. In a window of 0, giving everything to the recipient is
+   `pay`.
 3. **Both agree** (`agree`) on any split, both signing.
 4. **The arbiter decides** (`decide`) any split.
 5. **The default** (`end`): anyone, from the end time on, if the funding was marked and nobody
@@ -206,10 +209,10 @@ receipt keeps its minimum. A classic deposit account is 165 bytes; one for Open 
 |---|---|---|---|---|
 | nothing | `create` | the payer or the recipient as creator, and whoever fronts the rent as sponsor | address `["escrow", sha256(terms)]`; payer and recipient differ; no zero keys; the arbiter, if any, neither party; neither party the escrow's own address or its deposit address; amount above zero; a schedule, if any, of one to four windows, each `until` later than the one before, each `payerShare` at most 10,000; a mint owned by the token program named, not wrapped SOL, no transfer fee, transferable; no escrow already at the address | open; the creator and the sponsor recorded |
 | open | `mark_funded` | nobody | before the end time; the deposit account holds at least the amount | funded, `funded_at` = now |
-| open, funded | `stop` | the payer or the recipient | nobody stopped yet; before the end time | unchanged: the stop, its side and its time recorded |
+| open, funded | `stop` | the payer or the recipient | nobody stopped yet; before the end time | unchanged: the stop, its side and its time recorded; from then on `end` does not run |
 | open, funded | `pay` | the payer | the deposit account holds at least the amount | ended: the whole balance to the recipient |
 | open, funded | `refund` | the recipient | the same | ended: the whole balance to the payer |
-| open, funded | `take_back` | the payer | a schedule; nobody stopped; a window in force, whose `payerShare` is above 0; the same | ended: `⌊balance × payerShare / 10,000⌋` to the payer, the rest to the recipient |
+| open, funded | `take_back` | the payer | a schedule; a window in force, whose `payerShare` is above 0; the same | ended: `⌊balance × payerShare / 10,000⌋` to the payer, the rest to the recipient |
 | open, funded | `agree(payer_share)` | the payer and the recipient | `payer_share` ≤ 10,000; the same | ended: `⌊balance × payer_share / 10,000⌋` to the payer, the rest to the recipient |
 | open, funded | `decide(payer_share)` | the arbiter | an arbiter was named; the same | ended: the same split |
 | funded | `end` | nobody | a schedule; nobody stopped; now ≥ the end time; the same | ended: the whole balance to the side the default names |
@@ -222,7 +225,7 @@ receipt keeps its minimum. A classic deposit account is 165 bytes; one for Open 
 the last window's `until`, read against the chain's clock; with no schedule there is no end time,
 and a need that names it holds for `stop` and `mark_funded` and fails for the rest. Every ending
 from open (nobody marked the funding) writes its own time into `funded_at`. A stop is not a status:
-a stopped escrow is open or funded, and ends by any way out but `take_back` and `end`.
+a stopped escrow is open or funded, and ends by any way out but `end`.
 
 ### Use it
 
@@ -243,7 +246,7 @@ a stopped escrow is open or funded, and ends by any way out but `take_back` and 
 - `endTime`, `windowAt`, `canStop`, `canMark`, `canTakeBack`, `canEnd`, `split`: the end time, the
   window in force, whether a stop, a mark, a take-back or the default would land now, and what a
   split pays.
-- `escrowAddress`, `termsHash`, `termsOf`, `vaultAddress`, `payerAccount`, `recipientAccount`,
+- `escrowAddress`, `termsHash`, `termsOf`, `depositAddress`, `payerAccount`, `recipientAccount`,
   `makeDepositAddressIx`, `makeStandardAccountIx`: addresses (an escrow's from its terms), and the
   accounts a payment needs made first.
 - `hookAccounts`, `payoutTransfers`: a transfer hook's accounts, through `@solana/spl-token`'s
@@ -320,9 +323,10 @@ program beside it. On devnet too, a new version goes to a new address.
   written again in `program/tests-litesvm/src/lib.rs` and `client/src/program.ts`): version, id,
   payer, recipient, arbiter, mint, deposit account, sponsor, amount, creator, window count, four
   windows (each `until` and `payerShare`), default, created, funded, status, bump, ended, outcome,
-  what the payer got, what the recipient got, stop, stopped at. `version` is 3: it says which
-  program's rules an escrow follows, and a new program writes its own. The zero key means no
-  arbiter; a window count of 0, no schedule; a zero time, not yet.
+  what the payer got, what the recipient got, stop, stopped at. `version` is 4: it says which
+  program's rules an escrow follows, and a new program writes its own. Version 4 keeps version 3's
+  layout byte for byte and changes one rule: a stop no longer turns off `take_back`. The zero key
+  means no arbiter; a window count of 0, no schedule; a zero time, not yet.
 - **The addresses.** The escrow at `["escrow", sha256(terms)]`; the deposit account its associated
   token account for the mint, under the mint's own token program; each party paid only at its own
   associated token account, checked by address alone.
@@ -348,24 +352,30 @@ keypair for it exists. Each deploy uses its own.
 
 ### Devnet
 
-On devnet the program is built as SBPF v3. Its upgrade authority is the devnet deploy key, which
-came from a devnet phrase that is lost, so it can no longer be upgraded in place: a new version goes
-to a new address, as on mainnet. `devnet/deploy.sh` builds a copy of the source with the devnet id
-put in, deploys a fresh id (an id holding other bytes is refused), checks the deployed bytes against
-the build, and records everything public in [`devnet/devnet.json`](devnet/devnet.json); its header
-holds the recipe for every devnet key it needs. `client/scripts/devnet.ts` runs seven deals there,
-recorded in the same file. In the classic test dollar (`testDollar`): an invoice paid in one tap;
-half taken back inside a window; a stop, the default refused, then a 60/40 split both sign; the
-default sent from the end time by a key that is neither party; and a plain transfer after the end
-time, the mark and the default refused, closed back to the payer. In a Token-2022 dollar made with
-Open USD's extensions: the one tap, and the stop then the split. The devnet keys labelled `buyer`
-and `seller` act as payer and recipient, and `payer` as the sponsor: the labels are the key
-recipe's.
+On devnet the program is built as SBPF v3. Version 3's upgrade authority is the deploy key of a
+devnet phrase that is lost, so it can no longer be upgraded in place: a new version goes to a new
+address, as on mainnet. `devnet/deploy.sh` takes any phrase. It builds a copy of the source with the
+devnet id put in, deploys a fresh id (an id holding other bytes is refused), checks the deployed
+bytes against the build, and records everything public in
+[`devnet/devnet.json`](devnet/devnet.json): when the record names another program, that program's
+record (its keys, dollars, deals and transactions) first moves into `earlier`, whole, and the record
+starts again with the phrase's keys. Its header holds the recipe for every devnet key it needs.
+`client/scripts/devnet.ts` runs seven deals there, recorded in the same file, in two dollars it
+reuses when the `payer` key holds their mint authority on chain and makes otherwise. In a classic
+test dollar (`testDollar`): an invoice paid in one tap; half taken back inside a window; a stop, the
+default refused, then a 60/40 split both sign; the default sent from the end time by a key that is
+neither party; and a plain transfer after the end time, the mark and the default refused, closed
+back to the payer. In a Token-2022 dollar made with Open USD's extensions (`openUsdShaped`): the one
+tap, and the stop then the split. The devnet keys labelled `buyer` and `seller` act as payer and
+recipient, and `payer` as the sponsor: the labels are the key recipe's.
 
-The program was upgraded in place from version 2 while the phrase was known. Its version 2 receipts
-stay at their addresses, and this version refuses every instruction on them (`beforeSchedules` in
-the record). There is no smoke test: read a receipt with `solana account <address> --url devnet`,
-and decode it with `decodeEscrow`.
+Version 3 was upgraded in place from version 2 while the phrase was known. Its version 2 receipts
+stay at their addresses, and version 3 refuses every instruction on them (`beforeSchedules` in the
+record). This version runs at its own address, so it refuses every instruction on a version 3 or
+version 2 receipt, as version 3 refuses version 2's: they belong to the program at `FA6Z…`, and this
+one accepts only accounts it owns. Version 3's escrows keep version 3's rules there. There is no
+smoke test: read a receipt with `solana account <address> --url devnet`, and decode it with
+`decodeEscrow`.
 
 ## Promises
 
@@ -380,8 +390,8 @@ and decode it with `decodeEscrow`.
 - **Each side alone can always give.** Nothing in the escrow stops it: while an escrow is live, the
   payer can pay the recipient and the recipient can refund the payer, whatever the options and
   whether or not anyone stopped.
-- **A stop moves no money,** lands once per escrow, only before the end time; after it neither
-  `take_back` nor `end` runs.
+- **A stop moves no money,** lands once per escrow, only before the end time; after it `end` does
+  not run.
 - **A receipt never closes and never changes,** and its address never holds a second deal.
 - **Rent goes back to whoever fronted it:** every rent to the sponsor, at every ending, at
   `close_unfunded` and by `sweep_rent`; a deposit account a late payment made again, to the payer.
@@ -398,14 +408,19 @@ The limits every escrow shares, a stop with no arbiter among them, are in
   balances or take them back, an escrow's deposit included, and nothing in the program can stop
   it.
 - **Options nobody checked.** The program runs whatever options the creator set. A schedule that
-  lets the payer take everything back until the work is done, or a one-minute schedule paying the
-  creator's side, runs if the other side never read the escrow and never stopped it.
+  lets the payer take everything back until the work is done runs if the other side never read the
+  escrow, since a stop holds back only the default; a one-minute schedule paying the creator's side
+  runs if the other side never read it and never stopped it.
 - **The default is not a promise.** Either side can stop the escrow until the second before the
   end time.
 - **Money sent to an address before its escrow opens, or after a close,** waits there, and counts
   only toward an escrow opened with exactly those terms. Either party can open one, and close it
   if it holds less than the amount, which sends the money back to the payer.
-- **A party whose standard account requires a memo blocks its own payouts:** the escrow sends none.
+- **In a split, a side whose standard account requires a memo blocks the whole split,** the other
+  side's share with it: the escrow sends no memo. A share of zero sends no transfer, so a full
+  take-back or a full decision to one side is never blocked by the other's account.
+- **An escrow paid in more than one transfer can be closed by the recipient between them**
+  (`close_unfunded`), with the money back to the payer. Fund in one transaction.
 - **SOL sent to an escrow's address** goes to the sponsor by `sweep_rent`. **Money of another mint**
   sent there is lost to everyone.
 - **A one-sided receipt is cheap:** a payer can pay one base unit to a recipient who signed

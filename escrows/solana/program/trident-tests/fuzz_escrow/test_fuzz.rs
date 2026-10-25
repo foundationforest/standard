@@ -9,8 +9,8 @@
 //! So every key here can "sign", and every authority rule has to hold on key comparisons alone.
 //!
 //! Invariants, for the escrow `escrows/README.md` describes (money in, then a schedule: generous
-//! moves always, selfish moves by the schedule, a stop that freezes it, a default at the end; an
-//! arbiter if the creator named one):
+//! moves always, selfish moves by the schedule, a stop that freezes the default, a default at the
+//! end; an arbiter if the creator named one):
 //!   I1 every deposit account holds exactly what was sent to it;
 //!   I2 every way out pays out the whole balance, no more and no less, and a split gives the
 //!      payer exactly its basis points of the balance, rounded down;
@@ -47,8 +47,8 @@
 //!      10,000: `create` refuses the rest;
 //!   I15 a stop moves nothing and changes only the escrow's stop and its time; it lands once per
 //!      escrow, from the payer or the recipient only, and only before the end time;
-//!   I16 a stop freezes the take-back and the default and nothing else: after it neither lands,
-//!      and giving, agreeing and the arbiter land as they would without it;
+//!   I16 a stop turns the default off: after it `end` never lands, and giving, agreeing and the
+//!      arbiter land as they would without it;
 //!   I17 money counts toward the default only if marked before the end time: a mark never lands
 //!      from the end time on, the default never pays an escrow nobody marked, and from the end
 //!      time on an escrow nobody marked or stopped closes back to the payer.
@@ -771,7 +771,7 @@ impl FuzzTest {
                     let payer_share = window.map_or(0, |(_, s)| s);
                     let to_payer = share(balance, payer_share);
                     let to_recipient = balance - to_payer;
-                    let ok = actor == d.payer && !d.stopped() && payer_share > 0 && funded && both(to_payer, to_recipient);
+                    let ok = actor == d.payer && payer_share > 0 && funded && both(to_payer, to_recipient);
                     (ok, to_payer, to_recipient)
                 }
                 "agree" | "decide" => {
@@ -855,7 +855,6 @@ impl FuzzTest {
                 let w = d.window_at(now);
                 assert!(w.is_some_and(|(_, s)| s > 0), "I12 take_back: paid outside a window whose share is above 0");
                 assert_eq!(to_payer, share(balance, w.unwrap().1), "I12 take_back: the share of the window in force");
-                assert!(!d.stopped(), "I16 take_back: paid after a stop");
             }
             "end" => {
                 assert!(d.past_the_end(now), "I12 end: paid before the end time");
@@ -913,7 +912,7 @@ impl FuzzTest {
         match name {
             "pay" => actor == d.payer,
             "refund" => actor == d.recipient,
-            "take_back" => actor == d.payer && !d.stopped() && d.window_at(now).is_some_and(|(_, s)| s > 0),
+            "take_back" => actor == d.payer && d.window_at(now).is_some_and(|(_, s)| s > 0),
             "agree" => actor == d.payer && second == d.recipient,
             "decide" => d.arbiter == Some(actor),
             "end" => d.schedule.is_some() && !d.stopped() && d.marked && d.past_the_end(now),

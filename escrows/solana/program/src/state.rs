@@ -1,9 +1,9 @@
 //! The one account, and the size it keeps forever.
 //!
 //! The layout is sealed with the program: clients and indexes read these bytes for as long as
-//! the program lives. Nothing may grow, shrink or be reordered in v3. v3 is not v2's layout with
-//! more after it: the schedule takes the timer's place, and the parties are the payer and the
-//! recipient.
+//! the program lives. Nothing may grow, shrink or be reordered. v4 keeps v3's layout byte for
+//! byte; v3 is not v2's layout with more after it: the schedule takes the timer's place, and the
+//! parties are the payer and the recipient.
 
 use anchor_lang::prelude::*;
 
@@ -138,7 +138,7 @@ pub struct Escrow {
     /// deposit account held. Zero before the end.
     pub to_payer: u64,
     pub to_recipient: u64,
-    /// Which party stopped the escrow, if one did. Once one has, neither `take_back` nor `end` runs.
+    /// Which party stopped the escrow, if one did. Once one has, `end` does not run.
     pub stop: Stop,
     /// When the stop was made, or 0. Read only for the record: `stop` says whether.
     pub stopped_at: i64,
