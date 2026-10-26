@@ -11,8 +11,8 @@ of deal is new parameters, never new code. An escrow that held the money leaves 
 how the deal ended.
 
 - [`solana/`](solana/README.md): the escrow on Solana, on devnet, where it can no longer be
-  upgraded in place: its upgrade key came from a devnet phrase that is lost, so a new version goes
-  to a new address, as on mainnet.
+  upgraded in place: nobody holds its upgrade authority, so a new version goes to a new address, as
+  on mainnet.
 
 ## How it works
 

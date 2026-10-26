@@ -12,11 +12,11 @@ other, both sides agree, the arbiter named at the start decides, or the schedule
 says so. Every escrow that held the money leaves a receipt at its address, for good: its account,
 saying how the deal ended.
 
-Version 3 runs on devnet at `FA6ZodkyhMDj9yjzY27dk8JDCtcHnJx8mr45Mx9TfKg8`
-([record](devnet/devnet.json)), where it can no longer be upgraded in place: its upgrade key came
-from a devnet phrase that is lost, so a new version goes to a new address, as on mainnet. This
-version, 4, is not deployed yet: the next deploy puts it at a new address and writes it in the
-record. It cannot change once deployed to Solana's mainnet, because money sits inside it and nobody,
+This version, 4, runs on devnet at `38vLV7TMvJ9bvXT3cbRLEfHUy8WbvHWfjmiUALUyCm5J`
+([record](devnet/devnet.json)), its upgrade authority removed, as on mainnet, so it can never be
+upgraded in place; version 3 stays at `FA6ZodkyhMDj9yjzY27dk8JDCtcHnJx8mr45Mx9TfKg8`, which can no
+longer be upgraded in place either: its upgrade key came from a devnet phrase that is lost. The
+program cannot change once deployed to Solana's mainnet, because money sits inside it and nobody,
 the Open Forest Foundation included, may change the rules around money already there: a new version
 is a new program beside it, at a new address, never an upgrade, and the old ones keep working.
 
@@ -353,13 +353,14 @@ keypair for it exists. Each deploy uses its own.
 ### Devnet
 
 On devnet the program is built as SBPF v3. Version 3's upgrade authority is the deploy key of a
-devnet phrase that is lost, so it can no longer be upgraded in place: a new version goes to a new
-address, as on mainnet. `devnet/deploy.sh` takes any phrase. It builds a copy of the source with the
-devnet id put in, deploys a fresh id (an id holding other bytes is refused), checks the deployed
-bytes against the build, and records everything public in
-[`devnet/devnet.json`](devnet/devnet.json): when the record names another program, that program's
-record (its keys, dollars, deals and transactions) first moves into `earlier`, whole, and the record
-starts again with the phrase's keys. Its header holds the recipe for every devnet key it needs.
+devnet phrase that is lost, so it can no longer be upgraded in place, and version 4's has been
+removed: a new version goes to a new address, as on mainnet. `devnet/deploy.sh` takes any phrase. It
+builds a copy of the source with the devnet id put in, deploys a fresh id (an id holding other bytes
+is refused), checks the deployed bytes against the build, removes the upgrade authority, and records
+everything public in [`devnet/devnet.json`](devnet/devnet.json): when the record names another
+program, that program's record (its keys, dollars, deals and transactions) first moves into
+`earlier`, whole, and the record starts again with the phrase's keys. Its header holds the recipe
+for every devnet key it needs.
 `client/scripts/devnet.ts` runs seven deals there, recorded in the same file, in two dollars it
 reuses when the `payer` key holds their mint authority on chain and makes otherwise. In a classic
 test dollar (`testDollar`): an invoice paid in one tap; half taken back inside a window; a stop, the

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Build the escrow for devnet and deploy it at its own address. It never upgrades in place: the
-# upgrade key of the program devnet runs came from a devnet phrase that is lost, so a new version
-# goes to a new address, as on mainnet. The earlier escrow programs on devnet, named in this
-# record's `earlier`, are never touched: their ids are only read.
+# Build the escrow for devnet, deploy it at its own address, and remove its upgrade authority, as on
+# mainnet: nobody can upgrade it in place, so a new version goes to a new address. The earlier
+# escrow programs on devnet, named in this record's `earlier`, are never touched: their ids are only
+# read.
 #
 #   FOREST_DEVNET_SEED=<the phrase> escrows/solana/devnet/deploy.sh
 #
@@ -13,34 +13,35 @@
 #      seed   = PBKDF2-HMAC-SHA256(phrase, salt = "forest-devnet:" + label, 600,000 iterations, 32 bytes)
 #      key    = the ed25519 keypair whose secret seed is `seed` (Solana's Keypair.fromSeed)
 #
-#    One label per key: `deploy` (pays for the deploy and keeps the upgrade authority), `payer`
-#    (pays every fee and deposit in escrows/solana/client/scripts/devnet.ts, as a fee payer would:
-#    each escrow's sponsor, and the authority of the test dollars it makes), `buyer` and `seller`
-#    (each escrow's payer and recipient), and `escrow-v4-program`, version 4's program id (version
-#    3's, upgraded in place from version 2, was `escrow-v2-program-2`; the closed first deploy's,
-#    `escrow-v2-program`). The labels are the recipe's, so they keep their names. The keypair files
-#    go to FOREST_DEVNET_KEYS (default ~/.forest-devnet/keys), never under the repo: the directory
-#    mode 700, the files 600, and a file holding another key is refused, not overwritten. Only
-#    public keys are printed, and the phrase is in no file. Any phrase works; the id must be no
-#    program this record or registry/devnet/devnet.json names but the record's own.
+#    One label per key: `deploy` (pays for the deploy and holds the upgrade authority until step 4
+#    removes it), `payer` (pays every fee and deposit in escrows/solana/client/scripts/devnet.ts, as
+#    a fee payer would: each escrow's sponsor, and the authority of the test dollars it makes),
+#    `buyer` and `seller` (each escrow's payer and recipient), and `escrow-v4-program`, version 4's
+#    program id (version 3's, upgraded in place from version 2, was `escrow-v2-program-2`; the
+#    closed first deploy's, `escrow-v2-program`). The labels are the recipe's, so they keep their
+#    names. The keypair files go to FOREST_DEVNET_KEYS (default ~/.forest-devnet/keys), never under
+#    the repo: the directory mode 700, the files 600, and a file holding another key is refused,
+#    not overwritten. Only public keys are printed, and the phrase is in no file. Any phrase works;
+#    the id must be no program this record or registry/devnet/devnet.json names but the record's own.
 # 2. Build. escrows/solana/program's Cargo.toml, Cargo.lock and src are copied into
 #    escrows/solana/devnet/target/ (ignored), `declare_id!` alone is replaced with the devnet id, checked to
 #    appear exactly once, and the copy is built for SBPF v3.
 # 3. Deploy a fresh id (the same bytes are left as they are, and other bytes refused, exit 4): the
 #    exact cost computed first, the way Solana CLI 4.2.2 spends it, refused (exit 3) if the deploy
 #    key holds less. Writes go over RPC.
-# 4. Check the deployed bytes are the built ones, and record everything public in
-#    escrows/solana/devnet/devnet.json. If the record names another program, that program's record
-#    (its keys, dollars, deals and transactions) first moves into `earlier`, whole, as it was, and
-#    the record starts again with this phrase's keys. The check needs the same toolchain: Solana CLI
-#    4.2.2, cargo-build-sbf 4.1.0, platform-tools v1.54.
+# 4. Check the deployed bytes are the built ones, remove the upgrade authority (`--final`, which
+#    cannot be undone), and record everything public in escrows/solana/devnet/devnet.json; the CLI
+#    prints no signature for the removal, so it is read back from the deploy key's history. If the
+#    record names another program, that program's record (its keys, dollars, deals and
+#    transactions) first moves into `earlier`, whole, as it was, and the record starts again with
+#    this phrase's keys. The check needs the same toolchain: Solana CLI 4.2.2, cargo-build-sbf
+#    4.1.0, platform-tools v1.54.
 #
 # FOREST_DEVNET_RPC points the Solana CLI at another devnet RPC; the record always names the
-# public one, so a keyed URL never lands in the repo. On devnet the upgrade authority stays on the
-# deploy key, and this script never uses it; removing it is the mainnet step (`--final`, in
-# escrows/solana/README.md). A new phrase starts from nothing: its `deploy` key needs the SOL the
-# deploy costs (step 3 prints it, and sends nothing if the key holds less) and its `payer` key the
-# deals' fees and rents, both sent by hand; devnet.ts makes the test dollars.
+# public one, so a keyed URL never lands in the repo. A new phrase starts from nothing: its
+# `deploy` key needs the SOL the deploy costs (step 3 prints it, and sends nothing if the key holds
+# less) and its `payer` key the deals' fees and rents, both sent by hand; devnet.ts makes the test
+# dollars.
 
 set -euo pipefail
 
@@ -173,19 +174,24 @@ JS
   echo "spent $((have - after)) lamports; computed $spend"
 fi
 
-# 4. Check and record.
+# 4. Check, remove the upgrade authority, and record.
 solana program show "$id" "${cli[@]}" --output json >"$out/show.json"
 solana program dump "$id" "$out/dumped.so" "${cli[@]}" >/dev/null
 deployed=$(head -c "$(wc -c <"$so")" "$out/dumped.so" | sha256sum | cut -d' ' -f1)
 [ "$built" = "$deployed" ] || { echo "the deployed bytes are not the built ones" >&2; exit 1; }
 echo "deployed bytes match the build ($built)"
+if [ "$(node -e "process.stdout.write(String(JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8')).authority))" "$out/show.json")" != none ]; then
+  solana program set-upgrade-authority "$id" "${cli[@]}" --upgrade-authority "$keys/deploy.json" --final --output json >/dev/null
+  solana program show "$id" "${cli[@]}" --output json >"$out/show.json"
+  echo "upgrade authority removed: nobody can change the program at $id"
+fi
 
 keys_json=$(printf '{"deploy":"%s","payer":"%s","buyer":"%s","seller":"%s"}' \
   "$(solana-keygen pubkey "$keys/deploy.json")" "$(solana-keygen pubkey "$keys/payer.json")" \
   "$(solana-keygen pubkey "$keys/buyer.json")" "$(solana-keygen pubkey "$keys/seller.json")")
-node - "$record" "$out" "$id" "$built" "$so" "$mode" "$keys_json" "$root/escrows/solana/program/src/lib.rs" "$label" <<'JS'
+node - "$record" "$out" "$id" "$built" "$so" "$mode" "$keys_json" "$root/escrows/solana/program/src/lib.rs" "$label" "$rpc" <<'JS'
 const fs = require('fs')
-const [recordPath, out, id, sha, so, mode, keysJson, lib, label] = process.argv.slice(2)
+const [recordPath, out, id, sha, so, mode, keysJson, lib, label, rpc] = process.argv.slice(2)
 const keys = JSON.parse(keysJson)
 const version = Number(/^pub const VERSION: u8 = (\d+);$/m.exec(fs.readFileSync(lib, 'utf8'))[1])
 const note = `The devnet deploy of the escrow. Public keys, addresses and signatures only. Every key comes from the devnet phrase by the recipe in escrows/solana/devnet/deploy.sh, which writes the keypairs outside the repo; the program id's label is ${label}. Written by escrows/solana/devnet/deploy.sh and escrows/solana/client/scripts/devnet.ts. \`earlier\` keeps the records of the escrow's earlier programs on devnet, each as it was.`
@@ -218,6 +224,30 @@ if (mode === 'deploy') {
   p.deployCost = cost
   record.transactions.push({ program: `escrow-v${version}`, what: `deploy: the escrow (SBPF ${p.sbpfVersion}), upgrade authority kept on the deploy key`, signature: d.signature })
 }
-fs.writeFileSync(recordPath, JSON.stringify(record, null, 2) + '\n')
+if (show.authority !== 'none') throw new Error(`the upgrade authority is ${show.authority}, not none`)
+async function call(method, params) {
+  const r = await fetch(rpc, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) })
+  const j = await r.json()
+  if (j.error) throw new Error(`${method}: ${JSON.stringify(j.error)}`)
+  return j.result
+}
+// The removal's signature: the deploy key's newest transaction that set this program's authority to none.
+async function finalSignature() {
+  for (const { signature, err } of await call('getSignaturesForAddress', [keys.deploy, { limit: 25, commitment: 'confirmed' }])) {
+    if (err) continue
+    const tx = await call('getTransaction', [signature, { encoding: 'jsonParsed', commitment: 'confirmed', maxSupportedTransactionVersion: 0 }])
+    const set = (i) => i.programId === 'BPFLoaderUpgradeab1e11111111111111111111111' && i.parsed?.type === 'setAuthority' && i.parsed.info.account === show.programdataAddress && i.parsed.info.newAuthority === null
+    if (tx?.transaction.message.instructions.some(set)) return signature
+  }
+  throw new Error("no removal of the upgrade authority among the deploy key's last 25 transactions")
+}
+;(async () => {
+  if (!p.finalSignature) {
+    p.finalSignature = await finalSignature()
+    record.transactions ??= []
+    record.transactions.push({ program: `escrow-v${version}`, what: 'final: the upgrade authority removed; nobody can change the program', signature: p.finalSignature })
+  }
+  fs.writeFileSync(recordPath, JSON.stringify(record, null, 2) + '\n')
+})()
 JS
 echo "recorded in $record"
