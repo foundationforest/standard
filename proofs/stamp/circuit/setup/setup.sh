@@ -9,7 +9,9 @@
 # circuit's. Phase 2 is one contribution: 64 random bytes drawn inside Node, never on a command
 # line, to which snarkjs adds 64 more of its own. The script writes here note.zkey, note.wasm and
 # verification-key.json, all committed, and setup.json, which pins every file by SHA-256. Running
-# it again makes a new key, and every hash in setup.json changes.
+# it again makes new keys, the proving key and the verification key, so their hashes and the
+# contribution's change in setup.json; the compiled circuit's, the r1cs and the wasm, stay the same,
+# since circom gives the same bytes every time.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
