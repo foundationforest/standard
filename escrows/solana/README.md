@@ -12,15 +12,16 @@ other, both sides agree, the arbiter named at the start decides, or the schedule
 says so. Every escrow that held the money leaves a receipt at its address, for good: its account,
 saying how the deal ended.
 
-This version, 4, runs on devnet at `38vLV7TMvJ9bvXT3cbRLEfHUy8WbvHWfjmiUALUyCm5J`
-([record](devnet/devnet.json)), its upgrade authority removed, as on mainnet, so it can never be
-upgraded in place; version 3 stays at `FA6ZodkyhMDj9yjzY27dk8JDCtcHnJx8mr45Mx9TfKg8`, which can no
-longer be upgraded in place either: its upgrade key came from a devnet phrase that is lost. The
-program cannot change once deployed to Solana's mainnet, because money sits inside it and nobody,
-the Open Forest Foundation included, may change the rules around money already there: a new version
-is a new program beside it, at a new address, never an upgrade, and the old ones keep working.
+This version, 4, runs on devnet, Solana's test network, at
+`38vLV7TMvJ9bvXT3cbRLEfHUy8WbvHWfjmiUALUyCm5J` ([record](devnet/devnet.json)), its upgrade
+authority, the key that could replace its code, removed, as on mainnet, so it can never be upgraded
+in place. The program cannot change once deployed to Solana's mainnet, its network for real money,
+because money sits inside it and nobody, the Open Forest Foundation included, may change the rules
+around money already there: a new version is a new program beside it, at a new address, never an
+upgrade, and the old ones keep working.
 
-- `program/`: the program (Anchor 1.2), its LiteSVM tests and its fuzzer.
+- `program/`: the program (Anchor 1.2, a framework for Solana programs), its LiteSVM tests (a Solana
+  runtime that runs inside the test) and its fuzzer (random flows checked against a model).
 - `client/`: builds every instruction and reads every account and event. It talks to no network
   of its own.
 - `devnet/`: the deploy script and the public record of what runs on devnet.
@@ -84,18 +85,21 @@ closes, recorded as the sponsor ([Rent](#rent)).
 
 ### Paying in
 
-- **The mint** is one made by the classic SPL Token program or by Token-2022. `create` refuses
-  three kinds (`program/src/errors.rs`): wrapped SOL (`NativeMint`: a plain SOL transfer to its
-  deposit account would not count); a token with a transfer fee (`TransferFee`: the fee would take
-  part of every payment in and out, while every way out pays the whole balance); and a token that
-  cannot be transferred (`NonTransferable`: nothing could be paid into the escrow, and nothing
-  minted into it could leave). A dollar, here, is such a mint made to track the US dollar, such as
-  Open USD; what its maker can still do is in [Limits](#limits).
-- **The deposit address** is the escrow's associated token account for the mint, so a payment
-  sent "to the escrow's address" from anywhere lands there. Money arrives by a plain transfer,
-  from anywhere; a payment in a Token-2022 mint must be a `transfer_checked`. Confidential
-  transfers never reach a deposit account: turning them on needs a signature the escrow never
-  gives. Interest-bearing and scaled dollars work: the escrow holds and pays raw base units,
+- **The mint** is one made by the classic SPL Token program or by Token-2022, its newer token
+  program with extensions. `create` refuses three kinds (`program/src/errors.rs`): wrapped SOL
+  (`NativeMint`: a plain SOL transfer to its deposit account would not count); a token with a
+  transfer fee (`TransferFee`: the fee would take part of every payment in and out, while every way
+  out pays the whole balance); and a token that cannot be transferred (`NonTransferable`: nothing
+  could be paid into the escrow, and nothing minted into it could leave). A dollar, here, is such a
+  mint made to track the US dollar, such as Open USD; what its maker can still do is in
+  [Limits](#limits).
+- **The deposit address** is the escrow's associated token account for the mint, the one standard
+  account a key has for each mint, so a payment sent "to the escrow's address" from anywhere lands
+  there. Money arrives by a plain transfer, from anywhere; `transfer_checked` is the one transfer
+  both token programs take for every mint, and the only one Token-2022 takes from an account with a
+  hook extension (a transfer hook, a program the mint's maker names to run on every transfer).
+  Confidential transfers never reach a deposit account: turning them on needs a signature the escrow
+  never gives. Interest-bearing and scaled dollars work: the escrow holds and pays raw base units,
   fixed at creation, and only what they display drifts.
 - **Funded** is the live balance: the escrow is funded while its deposit account holds at least
   the amount. Every way out checks the balance itself.
@@ -130,10 +134,10 @@ are in the escrow, for both sides to read before anyone works or pays, and they 
 - **A stop.** Either side may stop the escrow, once, before the end time. It moves no money; from
   then on `end` does not run, and the money leaves by a side giving, the payer's take-back inside a
   window, both agreeing, or the arbiter if one was named. The take-back runs by its windows, stop or
-  no stop: they are what both sides agreed at the start. The end time is the one deadline: before it
-  a stop, a mark and a take-back can land; from it on only the default and the late close. An escrow
-  with no schedule takes a stop at any time while it is live, and the stop then changes only the
-  receipt.
+  no stop: they are what both sides agreed at the start. The end time is the one deadline: a stop, a
+  mark and a take-back land only before it, and the default and the late close only from it on;
+  giving, agreeing and deciding land at any time. An escrow with no schedule takes a stop at any
+  time while it is live, and the stop then changes only the receipt.
 
 The program cannot tell whether the other side read the options. The app reads the escrow off the
 chain and shows every option the person did not set (`optionsNotAgreed`) before they work or pay;
@@ -169,8 +173,9 @@ Three more instructions move money that is not the deal's:
   time, or, from the end time on, one nobody marked and nobody stopped. Whatever arrived goes back
   to the payer, and both rents to the sponsor. No receipt is kept: nothing was dealt.
 - **`recover_late`:** money sent after the end goes back to the payer. Anyone may send it.
-- **`sweep_rent`:** lamports above the receipt's rent-exempt minimum (SOL sent to the escrow's
-  address, or what a cut in Solana's rent frees) go to the sponsor. Anyone may send it.
+- **`sweep_rent`:** lamports (SOL's smallest unit) above the receipt's rent-exempt minimum (SOL sent
+  to the escrow's address, or what a cut in Solana's rent frees) go to the sponsor. Anyone may send
+  it.
 
 ### The receipt
 
@@ -189,19 +194,20 @@ whole schedule), `Funded`, `Stopped`, `Ended`, `Closed`, `RecoveredLate`, `RentS
 ### Rent
 
 Solana holds a deposit, its rent, in every account, and gives it back when the account closes.
-Whoever fronts an escrow's rent signs `create` as the sponsor, is recorded, and gets every rent
-back: the deposit account's at every ending, both rents at `close_unfunded`, and, by `sweep_rent`,
-whatever a cut in Solana's rent frees above the receipt's minimum. Refunds arrive in SOL, to
-that key. A fee payer may front it; what it charges for that is its own choice.
+Whoever fronts an escrow's rent signs `create` as the sponsor, is recorded, and gets rent back: the
+deposit account's at every ending, both rents at `close_unfunded`, and, by `sweep_rent`, whatever a
+cut in Solana's rent frees above the receipt's minimum, which the receipt keeps for good. Refunds
+arrive in SOL, to that key. A fee payer may front it; what it charges for that is its own choice.
 
 One rent goes elsewhere. A payment that arrives after an escrow ended makes its closed deposit
 account again, and that payment is almost always the payer's own, so the payer paid that account's
 rent: `recover_late` sends it to the payer, with the late money.
 
 At Solana's 5,080 lamports a byte, the escrow account holds 304 bytes after its 8-byte
-discriminator (2,235,200 lamports), and comes back whole only at `close_unfunded`; otherwise the
-receipt keeps its minimum. A classic deposit account is 165 bytes; one for Open USD's extensions,
-179 (1,559,560 lamports). It comes back to the sponsor at every ending.
+discriminator, which names the account's kind (2,235,200 lamports), and comes back whole only at
+`close_unfunded`; otherwise the receipt keeps its minimum. A classic deposit account is 165 bytes;
+one for Open USD's extensions, 179 (1,559,560 lamports). It comes back to the sponsor at every
+ending.
 
 ### The state table
 
@@ -219,7 +225,7 @@ receipt keeps its minimum. A classic deposit account is 165 bytes; one for Open 
 | open, funded | `close_unfunded` | the payer or the recipient | the deposit account holds less than the amount; or open, nobody stopped, and now ≥ the end time | gone: what it held to the payer, both accounts closed, both rents to the sponsor |
 | ended | `recover_late` | anyone; the sender makes the payer's standard account if missing | a later payment made the deposit account again | unchanged: the late money to the payer, that account's rent to the payer |
 | anything but gone | `sweep_rent` | nobody | the escrow account holds more than its rent-exempt minimum | unchanged: the excess to the sponsor |
-| ended | anything else | | | refused: `Ended` |
+| ended | anything else | | | refused: `Ended`; one that names the deposit account, closed at the ending, fails first with Anchor's `AccountNotInitialized`, unless a late payment made it again |
 
 "Funded" in the Needs column is the live balance; the status `funded` is the mark. The end time is
 the last window's `until`, read against the chain's clock; with no schedule there is no end time,
@@ -284,11 +290,11 @@ FOREST_DEVNET_SEED=<phrase> escrows/solana/devnet/deploy.sh        # devnet: dep
 cd escrows/solana/client && FOREST_DEVNET_KEYS=<dir> node scripts/devnet.ts
 ```
 
-The LiteSVM tests run every case on a classic mint, and on a Token-2022 mint made with Open USD's
-extensions: its hook naming no program and naming a test hook, each power its maker holds used,
-and mints with one other extension each. One test sends every move in every state and checks each
-answer, accepted or the exact error. They move the clock by hand and check the wire format against
-a second copy written in `program/tests-litesvm/src/lib.rs`.
+The LiteSVM tests run every case on a classic mint, and the Token-2022 cases on a mint made with
+Open USD's extensions: its hook naming no program and naming a test hook, each power its maker holds
+used, and mints with one other extension each. One test sends every move in every state and checks
+each answer, accepted or the exact error. They move the clock by hand and check the wire format
+against a second copy written in `program/tests-litesvm/src/lib.rs`.
 
 The fuzzer sends random flows against a model of every escrow and checks seventeen invariants
 after every step (`program/trident-tests/fuzz_escrow/test_fuzz.rs` lists them);
@@ -352,15 +358,16 @@ keypair for it exists. Each deploy uses its own.
 
 ### Devnet
 
-On devnet the program is built as SBPF v3. Version 3's upgrade authority is the deploy key of a
-devnet phrase that is lost, so it can no longer be upgraded in place, and version 4's has been
-removed: a new version goes to a new address, as on mainnet. `devnet/deploy.sh` takes any phrase. It
-builds a copy of the source with the devnet id put in, deploys a fresh id (an id holding other bytes
-is refused), checks the deployed bytes against the build, removes the upgrade authority, and records
-everything public in [`devnet/devnet.json`](devnet/devnet.json): when the record names another
-program, that program's record (its keys, dollars, deals and transactions) first moves into
-`earlier`, whole, and the record starts again with the phrase's keys. Its header holds the recipe
-for every devnet key it needs.
+On devnet the program is built as SBPF v3, a version of the format Solana runs programs in. Version
+4's upgrade authority has been removed: a new version goes to a new address, as on mainnet. Version
+3 stays at `FA6ZodkyhMDj9yjzY27dk8JDCtcHnJx8mr45Mx9TfKg8`, its upgrade authority still its deploy
+key, `2mz33wBK7FKRXoAi7LptGGTwVQJDbrSyrVwbYRCqwP3A`, from another phrase than version 4's (`earlier`
+in the record). `devnet/deploy.sh` takes any phrase. It builds a copy of the source with the devnet
+id put in, deploys a fresh id (an id holding other bytes is refused), checks the deployed bytes
+against the build, removes the upgrade authority, and records everything public in
+[`devnet/devnet.json`](devnet/devnet.json): when the record names another program, that program's
+record (its keys, dollars, deals and transactions) first moves into `earlier`, whole, and the record
+starts again with the phrase's keys. Its header holds the recipe for every devnet key it needs.
 `client/scripts/devnet.ts` runs seven deals there, recorded in the same file, in two dollars it
 reuses when the `payer` key holds their mint authority on chain and makes otherwise. In a classic
 test dollar (`testDollar`): an invoice paid in one tap; half taken back inside a window; a stop, the
@@ -370,32 +377,33 @@ back to the payer. In a Token-2022 dollar made with Open USD's extensions (`open
 tap, and the stop then the split. The devnet keys labelled `buyer` and `seller` act as payer and
 recipient, and `payer` as the sponsor: the labels are the key recipe's.
 
-Version 3 was upgraded in place from version 2 while the phrase was known. Its version 2 receipts
-stay at their addresses, and version 3 refuses every instruction on them (`beforeSchedules` in the
-record). This version runs at its own address, so it refuses every instruction on a version 3 or
-version 2 receipt, as version 3 refuses version 2's: they belong to the program at `FA6Z…`, and this
-one accepts only accounts it owns. Version 3's escrows keep version 3's rules there. There is no
-smoke test: read a receipt with `solana account <address> --url devnet`, and decode it with
-`decodeEscrow`.
+Version 3 was upgraded in place from version 2. Its version 2 receipts stay at their addresses, and
+version 3 refuses every instruction on them (`beforeSchedules` in the record). This version runs at
+its own address, so it refuses every instruction on a version 3 or version 2 receipt, as version 3
+refuses version 2's: they belong to the program at `FA6Z…`, and this one accepts only accounts it
+owns. Version 3's escrows keep version 3's rules there. There is no smoke test: read a receipt with
+`solana account <address> --url devnet`, and decode it with `decodeEscrow`.
 
 ## Promises
 
 - **Nothing in the escrow program lets anyone but the two sides, the arbiter or the schedule move
   the money.** Money leaves a funded escrow only by a side giving it to the other, a split both
   sign, the arbiter named at creation, or the schedule set at creation: the payer's take-back
-  inside a window, or the default once the last window closes and nobody stopped.
+  inside a window, or the default once the last window closes and nobody stopped, though from the
+  end time on either side may close an escrow nobody marked or stopped, back to the payer.
 - **Every way out pays the whole balance,** to the parties' standard token accounts and nowhere
   else.
 - **An address holds only its own terms.** A payment to an escrow's address counts only toward a
   deal with exactly the terms the address was made from.
-- **Each side alone can always give.** Nothing in the escrow stops it: while an escrow is live, the
-  payer can pay the recipient and the recipient can refund the payer, whatever the options and
-  whether or not anyone stopped.
+- **Each side alone can always give.** Nothing in the escrow stops it: while an escrow is live and
+  holds its amount, the payer can pay the recipient and the recipient can refund the payer, whatever
+  the options and whether or not anyone stopped.
 - **A stop moves no money,** lands once per escrow, only before the end time; after it `end` does
   not run.
 - **A receipt never closes and never changes,** and its address never holds a second deal.
 - **Rent goes back to whoever fronted it:** every rent to the sponsor, at every ending, at
-  `close_unfunded` and by `sweep_rent`; a deposit account a late payment made again, to the payer.
+  `close_unfunded` and by `sweep_rent`, but for the rent-exempt minimum a receipt keeps for good; a
+  deposit account a late payment made again, to the payer.
 - **Nothing inside charges anything.** No admin, no config account, no pause, no fee.
 
 ## Limits

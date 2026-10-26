@@ -6,17 +6,18 @@ Part of Forest's standard: [the top README](../../README.md). Up: [proofs](../RE
 
 The stamp proof, and the client a device uses to make it and anyone uses to check it. Anyone can
 sign a stamp to a person's seed: whoever does is a verifier. The main use is a verifier that checks
-one human per seed and signs them one stamp; the one we run is at the verifier's address in
-[services](https://github.com/foundationforest/services), with two keys, a face check and an ID
-check. A school, a club or a license board could sign stamps the same way, and a reader decides
-which verifiers count. Any of the person's profiles can then prove it holds such a stamp, without
-the verifier learning the seed or any profile, and without a reader learning the stamp. The verifier
-sees only the person's stamp number, a stable number for that person at that verifier.
+one human per seed and signs them one stamp (one is in
+[services](https://github.com/foundationforest/services)). A school, a club or a license board could
+sign stamps the same way, and a reader decides which verifiers count. Any of the person's profiles
+can then prove it holds such a stamp, without the verifier learning the seed or any profile, and
+without a reader learning the stamp. The verifier sees only the person's stamp number, a stable
+number for that person at that verifier.
 
 A proof says: *the verifier with this key signed a stamp for the seed behind this profile; this is
 the profile's tag for its label at that verifier; and this profile's key is the one that seed gives
 for this label.* A profile is one of a person's identities, named by its main key; a label is any
-text saying what the profile is for, `<market>/<role>` by the markets' convention. It is a
+text saying what the profile is for, `<market>/<role>` by the markets' convention; and a tag is the
+number the profile is known by, at that verifier, in the score trees indexes publish. It is a
 zero-knowledge proof, so it shows this without showing the stamp, the seed or who the person is.
 
 The proof derives the profile's key from the seed inside it, so one seed gives one valid key per
@@ -42,12 +43,13 @@ number, facts*.
 - The stamp number comes from the person's seed and the verifier's name
   ([keys](../../keys/README.md#the-stamp-number)). The device sends it to the verifier once; the
   verifier never learns the seed or anything mixed from it but the stamp number.
-- The facts are one number below BN254's scalar order: whatever the verifier puts there, made
-  as it chooses, such as a hash of what it saw. The proof keeps them private, so a reader learns
-  nothing of them.
-- The verifier signs `Poseidon(prefix, stamp number, facts)` with its EdDSA key on Baby Jubjub,
-  over Poseidon (circomlib's). The prefix is `keccak256("forest/v1/note") >> 8`, always the same, so
-  nothing a verifier signs for another purpose can pass as a stamp.
+- The facts are one number below the scalar order of BN254, the curve the proofs are made on:
+  whatever the verifier puts there, made as it chooses, such as a hash of what it saw. The proof
+  keeps them private, so a reader learns nothing of them.
+- The verifier signs `Poseidon(prefix, stamp number, facts)` with its EdDSA key on Baby Jubjub, the
+  curve the proofs' keys are on, over Poseidon (circomlib's), a hash made for proofs. The prefix is
+  `keccak256("forest/v1/note") >> 8`, always the same, so nothing a verifier signs for another
+  purpose can pass as a stamp.
 - The verifier's key is an address, as every key in the standard is: its point packed into 32 bytes,
   in base58. `keys/`'s `pointOf` gives x and y back.
 - The person keeps the stamp on their device, as JSON: `{ stampNumber, facts, verifier, signature:
@@ -114,9 +116,11 @@ honest one is enough.
 
 - **Phase 1** is public, PSE's Perpetual Powers of Tau (`ppot_0080_16.ptau`); phase 2 is one
   contribution, made by `circuit/setup/setup.sh` ([proofs](../README.md#limits)).
-- **Its files are pinned.** All are small, so all are committed in `circuit/setup/`, with their
-  sizes and SHA-256 in [`setup.json`](circuit/setup/setup.json). `npm run fetch` checks the
-  hashes, and `npm run compile` checks the compiled circuit against `setup.json`.
+- **Its files are pinned.** The proving key, the witness generator (the program that works out a
+  proof's private numbers) and the verification key are small enough to commit, in `circuit/setup/`;
+  [`setup.json`](circuit/setup/setup.json) holds their sizes and SHA-256, and the compiled
+  circuit's. `npm run fetch` checks the hashes, and `npm run compile` checks the compiled circuit
+  against `setup.json`.
 - **It does not change.** `note.circom` is fixed by its setup: circom gives the same bytes every
   time, and the witness generator carries the source's line numbers, so even a line added to a
   comment fails `npm run compile`. A change means a new setup.
@@ -171,7 +175,7 @@ cd proofs/stamp/circuit
 npm run fetch                             # the committed setup files, hash-checked
 npm run compile                           # circom 2.2.3 on PATH or in CIRCOM; checks setup.json
 npm run check && npm test                 # a proof, and every way one must fail
-setup/setup.sh                            # a new setup: new files, every hash new
+setup/setup.sh                            # a new setup: new keys, their hashes new
 ```
 
 - The circuit's tests make a proof for `keys/`'s test person and check that it is for `keys/`'s main
@@ -181,7 +185,8 @@ setup/setup.sh                            # a new setup: new files, every hash n
   the person's own other profile, someone else's, or a key of the prover's choosing. They also check
   that a stamp signed with `keys/`'s `signWithScalar` passes circomlib's `EdDSAPoseidonVerifier`.
 - The client's tests check the stamp, its JSON and the circuit's input against `keys/` without
-  proving, and make and check one proof with Node's `Buffer` taken away, as a browser runs it.
+  proving, and make and check one proof with Node's `Buffer` taken away from the client and keys/,
+  as a browser runs them.
 
 ### What one proof costs
 
@@ -200,10 +205,13 @@ Measured in Node 22 on a 4-core machine:
   verifier with that key signed a stamp for the stamp number the same seed gives at that verifier's
   name.
 - **One seed gives one key per label.** A proof holds only for the key the prover's seed gives for
-  the label it shows.
+  the label it shows, though a person with stamps on two seeds has a key for each under one label,
+  and a reader that counts both counts that person twice: how many stamps a human gets is each
+  verifier's.
 - A proof counts for one label at one verifier: a reader derives the scope and the name hash itself.
 - The tag is the same for every proof of one seed, label and verifier, and says nothing else.
-- Nothing else is in the proof: not the seed, not the stamp, not the person.
+- Nothing else is in the proof: not the seed, not the stamp, not the person, though it shows which
+  verifier signed the stamp, since its key and name hash are public.
 
 ## Limits
 
@@ -211,13 +219,9 @@ Measured in Node 22 on a 4-core machine:
   name beside a proof; the proof holds for the verifier's key, and a reader trusts keys.
 - **`facts` is a number the verifier fills, and nothing in the standard reads it.** The proof
   keeps it private.
-- **One seed per label, and a verifier decides how many stamps a human gets.** A person with stamps
-  for two seeds has two keys under one label, and a reader that counts both verifiers counts both.
 - **A leaked verifier key signs for anyone.** Whoever holds it signs stamps for any stamp number,
-  and a proof carries no date. An index records when it first saw each proof, and a reader may stop
-  counting proofs under that key first seen after the leak.
-- **The proof shows the verifier.** Its key and name hash are public, so a reader learns which
-  verifier signed the person a stamp.
+  and a proof carries no date. An index can record when it first saw each proof, and a reader may
+  then stop counting proofs under that key first seen after the leak.
 - **Not audited.**
 
 ## Who decides what
