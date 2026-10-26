@@ -69,7 +69,7 @@ What others can still see:
 - **One seed, one profile per label.** The stamp circuit derives the main key inside the proof, making a second main key for the same seed and label mathematically invalid (`proofs/stamp/`).
 - **Updates and deletes are just writes.** Every path holds its newest signed record; a record with a null body deletes the path (`records/`).
 - **Nothing in the standard charges a fee.** There is no coin and no cut on deals.
-- **Escrows have no admin key.** Once the program is on Solana's mainnet and can no longer change, nothing moves the money but a side giving, both agreeing, the arbiter, or the schedule; on devnet it can no longer be upgraded in place either, since its upgrade key came from a devnet phrase that is lost, so a new version goes to a new address, as on mainnet (`escrows/`).
+- **Escrows have no admin key.** Once the program is on Solana's mainnet and can no longer change, nothing moves the money but a side giving, both agreeing, the arbiter, or the schedule; on devnet it can no longer be upgraded in place either, since nobody holds its upgrade authority, so a new version goes to a new address, as on mainnet (`escrows/`).
 
 ## Limits
 
