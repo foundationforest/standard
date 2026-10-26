@@ -11,14 +11,17 @@ and only to a profile of the person's own, so nobody can lend their score to som
 It has two uses:
 
 - **Across profiles:** the weighted average of up to eight profiles the person picks, naming none
-  of them: each profile's score in the index's tree, weighted by its count.
+  of them: each profile's score in the tree an index, a service that scores profiles, publishes,
+  weighted by its count.
 - **One profile:** the score of one of their profiles, with its label shown and which profile
   hidden.
 
 It is a zero-knowledge proof: it shows that this is true and nothing else. The person's app makes
-it on the device from their seed scalar ([keys](../../keys/README.md#the-seed-scalar)), so the
-seed never leaves the device, and any reader checks it, off chain. It is built with
-circom 2.2.3, Groth16 on BN254, and the Poseidon and Merkle pieces Semaphore uses.
+it on the device from their seed scalar, the one number the proofs take from the seed
+([keys](../../keys/README.md#the-seed-scalar)), so the seed never leaves the device, and any reader
+checks it, off chain. It is built with circom 2.2.3, the circuit language; Groth16, a kind of proof
+that is small and quick to check, on BN254, the curve the proofs are made on; and the Poseidon and
+Merkle pieces Semaphore, a zero-knowledge identity library, uses.
 
 - `circuit/`: the circuit, its setup, and the tests that make proofs.
 - `client/`: the tree an index builds, the proof an app makes, and the check any reader makes.
@@ -83,7 +86,8 @@ Inside the proof:
    `Poseidon(verifier prefix, seedScalar, the slot's name hash)`. Only the person whose seed it is
    can count those profiles, and each slot may name its own verifier.
 2. Each used slot's leaf is in the tree with that root. The root is never 0.
-3. A blank slot is all zeros, and every score and count is below 2^32.
+3. A blank slot's tag, scope, score and count are all zeros, and every score and count is below
+   2^32.
 4. No two used slots share a scope, so a profile counts once.
 5. A shown scope is the scope of every used slot, so a shown label means exactly one profile.
 6. The output is `floor(sum(score * count) / sum(count))`, over a count of at least one. With
@@ -113,7 +117,7 @@ enough.
 - **The circuit does not change after its setup.** circom gives the same bytes every time, and
   `npm run compile` checks the compiled circuit against `setup.json`. The witness generator carries
   the source's line numbers, so even a line added to a comment fails that check. A change means a
-  new setup and a new release.
+  new setup, and its files in the release.
 
 ### Use it
 
@@ -169,7 +173,7 @@ cd proofs/reputation/circuit
 npm run fetch                             # the release's files, hash-checked
 npm run compile                           # circom 2.2.3 on PATH or in CIRCOM; checks setup.json
 npm run check && npm test                 # proofs, and every way one must fail
-setup/setup.sh                            # a new setup: new files, every hash new, a new release
+setup/setup.sh                            # a new setup: new keys, their hashes new, for the release
 ```
 
 The client's tests check the tree, the bytes an index signs, the inputs the client refuses, and that
@@ -197,24 +201,23 @@ Measured in Node 22 on a 4-core machine, with 8 slots at depth 20:
 - A proof counts only profiles whose tags come from the prover's own seed.
 - A profile counts at most once in a proof.
 - A proof lands only on a profile of the prover's own: its key comes from the same seed as the
-  profiles it counts.
+  profiles it counts, so a person with two seeds cannot carry one seed's score to the other's, and
+  that profile need not hold a stamp of its own: a reader that wants one reads its stamp proofs
+  ([stamp](../stamp/README.md)).
 - A shown label means exactly one profile, under that label.
 - The score is the count-weighted average of the scores of the profiles counted, rounded down, and
   nothing else.
 - Nothing else about those profiles is in the proof: not which leaves, nor how many, nor their
-  verifiers.
+  verifiers, though in a small tree the exact score, and the label when shown, can point at one
+  leaf.
 
 ## Limits
 
 - **In a small tree, the exact score, and the label when shown, can point at one leaf.** The tree
   is public: when few leaves have that score, and that label, the one left names the profile. The
   app should say so before a proof is shown.
-- **One seed per proof.** A person with two seeds cannot count one seed's profiles on the other's.
-- **The profile it lands on need not hold a stamp.** The proof shows that profile is the person's
-  own, not that a verifier signed its seed a stamp; a reader that wants both reads its stamp proofs
-  too ([stamp](../stamp/README.md)).
-- **Building the tree takes time.** About twelve minutes for a million leaves at the speed above. An
-  app that asks the index for its path instead tells the index which profiles are its.
+- **Building the tree takes time.** About fifteen minutes for a million leaves at the speed above.
+  An app that asks the index for its path instead tells the index which profiles are its.
 - **Not audited.**
 
 ## Who decides what

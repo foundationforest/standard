@@ -20,7 +20,7 @@ sources and checklists are in git history.
 | Framework | Anchor 1.2 with `anchor-spl`'s token interface, `cargo build-sbf --arch v3` (Solana CLI 4.2.2, platform-tools v1.54), no IDL, no build warning |
 | Testing | LiteSVM, 97 tests on every pull request: 72 on a classic mint, 25 on Token-2022 mints (one made with Open USD's mainnet extensions compared with the mainnet account's bytes; others with one extension each), with a builtin test hook and a builtin spy standing in for Token-2022; one of them sends every move in every state (`every_move_in_every_state`). A mutation check of each of the 17 rules version 3 added (each removed in turn fails at least one test), and of the hook rules, the non-transferable refusal and the terms in the address; for version 4, putting `take_back`'s stop check back fails `a_stop_leaves_the_take_back_to_its_windows` and `every_move_in_every_state`. A Trident fuzzer: seventeen invariants, 50,000 iterations nightly, on an SBPF v0 build and a classic mint. On devnet, for version 4: seven deals through the client, two of them in a Token-2022 dollar with Open USD's extensions, and five refusals simulated there. **No local-validator test** |
 | Risk level | 🟡 Medium by the skill's table (an escrow: token transfers, basic CPI, PDAs, no admin). Treated as 🔴 **Critical**, because it cannot change once deployed to Solana's mainnet and holds other people's money, so this checklist carries a High-Risk Decisions section |
-| Upgrade authority | Removed at mainnet deploy with `solana program set-upgrade-authority --final` (`README.md`). No admin key, no config, no pause, no fee. A change is a new program at a new address. On devnet too, `devnet/deploy.sh` removes it once the deployed bytes match the build; version 3's stays on a deploy key whose phrase is lost. Neither can be upgraded in place |
+| Upgrade authority | Removed at mainnet deploy with `solana program set-upgrade-authority --final` (`README.md`). No admin key, no config, no pause, no fee. A change is a new program at a new address. On devnet too, `devnet/deploy.sh` removes it once the deployed bytes match the build, so what it deploys cannot be upgraded in place |
 
 ## High-risk decisions
 
@@ -133,7 +133,7 @@ Each is on purpose, and none can be changed after deploy.
   owner and discriminator, which only this program can produce at an address it derives.
 - **2.2 PDA sharing. Applied.** One escrow per `["escrow", terms_hash]`, the SHA-256 of every term,
   both parties' keys and the schedule among them, computed by the program from what `create`
-  carries and the mint; its deposit account is its own associated token account. No shared vault.
+  carries and the mint; its deposit account is its own associated token account, shared with none.
   Every signature the escrow makes uses the same seeds, the hash rebuilt from the terms the account
   stores (`Escrow::terms_hash`), which `create` writes exactly as it hashed them
   (`CreateArgs::options`).
@@ -544,10 +544,9 @@ Every way out drains the whole balance and closes the deposit account; nothing i
   prints its rows together in a `zz_cu_summary` test.
 
 What LiteSVM does not show is covered, in part, by the client's devnet script (seven deals sent
-through devnet, and five refusals simulated there, on version 3; version 4's run waits for its
-deploy). The fuzzer adds random flows, but Trident's
-runtime checks no signatures, so its signer rules hold on key comparisons alone; LiteSVM checks the
-real signatures. There is no local-validator test.
+through devnet, and five refusals simulated there, on version 4). The fuzzer adds random flows, but
+Trident's runtime checks no signatures, so its signer rules hold on key comparisons alone; LiteSVM
+checks the real signatures. There is no local-validator test.
 
 ## Known limits
 

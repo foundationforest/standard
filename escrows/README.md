@@ -10,9 +10,10 @@ do alone, until when, and what happens at the end. One program runs every schedu
 of deal is new parameters, never new code. An escrow that held the money leaves a receipt saying
 how the deal ended.
 
-- [`solana/`](solana/README.md): the escrow on Solana, on devnet, where it can no longer be
-  upgraded in place: nobody holds its upgrade authority, so a new version goes to a new address, as
-  on mainnet.
+- [`solana/`](solana/README.md): the escrow on Solana, on devnet, Solana's test network, where it
+  can no longer be upgraded in place: nobody holds its upgrade authority, the key that could replace
+  its code, so a new version goes to a new address, as on mainnet, Solana's network for real
+  money.
 
 ## How it works
 
@@ -52,8 +53,9 @@ Three schedules, in words:
 
 Seven moves, and every one that moves money pays the whole balance and ends the escrow.
 
-1. **Generous moves, always.** A side can always give everything to the other, in any state, a
-   stop included, since it needs nobody else's consent:
+1. **Generous moves, always.** A side can always give everything to the other once the escrow
+   holds the deal's full amount, in any state, a stop included, since it needs nobody else's
+   consent:
    - `pay`: the payer gives everything to the recipient;
    - `refund`: the recipient gives everything back to the payer.
 2. **Selfish moves, by the schedule.** `takeBack`: the payer, inside a window whose share is above
@@ -82,7 +84,8 @@ same transaction.
 
 ## Limits
 
-- **One chain.** Only Solana has an escrow here, and only on devnet.
+- **One chain.** Only Solana has an escrow here, and only on devnet, so no real money moves through
+  it.
 - **Without an arbiter, a stop can hold the money for good once the last take-back window has
   closed.** From then on after a stop, or at any time with no schedule at all, an escrow with no
   arbiter lets the money out only when one side gives it to the other or both agree on a split.
@@ -110,7 +113,8 @@ arbiter at the start.
 
 **Why can't a side stop after the end time?**
 So that a stop and the default never race. Before the end time only a stop can freeze the default;
-from it on, only the default can run. A side that wants to dispute does it inside the windows.
+from it on, the default can run and a stop cannot. A side that wants to dispute does it inside the
+windows.
 
 **Why can't a stop block a take-back?**
 The windows are what both sides agreed; a stop is for disputing the ending by the clock, not for

@@ -25,9 +25,9 @@ record's shape as a JSON Schema, and test vectors.
 A profile is one main key, mixed from the person's seed (32 bytes every key comes from) and a label,
 `<market>/<role>`, such as `tutoring/seller` ([keys/](../keys/README.md)). The main key is a key on
 Baby Jubjub, the curve the proofs work on, and its address is its name on the network: the public
-key packed into 32 bytes, in base58. Its inbox key, mixed from the profile's secret, opens what is
-encrypted to it, and its pay keys, one for each address type, give its Solana and EVM addresses.
-Nothing else is needed: no sign-up, no directory.
+key packed into 32 bytes, in base58 (the Bitcoin alphabet). Its inbox key, mixed from the profile's
+secret, opens what is encrypted to it, and its pay keys, one for each address type, give its Solana
+and EVM addresses. Nothing else is needed: no sign-up, no directory.
 
 Its folder is everything signed for it, one current record per path:
 
@@ -126,9 +126,9 @@ Beyond step 1, readers check no clock. An app sets `time = max(now, newest known
 
 ### Private records
 
-A private record's body is `{ "private": <base64url of an age file> }` and nothing else. The age
-file is the envelope: the canonical text of an object under a random key made for that record,
-and that key encrypted once to each reader.
+A private record's body is `{ "private": <base64url of an age file> }` and nothing else, age being a
+widely used encryption format. The age file is the envelope: the canonical text of an object under a
+random key made for that record, and that key encrypted once to each reader.
 
 - The owner encrypts it to its own inbox key, to open its copy; the profile record's `inboxKey` is
   its public half.
@@ -158,9 +158,10 @@ pulls. It is not a record: it has no path and no versions, and it is in no one's
 - No `inbox` field means no inbox: hosts refuse deliveries. A profile with an inbox gives
   `inboxKey`, since senders encrypt to it.
 - `senders` is `"anyone"`, or `{ "verifier" }`: the sender's profile record carries a stamp proof
-  from that verifier (Proofs) that holds for the sender's key, under any label. The verifier is
-  named by its key's address, as the proof shows it. Today the only requirement is a stamp from a
-  named verifier; a second kind would be a second proof the host checks, under a new `senders` kind.
+  from that verifier, one who checks people and signs them stamps (Proofs), that holds for the
+  sender's key, under any label. The verifier is named by its key's address, as the proof shows it.
+  Today the only requirement is a stamp from a named verifier; a second kind would be a second proof
+  the host checks, under a new `senders` kind.
 - `maxBytes`: the largest message it takes, as canonical text in bytes.
 - A host refuses deliveries to an inbox it cannot read: a field, a rule or a value it does not
   know. So a new rule can be added without an old host taking what it should refuse. A
@@ -178,7 +179,7 @@ pulls. It is not a record: it has no path and no versions, and it is in no one's
 - `to` is the profile it is to. `from` is the sender's key: a main key, or any other key on Baby
   Jubjub.
 - `body` is one envelope encrypted to `to`'s inbox key. What the object encrypted in it says is the
-  two apps' to agree; our apps send `{ "text": <text> }` for a plain message.
+  two apps' to agree; the main way, for a plain message, is `{ "text": <text> }`.
 - `host` is one of `from`'s hosts, an origin as its hosts record writes it: where a receiving host
   reads `from`'s records. It MUST be there for an inbox with a verifier's rule; otherwise it MAY be.
 - `sig` is EdDSA-Poseidon by `from`, strict as a record's, over `0xff` ‖
@@ -269,10 +270,11 @@ what its proof check takes, for the profile that carries it.
 
 - **`stamp`** shows that a verifier signed a stamp to the seed that gives this profile's key for its
   label ([proofs/stamp/](../proofs/stamp/README.md)). It carries the verifier's key, as its address,
-  and its name, the label, the profile's tag at that verifier, and the proof's 256 bytes, in the
-  reputation proof's order. A reader checks it with proofs/stamp/client's `checkStamp`, which works
-  the name hash and the scope out of the name and the label itself. Each reader decides which
-  verifiers it trusts.
+  and its name, the label, the profile's tag at that verifier (the number an index's tree knows it
+  by, [keys](../keys/README.md#tags)), and the proof's 256 bytes, in the reputation proof's order. A
+  reader checks it with proofs/stamp/client's `checkStamp`, which works the name hash and the scope,
+  the numbers the proof takes for the name and the label, out of them itself. Each reader decides
+  which verifiers it trusts.
 - **`reputation`** shows the score of profiles the person holds in an index's tree, without
   saying which. It carries the index's key, the root and time the index signed and its signature,
   the score, the label when the proof shows one market, and the proof's 256 bytes. A reader checks
@@ -304,8 +306,8 @@ what field, is the market's.
   `forest-blob`, as its canonical text, and its `time` is within 600,000 ms of the host's clock,
   either way, as a pull's.
 - **Kept** until the folder's main key deletes it, or by the host's own retention rule, which each
-  host chooses and says where it describes itself, as Forest's host does in
-  [How we run it](https://github.com/foundationforest/services/tree/main/host#how-we-run-it). The
+  host chooses and says where it describes itself (for Forest's host, see
+  [services](https://github.com/foundationforest/services/tree/main/host#how-we-run-it)). The
   reference host keeps blobs until they are deleted. Bytes two folders hold stay until the last of
   them deletes them.
 - **Fetch.** Anyone fetches a blob from the folder's hosts (`GET /v1/blobs/<sha256>`), with no
@@ -333,15 +335,16 @@ rule, it reads the sender's records from the sender's host.
 | `GET /v1/blobs/<sha256>` | none | the bytes, with the type they came in with, or 404 |
 | `DELETE /v1/blobs/<sha256>` | none; the signed delete in the header `forest-blob` | `{ok, error?, message?}` (Deleting a blob) |
 
-- A page's header `forest-cursor` is the last sequence number on it: the next page is after it.
-  A page always holds at least one line.
+- A page's header `forest-cursor` is the last sequence number on it, or, on an empty page, the
+  cursor asked with: the next page is after it. A page holds at least one line while there is one
+  to give, however large; an empty page is the end.
 - `POST /v1/records/read` gives the same answer as `GET /v1/records`, with the profile and the
   cursor in the body instead of the URL. Front doors, the proxies and hosting platforms that stand
   in front of a host, log URLs, so a person who reads their own profiles by GET leaves a trail. The
   GET stays for public readers.
 - A refused pull is answered 400 with `{ok, error, message}`: [`stale`] when its time is more than
   600,000 ms from the host's clock, [`signature`] when the profile's main key did not sign it, or a
-  shape code.
+  shape code; one larger than the host takes, 413 [`size`].
 - A request with more lines than the host takes gets one [`batch`] result, and one with more bytes
   gets 413.
 
@@ -378,17 +381,18 @@ rule, it reads the sender's records from the sender's host.
 
 A message whose `from` is its `to` skips steps 5 and 6: an inbox's rules are for others.
 
-**Taking a blob in**, in this order, error code in brackets:
+**Taking a blob in**, in this order, error code in brackets; before all of it, a declared size
+larger than the host takes is answered 413, unread:
 
 1. The signed put (Blobs): no larger than the host takes, then its canonical text and shape
-   [`size`, `canonical`, `shape`, `version`, `key`, `time`], a put for the name in the path
-   [`shape`], its time within 600,000 ms of the host's clock [`stale`], and its signature, by the
-   profile's main key [`signature`].
+   [`size`, `canonical`, `shape`, `version`, `key`, `time`], its time within 600,000 ms of the
+   host's clock [`stale`], its signature, by the profile's main key [`signature`], and a put for the
+   name in the path [`shape`].
 2. The bytes are the type (`content-type`) and the size the put names [`shape`], and their SHA-256
    is the name in the path [`hash`].
 3. Bytes the folder holds already are `already here`.
 4. The host's own choice allows them, by their size, their type, or what the folder holds there
-   already [`refused`]. A declared size larger than the host takes is answered 413, unread.
+   already [`refused`].
 
 **Deleting a blob**, in this order:
 
@@ -438,11 +442,11 @@ hosts it reads, and how it learns of new ones is its own.
   `pull`, `putBlob`, `getBlob`, `deleteBlob`). A host that fails does not stop `readProfile`: it
   reads the others and lists that host, with the error, in `failed`. A read ends with an error on a
   cursor that is not a whole number or does not move forward, and its `timeout` bounds the whole
-  read. A publish reads a host's status first, and sends a batch the host answers 413 again in
-  halves. A read asks by POST with `post: true`. A read, a publish, a delivery and a pull go through
-  the caller's own `fetch` if given, and refuse a host that redirects with `redirect: 'error'`. No
-  server, database or encryption library is in it. The keys themselves, `mainKey` among them, are
-  keys/'s.
+  read. A publish reads each answer's HTTP status before its body, and sends a batch again in
+  halves when the host answers 413 or one [`batch`] result. A read asks by POST with `post: true`.
+  A read, a publish, a delivery and a pull go through the caller's own `fetch` if given, and, given
+  `redirect: 'error'`, refuse a host that redirects. No server, database or encryption library is in
+  it. The keys themselves, `mainKey` among them, are keys/'s.
 - `@foundationforest/records/private`: `makePrivate`, `openPrivate`, `readerCount`; `message`
   (encrypt to a profile record's inbox key, and sign) and `openMessage`; a profile's rules
   (`ruleId(mainKey, who)`, `ruleRecord(mainKey, rule, time)`, `readRules(view, mainKey)`,
@@ -452,17 +456,17 @@ hosts it reads, and how it learns of new ones is its own.
 - `@foundationforest/records/host`: `Host`, the reference host (below).
 - `@foundationforest/records/public`: `publicFetch`, a fetch that reaches only public addresses and
   follows no redirect, for a host or an app that goes to a host a stranger named: it refuses
-  loopback, private, link-local, carrier-grade NAT, NAT64, 6to4, multicast and every other range not
-  globally reachable, written in the URL or behind a name. `isPublic` checks one address. Node only,
-  like the host.
+  loopback, private, link-local, carrier-grade NAT, NAT64, 6to4, multicast and every other range
+  IANA's special-purpose registries mark not globally reachable, written in the URL or behind a
+  name. `isPublic` checks one address. Node only, like the host.
 - `@foundationforest/records/schemas/profile.json`: the profile record's shape, as a JSON Schema.
 
 Publish a profile with one offer, read it back, and put a photo in the folder:
 
 ```ts
 import { mainKey } from '@foundationforest/keys' // keys/
-import { blobNameOf, blobRequest, hostsRecord, ownerRecord, publish, putBlob, readProfile }
-  from '@foundationforest/records'
+import { type SignedBlobRequest, blobNameOf, blobRequest, hostsRecord, ownerRecord, publish,
+  putBlob, readProfile } from '@foundationforest/records'
 
 const me = await mainKey(seed, 'tutoring/seller') // seed: its 32 bytes
 const now = Date.now()
@@ -472,7 +476,9 @@ await publish([host], [hostsRecord(me, [host], now), ownerRecord(me, 'offer/math
 const view = await readProfile([host], me.address, Date.now(), { post: true })
 view.current.get('offer/maths')?.record.body
 const photo = blobNameOf(jpeg, 'image/jpeg') // jpeg: the photo's bytes
-await putBlob(view.hosts, blobRequest(me, { action: 'put', ...photo }, Date.now()), jpeg)
+// blobRequest gives a put or a delete; putBlob takes only a put.
+const put = blobRequest(me, { action: 'put', ...photo }, Date.now())
+await putBlob(view.hosts, put as SignedBlobRequest & { action: 'put' }, jpeg)
 ```
 
 Write to that profile's inbox from another profile, then pull it on the owner's device:
@@ -540,8 +546,8 @@ operator's. What it chooses, unless told otherwise: records and messages of up t
 kept for 30 days; png, jpeg and mp4 blobs of up to 50,000,000 bytes, kept until their folder
 deletes them. Give it `readSender` and `checkStamp` to take messages for inboxes with a verifier's
 rule: it reads the sender's records again for each request. Give it `recordChoice`, the operator's
-own choice, and it is asked about every content record and about the first hosts record of a folder
-it holds no record of yet, never a later one.
+own choice, and it is asked about every content record new to it that would become current, and
+about the first hosts record of a folder it holds no record of yet, never a later one.
 
 It keeps everything in its data directory, `dir` (a temporary one, removed on close, when none is
 given), through one module, `src/storage.ts`:
@@ -550,10 +556,11 @@ given), through one module, `src/storage.ts`:
   the blobs it holds. With the host stopped, deleting a folder's file removes that folder, and the
   next prune deletes the bytes no other folder holds.
 - `host.sqlite`: the log, which numbers every folder's records in the order taken, and which
-  folders hold which blobs. It holds nothing that exists only there: `rebuild(dir)` makes it
-  again. A new number, a record's or a message's, is the larger of the last one plus 1 and the
-  clock in microseconds, so a rebuilt `host.sqlite`, or a folder's file made again, never reuses
-  one, unless the clock is set back.
+  folders hold which blobs. It holds nothing that exists only there: `rebuild(dir)`, given the
+  bucket too for blobs kept in one, makes it again. A new number, a record's or a message's, is the
+  larger of the last one plus 1 and the clock in microseconds, so a rebuilt `host.sqlite`, or a
+  folder's file made again, never reuses one, unless the clock is set back or the host took more
+  than one a microsecond.
 - The blobs: in `blobs/`, or with `blobs: { kind: 's3', … }` in a bucket of any S3-compatible
   service.
 
@@ -594,13 +601,14 @@ the pay signatures with `checkPay`.
 - **Every reader computes the same view from the same records.** Where they came from and in what
   order does not matter. The reader's clock matters only to hold back records dated more than ten
   minutes ahead.
-- **Only a profile's main key writes for it.** A host takes, and a reader counts, a record, a
-  message, a pull or a blob request for a profile only when its main key signed it.
+- **Only a profile's main key writes for it.** A host takes, and a reader counts, a record, a pull
+  or a blob request for a profile only when its main key signed it, and a message only when its
+  sender's key signed it.
 - **A person can always move.** A profile's name is its key, not a host's address. A host never
   refuses a hosts record for a folder it holds by its own choice but for its size, though it may
   refuse a folder's first, so joining a host can cost.
 - **A host holds nothing secret of the people it serves.** No keys, no sign-up, no login, and it
-  cannot open a private record.
+  cannot open a private record, though it sees who wrote to whom (Limits).
 - **Only a profile's main key can pull its inbox.**
 
 ## Limits
@@ -673,8 +681,7 @@ it, and that field would make every inquiry a public fact: who asked whom, and w
 to the hosts of the profile it is to instead, encrypted, and only that profile pulls it.
 
 **How do I hear that a message arrived?**
-By default the app checks your inboxes itself, pulling from your hosts. A push service would see
-which inboxes one device watches, and so which profiles are one person's.
+Your app pulls each inbox from its hosts (`pull`); nothing in the standard pushes.
 
 **Why is there no deposit rule?**
 A rule that asks senders to pay would have every host check payments. An inbox's `senders` is a
