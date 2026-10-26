@@ -36,7 +36,7 @@ What an app that holds keys should know: `keys/README.md`. Never copy it here.
   is the standard.
 - Keep the docs true in the same pull request: a change that makes a README wrong fixes it. A README
   says only what the code does. Devnet is named only inside escrows/, and only where something is
-  configured for it. Everything else is version 1.
+  configured for it.
 - One README per level: the repo's, and one in each directory; each starts with what it is and how
   it works.
 - Each piece's README ends Limits and FAQ, and Promises and Who decides what where it has them; a
