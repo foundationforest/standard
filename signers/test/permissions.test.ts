@@ -12,7 +12,7 @@ import { inboxKey } from '@foundationforest/keys'
 import { type Body, RecordError, type SignedRecord, checkRecord, nextTime, ownerRecord, viewProfile } from '@foundationforest/records'
 import { makePrivate, openPrivate, readerCount } from '@foundationforest/records/private'
 import type { Ask } from '../src/asks.ts'
-import { ACTIONS, PERIODS, PERMISSION_PREFIX, type Permission, allows, isOwnPath, knowsPermission, permissionId, permissionRecord, readPermissions } from '../src/permissions.ts'
+import { ACTIONS, PERIODS, PERMISSION_PREFIX, type Permission, allows, knowsPermission, permissionId, permissionRecord, readPermissions, refuses } from '../src/permissions.ts'
 import { DAY, KEYS, T0, alice, aliceBuyer, bob } from './fixtures.ts'
 
 const code = (c: string) => (err: unknown) => err instanceof RecordError && err.code === c
@@ -174,12 +174,36 @@ describe('what a permission allows without the person’s yes', () => {
     assert.equal(allows(reads, { ask: 'write', label, to: bob.address, body: { text: 'hi' } }, { now, currencies: USD }), false)
   })
 
-  test('write never covers the profile record, the hosts record or a permission: those always ask the person', () => {
+  test('write never covers the profile record, the hosts record or a permission: a write of profile asks the person, one of hosts or of a permission is refused', () => {
     for (const path of ['profile', 'hosts', 'permission/0123456789abcdef0123456789abcdef', 'permission/x']) {
-      assert.equal(isOwnPath(path), true, path)
-      assert.equal(allows(assistant, { ask: 'write', label, path, body: null }, { now, currencies: USD }), false, path)
+      for (const body of [{ about: 'x' }, null]) {
+        const ask: Ask = { ask: 'write', label, path, body }
+        assert.equal(allows(assistant, ask, { now, currencies: USD }), false, path)
+        assert.equal(refuses(ask), path !== 'profile', path)
+      }
     }
-    for (const path of ['offer/a', 'review/1', 'profiles', 'hosts2']) assert.equal(isOwnPath(path), false, path)
+    for (const path of ['offer/a', 'review/1', 'profiles', 'hosts2', 'permissions/x']) {
+      const ask: Ask = { ask: 'write', label, path, body: null }
+      assert.equal(refuses(ask), false, path)
+      assert.equal(allows(assistant, ask, { now, currencies: USD }), true, path)
+    }
+  })
+
+  test('read never covers a permission, whatever can says: the app refuses it, even with the person’s yes', async () => {
+    const own = PERMISSION_PREFIX + (await permissionId(alice, assistant.who)) // the asker's own, which holds its key
+    for (const path of [own, 'permission/0123456789abcdef0123456789abcdef', 'permission/x']) {
+      const ask: Ask = { ask: 'read', label, path }
+      assert.equal(refuses(ask), true, path)
+      assert.equal(allows(assistant, ask, { now, currencies: USD }), false, path)
+    }
+    for (const path of ['profile', 'hosts', 'offer/a', 'permissions/x']) {
+      const ask: Ask = { ask: 'read', label, path }
+      assert.equal(refuses(ask), false, path)
+      assert.equal(allows(assistant, ask, { now, currencies: USD }), true, path)
+    }
+    for (const ask of [{ ask: 'read' }, { ask: 'read', label, inbox: true }, { ask: 'write', label, to: bob.address, body: { text: 'hi' } }, pay('1')] as Ask[]) {
+      assert.equal(refuses(ask), false, JSON.stringify(ask))
+    }
   })
 
   test('pay within the limit, counted in its currency over its period; another currency is outside it; no limit, no cap', () => {
