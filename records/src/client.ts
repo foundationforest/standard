@@ -11,18 +11,21 @@
 import { sha256 } from '@noble/hashes/sha2.js'
 import { concat, hex } from './bytes.ts'
 import { canonical } from './canonical.ts'
-import type { ReadOptions, Result } from './host.ts'
 import { type CheckedMessage, type SignedBlobRequest, type SignedMessage, type SignedPull, decodeMessage, encodeMessage } from './message.ts'
 import { type Checked, RecordError, type SignedRecord, decodeRecord, encodeRecord } from './record.ts'
 import { type View, viewProfile } from './view.ts'
 
+/** A host's answer to one line of a request: its place in the request, the id, and why not if not taken. */
+export type Result = { i: number; id?: string; ok: boolean; error?: string; message?: string }
+/** What to read: after a cursor, one profile's if asked. */
+export type ReadOptions = { after?: number; profile?: string }
 export type PublishOutcome = { host: string; status: number; results: Result[]; error?: string }
 
 /** A read that has not finished by then is given up. */
 export const READ_TIMEOUT_MS = 60_000
-/** The largest record or message, as canonical text, a reader takes unless told otherwise: the most the reference host takes. */
+/** The largest record or message, as canonical text, a reader takes unless told otherwise. */
 export const MAX_LINE_READ = 65_536
-/** The largest blob a reader takes unless told otherwise: the most the reference host takes. */
+/** The largest blob a reader takes unless told otherwise: a short video. */
 export const MAX_BLOB_READ = 50_000_000
 
 /** How to reach a host: `fetch` and `redirect` as a read takes them (ReadHow). */

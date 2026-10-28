@@ -1,20 +1,17 @@
 // Blobs: bytes a folder holds. Its main key puts them with a signed request, and they stay until it
-// deletes them, whatever the folder's records say. A host refuses bytes that do not hash to their
-// name, or are not the type and size the request names, a request the main key did not sign, and
-// what its own choice will not take. A reader checks the hash, whatever host served them.
+// deletes them, whatever the folder's records say. Here, the client's side, against the minimal host
+// (host.ts); what a host checks on a put or a delete is the host check's (check.test.ts). A reader
+// checks the hash, whatever host served them.
 
 import assert from 'node:assert/strict'
-import { connect } from 'node:net'
 import { describe, test } from 'node:test'
-import { canonical } from '../src/canonical.ts'
 import { deleteBlob, getBlob, publish, putBlob, readProfile } from '../src/client.ts'
-import type { Host } from '../src/host.ts'
 import type { Key } from '../src/keys.ts'
-import { type SignedBlobRequest, blobNameOf, blobRequest, blobSigningInput } from '../src/message.ts'
-import { signAs } from '../src/record.ts'
+import { type SignedBlobRequest, blobNameOf, blobRequest } from '../src/message.ts'
 import { hostsRecord, ownerRecord } from '../src/write.ts'
-import { DAY, MINUTE, T0, alice, bob, offerBody, stranger } from './fixtures.ts'
+import { MINUTE, T0, alice, offerBody } from './fixtures.ts'
 import { Clock, startHost } from './helpers.ts'
+import type { TestHost } from './host.ts'
 
 const bytesOf = (seed: number, length = 2000) => Uint8Array.from({ length }, (_, i) => (i * 7 + seed * 13) & 255)
 const nameOf = (bytes: Uint8Array) => blobNameOf(bytes, 'image/jpeg').sha256
@@ -22,13 +19,8 @@ const putOf = (key: Key, bytes: Uint8Array, type = 'image/jpeg', time = T0) => b
 const deleteOf = (key: Key, bytes: Uint8Array, time = T0) => blobRequest(key, { action: 'delete', sha256: nameOf(bytes) }, time) as SignedBlobRequest & { action: 'delete' }
 /** One host's answer, as its error code, or its message, or ok. */
 const answer = (outcomes: Array<{ ok: boolean; error?: string; message?: string }>) => outcomes[0]!.error ?? outcomes[0]!.message ?? 'ok'
-const put = async (h: Host, key: Key, bytes: Uint8Array, type = 'image/jpeg') => answer(await putBlob([h.url], putOf(key, bytes, type), bytes))
-const del = async (h: Host, key: Key, bytes: Uint8Array) => answer(await deleteBlob([h.url], deleteOf(key, bytes)))
-/** A request naming Alice's folder, signed by `key`, which is not her main key. */
-const posing = <R extends SignedBlobRequest>(request: R, key = stranger): R => {
-  const { sig: _sig, ...unsigned } = { ...request, profile: alice.address }
-  return { ...unsigned, sig: signAs(key, key.address, blobSigningInput(unsigned)) } as R
-}
+const put = async (h: TestHost, key: Key, bytes: Uint8Array, type = 'image/jpeg') => answer(await putBlob([h.url], putOf(key, bytes, type), bytes))
+const del = async (h: TestHost, key: Key, bytes: Uint8Array) => answer(await deleteBlob([h.url], deleteOf(key, bytes)))
 
 const photo = bytesOf(1)
 const clip = bytesOf(2, 5000)
@@ -65,78 +57,10 @@ describe('blobs', () => {
       await publish([h.url], [ownerRecord(alice, 'offer/a', { ...offerBody('a'), files: [blobNameOf(photo, 'image/jpeg')] }, T0)])
       assert.equal(await put(h, alice, photo), 'ok')
       await publish([h.url], [ownerRecord(alice, 'offer/a', offerBody('b'), clock.advance(MINUTE)), ownerRecord(alice, 'offer/a', null, clock.advance(MINUTE))])
-      await h.prune(clock.t + 365 * DAY)
-      assert.ok(await h.getBlob(nameOf(photo)), 'past every keep day')
+      assert.ok(await h.getBlob(nameOf(photo)), 'the record that named it, replaced and deleted')
       assert.ok(await h.getBlob(nameOf(clip)))
-    } finally {
-      await h.close()
-    }
-  })
-
-  test('the main key deletes its folder’s bytes; a delete of bytes it does not hold is not here', async () => {
-    const h = await startHost({ now: () => T0 })
-    try {
-      assert.equal(await put(h, alice, photo), 'ok')
-      assert.equal(await del(h, alice, photo), 'ok')
-      assert.equal((await fetch(`${h.url}/v1/blobs/${nameOf(photo)}`)).status, 404)
-      assert.equal(await del(h, alice, photo), 'not here')
-    } finally {
-      await h.close()
-    }
-  })
-
-  test('bytes two folders hold are stored once, and stay until the last of them deletes them', async () => {
-    const h = await startHost({ now: () => T0 })
-    try {
-      assert.deepEqual([await put(h, alice, photo), await put(h, bob, photo)], ['ok', 'ok'])
-      assert.equal(await del(h, alice, photo), 'ok')
-      assert.equal((await fetch(`${h.url}/v1/blobs/${nameOf(photo)}`)).status, 200, 'Bob holds them still')
-      assert.equal(await del(h, alice, photo), 'not here')
-      assert.equal(await del(h, bob, photo), 'ok')
+      assert.equal(await del(h, alice, photo), 'ok', 'until the main key deletes them')
       assert.equal(await h.getBlob(nameOf(photo)), undefined)
-    } finally {
-      await h.close()
-    }
-  })
-
-  test('a request signed by a key that is not the folder’s main key is refused [signature]', async () => {
-    const h = await startHost({ now: () => T0 })
-    try {
-      assert.equal(answer(await putBlob([h.url], posing(putOf(stranger, photo)), photo)), 'signature', 'a put')
-      assert.equal(await put(h, alice, photo), 'ok')
-      assert.equal(answer(await deleteBlob([h.url], posing(deleteOf(stranger, photo)))), 'signature', 'a delete')
-      assert.equal(answer(await deleteBlob([h.url], posing(deleteOf(bob, photo), bob))), 'signature', 'another profile’s main key')
-      assert.ok(await h.getBlob(nameOf(photo)), 'still held')
-
-      // Alice's request with Bob's profile in it: the signature is not Bob's main key's.
-      const forged = { ...putOf(alice, clip), profile: bob.address }
-      assert.equal(answer(await putBlob([h.url], forged, clip)), 'signature')
-    } finally {
-      await h.close()
-    }
-  })
-
-  test('a request is checked against the bytes and the route: their hash, type and size, its action, its time', async () => {
-    const h = await startHost({ now: () => T0 })
-    try {
-      const send = async (request: SignedBlobRequest | null, bytes: Uint8Array | null, options: { method?: string; type?: string; name?: string } = {}) => {
-        const headers: Record<string, string> = { 'content-type': options.type ?? 'image/jpeg' }
-        if (request) headers['forest-blob'] = canonical(request)
-        const res = await fetch(`${h.url}/v1/blobs/${options.name ?? nameOf(photo)}`, { method: options.method ?? 'PUT', headers, ...(bytes && { body: new Uint8Array(bytes) }) })
-        return [res.status, ((await res.json()) as { error?: string }).error ?? 'ok']
-      }
-      assert.deepEqual(await send(null, photo), [400, 'shape'], 'no signed request')
-      assert.deepEqual(await send(putOf(alice, photo), photo, { type: 'image/png' }), [400, 'shape'], 'another type than it names')
-      assert.deepEqual(await send(putOf(alice, photo), photo.subarray(1)), [400, 'shape'], 'another size')
-      assert.deepEqual(await send(putOf(alice, clip), photo, { name: nameOf(photo) }), [400, 'shape'], 'a request for other bytes')
-      // Named by the right hash, type and size, but other bytes of that size: not what they claim.
-      const lookalike = Uint8Array.from(photo, (b, i) => (i === 0 ? b ^ 1 : b))
-      assert.deepEqual(await send(putOf(alice, photo), lookalike), [400, 'hash'])
-      assert.deepEqual(await send(deleteOf(alice, photo), photo), [400, 'shape'], 'a delete sent as a put')
-      assert.deepEqual(await send(putOf(alice, photo), null, { method: 'DELETE' }), [400, 'shape'], 'a put sent as a delete')
-      assert.deepEqual(await send(putOf(alice, photo, 'image/jpeg', T0 + 11 * MINUTE), photo), [400, 'stale'])
-      assert.deepEqual(await send(deleteOf(alice, photo, T0 - 11 * MINUTE), null, { method: 'DELETE' }), [400, 'stale'])
-      assert.deepEqual(await send(putOf(alice, photo, 'image/jpeg', T0 + 9 * MINUTE), photo), [200, 'ok'], 'within ten minutes')
     } finally {
       await h.close()
     }
@@ -156,64 +80,6 @@ describe('blobs', () => {
     shape(() => blobRequest(alice, { action: 'put', ...name, ref: 'bafkrei…' } as never, T0))
     shape(() => blobRequest(alice, { action: 'delete', sha256: name.sha256, mimeType: 'image/jpeg' } as never, T0))
     assert.equal(putOf(alice, bytesOf(9, 0)).size, 0, 'empty bytes are a blob too')
-  })
-
-  test('size and type are the host’s: the reference host takes png, jpeg and mp4 up to 50,000,000 bytes; an operator chooses its own', async () => {
-    const gif = bytesOf(3)
-    const reference = await startHost({ now: () => T0 })
-    const small = await startHost({ now: () => T0, maxBlobBytes: 1000, blobChoice: (blob) => (blob.type === 'video/mp4' ? 'no video here' : null) })
-    try {
-      assert.equal(await put(reference, alice, gif, 'image/gif'), 'refused', 'a gif')
-      assert.equal(await put(reference, alice, photo, 'image/png'), 'ok')
-      const [over] = await putBlob([small.url], putOf(alice, photo, 'image/png'), photo)
-      assert.deepEqual([over!.status, over!.error], [413, 'refused'])
-      assert.equal(await put(small, alice, bytesOf(4, 900), 'video/mp4'), 'refused')
-      assert.equal(await put(small, alice, bytesOf(5, 900), 'image/gif'), 'ok', 'this operator takes gifs')
-
-      // A declared size over the cap is answered at once, unread.
-      const { port } = new URL(reference.url)
-      const socket = connect(Number(port), '127.0.0.1')
-      socket.write(`PUT /v1/blobs/${nameOf(photo)} HTTP/1.1\r\nhost: x\r\ncontent-type: image/png\r\nforest-blob: ${canonical(putOf(alice, photo, 'image/png'))}\r\ncontent-length: 50000001\r\n\r\n`)
-      const reply = await new Promise<string>((resolve) => socket.once('data', (d) => resolve(String(d))))
-      socket.destroy()
-      assert.match(reply, /^HTTP\/1\.1 413/)
-    } finally {
-      await reference.close()
-      await small.close()
-    }
-  })
-
-  test('a host’s own choice sees the folder and what it holds there already, for rules by folder: a quota', async () => {
-    const seen: Array<[string, number, number]> = []
-    const h = await startHost({
-      now: () => T0,
-      blobChoice: (blob, stored) => {
-        seen.push([blob.profile, stored.blobs, stored.bytes])
-        return stored.blobs >= 1 ? 'one blob a folder here' : null
-      },
-    })
-    try {
-      assert.equal(await put(h, alice, photo), 'ok')
-      assert.equal(await put(h, alice, photo), 'already here', 'not asked again')
-      assert.equal(await put(h, alice, clip, 'video/mp4'), 'refused')
-      assert.equal(await put(h, bob, clip, 'video/mp4'), 'ok')
-      assert.deepEqual(seen, [[alice.address, 0, 0], [alice.address, 1, photo.length], [bob.address, 0, 0]])
-    } finally {
-      await h.close()
-    }
-  })
-
-  test('GET is 404 for bytes not held; only a lowercase SHA-256 is a blob path; PUT, GET and DELETE only', async () => {
-    const h = await startHost({ now: () => T0 })
-    try {
-      assert.equal((await fetch(`${h.url}/v1/blobs/${nameOf(photo)}`)).status, 404)
-      assert.equal((await fetch(`${h.url}/v1/blobs/${nameOf(photo).toUpperCase()}`)).status, 404)
-      assert.equal((await fetch(`${h.url}/v1/blobs/abc`, { method: 'PUT', body: photo })).status, 404)
-      const post = await fetch(`${h.url}/v1/blobs/${nameOf(photo)}`, { method: 'POST' })
-      assert.deepEqual([post.status, post.headers.get('allow')], [405, 'GET, PUT, DELETE'])
-    } finally {
-      await h.close()
-    }
   })
 
   test('a reader checks the hash: a host serving other bytes, or more than the reader takes, is skipped', async () => {

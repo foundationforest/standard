@@ -1,6 +1,7 @@
 // Trying hard to break each promise. Every test names the promise and says what was tried; a test
 // that shows an attack succeeding says so in its name (FINDING), and README.md lists it as a limit.
-// Other attack tests live next to the code they attack: host.test.ts, view.test.ts, private.test.ts.
+// Other attack tests live next to the code they attack: host.test.ts, view.test.ts, private.test.ts,
+// and what a host must refuse is the host check's (check.test.ts).
 
 import assert from 'node:assert/strict'
 import { after, before, describe, test } from 'node:test'
@@ -12,13 +13,13 @@ import { BN254_R, SUBGROUP_ORDER, bytesMessage, checkWithPublicKey, inboxKey, pa
 import { b64u, base58, concat, hex, utf8 } from '../src/bytes.ts'
 import { canonical } from '../src/canonical.ts'
 import { publish, readAll, readProfile } from '../src/client.ts'
-import type { Host } from '../src/host.ts'
 import { BLOB_PREFIX, MESSAGE_PREFIX, PULL_PREFIX, blobNameOf, blobSigningInput, checkBlobRequest, checkMessage, checkPull, messageSigningInput, pullSigningInput, readMessage } from '../src/message.ts'
 import { SIGN_PREFIX, checkRecord, checkSignature, encodeRecord, signAs, signingInput, unsignedOf } from '../src/record.ts'
 import { viewProfile } from '../src/view.ts'
 import { hostsRecord, ownerRecord } from '../src/write.ts'
 import { MINUTE, SEED, T0, alice, aliceBuyer, bob, offerBody, profileBody, stranger } from './fixtures.ts'
 import { startHost } from './helpers.ts'
+import type { TestHost } from './host.ts'
 
 const L = SUBGROUP_ORDER
 const le = (n: bigint, len = 32) => Uint8Array.from({ length: len }, (_, i) => Number((n >> BigInt(8 * i)) & 255n))
@@ -97,8 +98,8 @@ describe('a key that is not the main key', () => {
 })
 
 describe('over real hosts', () => {
-  let h1: Host
-  let h2: Host
+  let h1: TestHost
+  let h2: TestHost
   before(async () => {
     h1 = await startHost({ now: () => T0 + 10 * MINUTE })
     h2 = await startHost({ now: () => T0 + 10 * MINUTE })
@@ -116,7 +117,7 @@ describe('over real hosts', () => {
     assert.equal(v.current.get('offer/a')!.record.body, null)
   })
 
-  test('a host holds no key: its whole database holds no secret of the person', async () => {
+  test('a host holds no key: all it holds has no secret of the person', async () => {
     const inbox = await inboxKey(alice.secret)
     const disk = [...h1.dump(), ...h2.dump()].join('\n')
     for (const secret of [alice.secret, SEED, le(alice.scalar), le(alice.scalar).reverse()]) {

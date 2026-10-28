@@ -1,68 +1,37 @@
 // The inbox: a profile record declares one, anyone may deliver an encrypted message to it on the
-// profile's hosts, encrypted to its inbox key, and only the profile's main key pulls it. Each check
-// a host runs on a delivery is tried here, in the standard's order, and so is each way to pull what
-// is not yours. The verifier rule runs proofs/stamp/client's own proof check on the example profile
-// record's stamp proof.
+// profile's hosts, encrypted to its inbox key, and only the profile's main key pulls it. Here, the
+// client's side, against the minimal host (host.ts); each check a host runs on a delivery and a pull
+// is the host check's (check.test.ts).
 
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
 import { describe, test } from 'node:test'
-import { inboxKey, pointOf } from '@foundationforest/keys'
-import { checkStamp } from '@foundationforest/stamp'
+import { inboxKey } from '@foundationforest/keys'
 import { canonical } from '../src/canonical.ts'
 import { deliver, publish, pull, readAll, readProfile } from '../src/client.ts'
-import { DEFAULT_MAX_LINE_BYTES, type Host, type HostOptions } from '../src/host.ts'
 import type { Key } from '../src/keys.ts'
-import { type Sender, type SignedMessage, checkMessage, encodeMessage, inboxKeyOf, inboxOf, messageSigningInput, pullRequest, pullSigningInput, readMessage, signMessage } from '../src/message.ts'
+import { type Sender, checkMessage, encodeMessage, inboxKeyOf, inboxOf, messageSigningInput, pullRequest, readMessage, signMessage } from '../src/message.ts'
 import { makePrivate, message, openMessage } from '../src/private.ts'
-import type { StampCheck } from '../src/proofs.ts'
 import { type Body, RecordError, signAs } from '../src/record.ts'
 import { hostsRecord, ownerRecord } from '../src/write.ts'
-import { DAY, MINUTE, T0, alice, aliceBuyer, bob, profileBody, stranger } from './fixtures.ts'
-import { Clock, startHost } from './helpers.ts'
+import { T0, alice, aliceBuyer, bob, profileBody, stranger } from './fixtures.ts'
+import { startHost } from './helpers.ts'
+import type { TestHost } from './host.ts'
 
 const [aliceInbox, aliceBuyerInbox, bobInbox] = await Promise.all([inboxKey(alice.secret), inboxKey(aliceBuyer.secret), inboxKey(bob.secret)])
-/** The example profile record (schemas/examples/profile.json) is Alice's: its stamp proof is from an example verifier, for her key. */
-const EXAMPLE = JSON.parse(readFileSync(new URL('../schemas/examples/profile.json', import.meta.url), 'utf8'))
-const STAMP_PROOF = EXAMPLE.proofs.find((p: { circuit: string }) => p.circuit === 'stamp')
-/** That verifier, named by its key's address. */
-const VERIFIER: string = STAMP_PROOF.verifier
 
 const profileWith = (inbox?: Body | string, subject = 'maths') => ({ ...profileBody(subject), inboxKey: aliceInbox.encryptTo, ...(inbox !== undefined && { inbox }) })
-const ANYONE = { senders: 'anyone' }
+/** An inbox with no limit of its own: anyone may write to it. */
+const OPEN = {}
 
-/** A host, at T0 unless given a clock, holding Alice's profile record with this inbox. */
-async function hostWith(inbox: Body | string | undefined, options: HostOptions = {}): Promise<Host> {
-  const h = await startHost({ now: () => T0, ...options })
+/** A host, at T0, holding Alice's profile record with this inbox. */
+async function hostWith(inbox: Body | string | undefined): Promise<TestHost> {
+  const h = await startHost({ now: () => T0 })
   await publish([h.url], [ownerRecord(alice, 'profile', profileWith(inbox), T0)])
   return h
 }
-const stamp = (from: Sender = bob, text = 'Is Tuesday at six free?', time = T0) => message(from, alice.address, { text, createdAt: '2026-10-02T12:00:00Z' }, time, profileWith(ANYONE))
-const errors = async (h: Host, messages: SignedMessage[]) => (await deliver([h.url], messages))[0]!.results.map((r) => r.error ?? 'ok')
-const pulled = async (h: Host, after = 0, time = T0, owner: Key = alice) => pull(h.url, pullRequest(owner, after, time))
-const refusal = async (promise: Promise<unknown>) => promise.then(() => 'ok', (err: unknown) => (err instanceof RecordError ? err.code : String(err)))
+const stamp = (from: Sender = bob, text = 'Is Tuesday at six free?', time = T0) => message(from, alice.address, { text, createdAt: '2026-10-02T12:00:00Z' }, time, profileWith(OPEN))
+const pulled = async (h: TestHost, after = 0, time = T0, owner: Key = alice) => pull(h.url, pullRequest(owner, after, time))
 const code = (c: string) => (err: unknown) => err instanceof RecordError && err.code === c
-
-/** How a host reads a sender's records: from the host the message names, each checked. */
-const readSender = async (url: string, profile: string) => (await readAll(url, { profile })).records
-const bobProfile = { ...profileBody('maths'), role: 'buyer', inboxKey: bobInbox.encryptTo, inbox: ANYONE }
-const toBob = (sender: Sender, text = 'Tuesday works.') => message(sender, bob.address, { text }, T0, bobProfile)
-
-/** Alice's folder on her own host, with her profile record; Bob's inbox on another host, which reads senders' records. */
-async function twoHosts(options: HostOptions = {}, aliceProfile: Body = profileWith(ANYONE)) {
-  const home = await startHost({ now: () => T0, readSender })
-  const inbox = await startHost({ now: () => T0, readSender, ...options })
-  await publish([home.url], [hostsRecord(alice, [home.url], T0), ownerRecord(alice, 'profile', aliceProfile, T0)])
-  await publish([inbox.url], [ownerRecord(bob, 'profile', bobProfile, T0)])
-  return {
-    home,
-    inbox,
-    close: async () => {
-      await home.close()
-      await inbox.close()
-    },
-  }
-}
 
 describe('messages', () => {
   test('a message is encrypted to the profile record’s inbox key and signed by from; only that key opens it', async () => {
@@ -91,29 +60,29 @@ describe('messages', () => {
     ] as const) assert.throws(() => readMessage(text), (err: RecordError) => err.code === code, code)
   })
 
-  test('the profile record’s inbox: none, open to anyone, a verifier’s rule; anything this code does not know is unsupported', () => {
+  test('the profile record’s inbox: none, or one with a size or none; any field this code does not know is unsupported', () => {
     assert.equal(inboxOf(null), null)
     assert.equal(inboxOf(profileWith()), null)
     assert.equal(inboxOf({ private: 'abc' }), null, 'a private profile record declares nothing a host can read')
-    assert.deepEqual(inboxOf(profileWith(ANYONE)), { senders: 'anyone' })
-    assert.deepEqual(inboxOf(profileWith({ senders: { verifier: VERIFIER }, maxBytes: 4000 })), { senders: { verifier: VERIFIER }, maxBytes: 4000 })
-    for (const inbox of ['anyone', {}, { senders: 'everyone' }, { senders: { deposit: '5' } }, { senders: { verifier: 'x' } }, { senders: { verifier: pointOf(VERIFIER).map((n) => n.toString(16).padStart(64, '0')).join('') } }, { senders: { verifier: pointOf(VERIFIER).map(String) } }, { senders: { verifier: VERIFIER.slice(1) } }, { senders: { verifier: VERIFIER + '1' } }, { senders: { verifier: VERIFIER, label: 'x' } }, { ...ANYONE, once: true }, { ...ANYONE, maxBytes: -1 }, { ...ANYONE, deposit: '5' }, { ...ANYONE, readers: [aliceBuyerInbox.encryptTo] }]) {
-      assert.equal(inboxOf(profileWith(inbox as Body)), 'unsupported', JSON.stringify(inbox))
+    assert.deepEqual(inboxOf(profileWith(OPEN)), {})
+    assert.deepEqual(inboxOf(profileWith({ maxBytes: 4000 })), { maxBytes: 4000 })
+    for (const inbox of ['anyone', [], { senders: 'anyone' }, { senders: { verifier: alice.address } }, { maxBytes: -1 }, { maxBytes: 1.5 }, { maxBytes: '4000' }, { once: true }, { deposit: '5' }, { readers: [aliceBuyerInbox.encryptTo] }]) {
+      assert.equal(inboxOf(profileWith(inbox as unknown as Body)), 'unsupported', JSON.stringify(inbox))
     }
   })
 })
 
 describe('encrypting', () => {
   test('a message is encrypted to the inbox key the profile record gives, and nothing else', async () => {
-    assert.equal(inboxKeyOf(profileWith(ANYONE)), aliceInbox.encryptTo)
-    const m = await message(bob, alice.address, { text: 'hi' }, T0, profileWith(ANYONE))
+    assert.equal(inboxKeyOf(profileWith(OPEN)), aliceInbox.encryptTo)
+    const m = await message(bob, alice.address, { text: 'hi' }, T0, profileWith(OPEN))
     assert.equal((await openMessage(m, aliceInbox.identity)).body.text, 'hi')
     await assert.rejects(openMessage(m, aliceBuyerInbox.identity))
   })
 
   test('a sender encrypts to nobody when the profile record gives no inbox key, no inbox, or an inbox this code cannot read: a field it does not know could name more keys', async () => {
-    const { inboxKey: _, ...noKey } = profileWith(ANYONE)
-    for (const c of [profileWith(), noKey, profileWith({ ...ANYONE, encryptTo: 'x' }), profileWith({ ...ANYONE, readers: [aliceBuyerInbox.encryptTo] })]) assert.throws(() => inboxKeyOf(c), code('no_inbox'), JSON.stringify(c.inbox))
+    const { inboxKey: _, ...noKey } = profileWith(OPEN)
+    for (const c of [profileWith(), noKey, profileWith({ encryptTo: 'x' }), profileWith({ readers: [aliceBuyerInbox.encryptTo] })]) assert.throws(() => inboxKeyOf(c), code('no_inbox'), JSON.stringify(c.inbox))
     await assert.rejects(message(bob, alice.address, { text: 'hi' }, T0, profileWith()), code('no_inbox'))
   })
 })
@@ -123,7 +92,7 @@ describe('deliver and pull', () => {
     const h1 = await startHost({ now: () => T0 })
     const h2 = await startHost({ now: () => T0 })
     try {
-      await publish([h1.url, h2.url], [hostsRecord(alice, [h1.url, h2.url], T0), ownerRecord(alice, 'profile', profileWith(ANYONE), T0)])
+      await publish([h1.url, h2.url], [hostsRecord(alice, [h1.url, h2.url], T0), ownerRecord(alice, 'profile', profileWith(OPEN), T0)])
       // Bob's app knows one host; the hosts record gives the rest, and the profile record the inbox key.
       const view = await readProfile([h1.url], alice.address, T0)
       const m = await message(bob, alice.address, { text: 'Is Tuesday at six free?' }, T0, view.current.get('profile')!.record.body!)
@@ -145,187 +114,10 @@ describe('deliver and pull', () => {
     }
   })
 
-  test('a host checks a delivery in order: shape, future, duplicate, no inbox, signature', async () => {
-    const h = await hostWith(ANYONE)
-    try {
-      const m = await stamp()
-      const forged = { ...(await stamp(stranger)), from: bob.address } // stranger signed, claims to be Bob
-      const results = await h.deliver([
-        'not json',
-        canonical({ ...m, path: 'x' }),
-        encodeMessage({ ...m, body: { private: m.body.private, text: 'x' } } as never),
-        encodeMessage(await stamp(bob, 'later', T0 + 10 * MINUTE + 1)),
-        encodeMessage(m),
-        encodeMessage(m),
-        encodeMessage({ ...m, to: bob.address }),
-        encodeMessage(forged),
-        encodeMessage({ ...m, time: T0 - 1 }),
-      ])
-      assert.deepEqual(results.map((r) => r.error ?? 'ok'), ['canonical', 'shape', 'body', 'future', 'ok', 'duplicate', 'no_inbox', 'signature', 'signature'])
-      assert.deepEqual(await errors(h, [m]), ['duplicate'], 'in a later request too')
-      // Cheap checks first: a forged message to a profile with no inbox is refused before its signature is checked.
-      assert.deepEqual(await errors(h, [{ ...forged, to: aliceBuyer.address }]), ['no_inbox'])
-    } finally {
-      await h.close()
-    }
-  })
-
-  test('size is the host’s own choice, checked first: 65,536 bytes here unless its operator says otherwise', async () => {
-    const big = signMessage(bob, alice.address, { private: 'A'.repeat(DEFAULT_MAX_LINE_BYTES) }, T0)
-    const h = await hostWith(ANYONE)
-    const roomy = await hostWith(ANYONE, { maxLineBytes: 2 * DEFAULT_MAX_LINE_BYTES })
-    try {
-      assert.deepEqual(await errors(h, [big]), ['size'])
-      assert.deepEqual(await h.deliver(['x'.repeat(DEFAULT_MAX_LINE_BYTES + 1)]).then((r) => r.map((x) => x.error)), ['size'], 'before its shape')
-      assert.deepEqual(await errors(roomy, [big]), ['ok'])
-    } finally {
-      await h.close()
-      await roomy.close()
-    }
-  })
-
-  test('a message from the profile it is to skips the inbox’s rules: its verifier rule, an inbox the host cannot read, and maxBytes', async () => {
-    const toSelf = async (text: string) => signMessage(alice, alice.address, await makePrivate({ text }, [aliceInbox.encryptTo]), T0)
-    for (const inbox of [{ senders: { verifier: VERIFIER }, maxBytes: 100 }, { ...ANYONE, deposit: '5' }] as Body[]) {
-      const h = await hostWith(inbox)
-      try {
-        assert.deepEqual(await errors(h, [await toSelf('From my phone'), await toSelf('From my laptop')]), ['ok', 'ok'], JSON.stringify(inbox))
-        assert.deepEqual(await errors(h, [await stamp(bob)]), ['rule_unsupported'], 'anyone else still meets them')
-      } finally {
-        await h.close()
-      }
-    }
-    const h = await hostWith(undefined)
-    try {
-      assert.deepEqual(await errors(h, [await toSelf('hi')]), ['no_inbox'], 'with no inbox there is still none')
-    } finally {
-      await h.close()
-    }
-  })
-
-  test('no inbox field, no inbox: a profile record without one, none, a deleted one, and one on another host', async () => {
-    const h = await hostWith(undefined)
-    const other = await startHost({ now: () => T0 })
-    try {
-      assert.deepEqual(await errors(h, [await stamp()]), ['no_inbox'])
-      await publish([other.url], [ownerRecord(alice, 'profile', profileWith(ANYONE), T0 + 1)])
-      assert.deepEqual(await errors(h, [await stamp()]), ['no_inbox'], 'only the profile record on this host counts')
-      await publish([h.url], [ownerRecord(alice, 'profile', profileWith(ANYONE), T0 + 1)])
-      assert.deepEqual(await errors(h, [await stamp()]), ['ok'])
-      await publish([h.url], [ownerRecord(alice, 'profile', null, T0 + 2)])
-      assert.deepEqual(await errors(h, [await stamp()]), ['no_inbox'], 'a deleted profile record')
-      assert.deepEqual(await errors(h, [await message(bob, bob.address, { text: 'x' }, T0, profileWith(ANYONE))]), ['no_inbox'], 'a profile this host has never seen')
-    } finally {
-      await h.close()
-      await other.close()
-    }
-  })
-
-  test('the verifier rule: from’s profile record, read from the host the message names, carries a stamp proof from that verifier that holds for from, under any label; a host that checks none answers rule_unsupported; a check that fails is lookup, never sender', async () => {
-    assert.equal(STAMP_PROOF.label, 'tutoring/seller', 'the example profile record is Alice’s')
-    const checked: string[] = []
-    const counted = async (input: StampCheck) => (checked.push(input.profile), checkStamp(input))
-    const { home, inbox, close } = await twoHosts({ checkStamp: counted }, { ...profileWith(ANYONE), proofs: [STAMP_PROOF] })
-    const none = await startHost({ now: () => T0, readSender })
-    let down = true
-    const flaky = await startHost({
-      now: () => T0,
-      readSender,
-      checkStamp: async (input) => {
-        if (down) throw new Error('the proof check is unreachable')
-        return checkStamp(input)
-      },
-    })
-    try {
-      const ruled = (verifier: string, time = T0 + 1) => ownerRecord(bob, 'profile', { ...bobProfile, inbox: { senders: { verifier } } }, time)
-      for (const h of [inbox, none, flaky]) await publish([h.url], [ruled(VERIFIER)])
-      // Alice's other profile carries her proof too, copied: it holds only for the key it was made for.
-      await publish([home.url], [hostsRecord(aliceBuyer, [home.url], T0), ownerRecord(aliceBuyer, 'profile', { ...profileBody('x'), role: 'buyer', proofs: [STAMP_PROOF] }, T0)])
-      const fromHome = (from: Key) => ({ from, host: home.url })
-      assert.deepEqual(
-        await errors(inbox, [await toBob(fromHome(alice)), await toBob(alice, 'naming no host'), await toBob(fromHome(aliceBuyer), 'a proof made for another key'), await toBob(fromHome(stranger), 'no records there')]),
-        ['ok', 'sender', 'sender', 'sender'],
-      )
-      assert.deepEqual(checked, [alice.address, aliceBuyer.address], 'each proof checked for the profile whose profile record carries it')
-      await publish([inbox.url], [ruled(stranger.address, T0 + 2)])
-      assert.deepEqual(await errors(inbox, [await toBob(fromHome(alice), 'another verifier')]), ['sender'])
-
-      assert.deepEqual(await errors(none, [await toBob(fromHome(alice))]), ['rule_unsupported'])
-      const m = await toBob(fromHome(alice))
-      const [outcome] = await deliver([flaky.url], [m])
-      assert.equal(outcome!.results[0]!.error, 'lookup')
-      assert.match(outcome!.results[0]!.message!, /the proof check is unreachable/)
-      down = false
-      assert.deepEqual(await errors(flaky, [m]), ['ok'], 'the same message, again: nothing was kept the first time')
-      // A host that checks no stamp proof still takes an inbox open to anyone.
-      await publish([none.url], [ownerRecord(bob, 'profile', bobProfile, T0 + 2)])
-      assert.deepEqual(await errors(none, [await toBob(aliceBuyer)]), ['ok'])
-    } finally {
-      await close()
-      await none.close()
-      await flaky.close()
-    }
-  })
-
-  test('an inbox the host cannot read is refused as rule_unsupported, never taken as open to anyone', async () => {
-    for (const inbox of [{ senders: { deposit: '5' } }, { ...ANYONE, deposit: '5' }, { ...ANYONE, once: true }, 'anyone']) {
-      const h = await hostWith(inbox as Body, { readSender, checkStamp: async () => true })
-      try {
-        assert.deepEqual(await errors(h, [await stamp()]), ['rule_unsupported'], JSON.stringify(inbox))
-      } finally {
-        await h.close()
-      }
-    }
-  })
-
-  test('maxBytes counts the message’s canonical text, in bytes: too_big', async () => {
-    const m = await stamp()
-    const bytes = Buffer.byteLength(encodeMessage(m))
-    for (const [maxBytes, result] of [[bytes, 'ok'], [bytes - 1, 'too_big']] as const) {
-      const h = await hostWith({ ...ANYONE, maxBytes })
-      try {
-        assert.deepEqual(await errors(h, [m]), [result], String(maxBytes))
-      } finally {
-        await h.close()
-      }
-    }
-  })
-
-  test('a host’s own choice comes last, and sees what it holds for the profile it is to', async () => {
-    const seen: number[] = []
-    const h = await hostWith(ANYONE, {
-      messageChoice: (_m, stored) => {
-        seen.push(stored.messages)
-        return stored.messages < 2 ? null : 'two messages a profile here'
-      },
-    })
-    try {
-      const forged = { ...(await stamp(stranger)), from: bob.address }
-      assert.deepEqual(await errors(h, [await stamp(bob), forged, await stamp(aliceBuyer), await stamp(stranger)]), ['ok', 'signature', 'ok', 'refused'])
-      assert.deepEqual(seen, [0, 1, 2], 'never asked about a forged one')
-    } finally {
-      await h.close()
-    }
-  })
-
-  test('a host chooses its batch: 100 here unless told otherwise; a client sends a bigger request in halves', async () => {
-    const h = await hostWith(ANYONE, { maxBatch: 2 })
-    const reference = await hostWith(ANYONE)
-    try {
-      const five = await Promise.all([1, 2, 3, 4, 5].map((i) => stamp(bob, `stamp ${i}`)))
-      assert.deepEqual(await h.deliver(five.map(encodeMessage)), [{ i: 0, ok: false, error: 'batch', message: 'at most 2 messages a request' }])
-      const [outcome] = await deliver([h.url], five)
-      assert.deepEqual(outcome!.results.map((r) => [r.i, r.error ?? 'ok']), five.map((_, i) => [i, 'ok']))
-      assert.equal((await reference.deliver(Array(101).fill('x')))[0]!.error, 'batch')
-    } finally {
-      await h.close()
-      await reference.close()
-    }
-  })
 })
 
 describe('naming a host', () => {
-  test('a message may name host, one of from’s hosts, where an inbox with a verifier’s rule reads from’s profile record; no other key signs, and no field names one', async () => {
+  test('a message may name host, one of from’s hosts, where the recipient’s app finds the sender’s folder; no other key signs, and no field names one', async () => {
     const encrypted = await makePrivate({ text: 'hi' }, [bobInbox.encryptTo])
     const own = signMessage({ from: alice, host: 'https://host-a.example' }, bob.address, encrypted, T0)
     assert.deepEqual([own.from, own.host], [alice.address, 'https://host-a.example'])
@@ -342,58 +134,14 @@ describe('naming a host', () => {
     assert.equal(checkMessage(readMessage(canonical({ ...unsigned, sig: signAs(stranger, stranger.address, messageSigningInput(unsigned)) }))), false)
   })
 
-  test('within one request a host reads a sender’s records once; the next request reads them again', async () => {
-    let reads = 0
-    const counted = async (url: string, profile: string) => (reads++, readSender(url, profile))
-    const { home, inbox, close } = await twoHosts({ readSender: counted, checkStamp }, { ...profileWith(ANYONE), proofs: [STAMP_PROOF] })
-    try {
-      await publish([inbox.url], [ownerRecord(bob, 'profile', { ...bobProfile, inbox: { senders: { verifier: VERIFIER } } }, T0 + 1)])
-      const fromHome = { from: alice, host: home.url }
-      assert.deepEqual(await errors(inbox, [await toBob(fromHome, 'one'), await toBob(fromHome, 'two')]), ['ok', 'ok'])
-      assert.equal(reads, 1)
-      assert.deepEqual(await errors(inbox, [await toBob(fromHome, 'three')]), ['ok'])
-      assert.equal(reads, 2)
-    } finally {
-      await close()
-    }
-  })
 })
 
 describe('pulling', () => {
-  test('only the main key pulls: another profile’s key, a key that is no profile’s, or a changed request is refused as signature', async () => {
-    const h = await hostWith(ANYONE)
-    try {
-      await deliver([h.url], [await stamp()])
-      const mine = pullRequest(alice, 0, T0)
-      assert.equal((await pull(h.url, mine)).messages.length, 1)
-      assert.equal(await refusal(pull(h.url, { ...pullRequest(bob, 0, T0), profile: alice.address })), 'signature')
-      const unsigned = { v: 1 as const, profile: alice.address, after: 0, time: T0 }
-      assert.equal(await refusal(pull(h.url, { ...unsigned, sig: signAs(stranger, stranger.address, pullSigningInput(unsigned)) })), 'signature', 'a key that is not the main key')
-      assert.equal(await refusal(pull(h.url, { ...mine, key: stranger.address } as never)), 'shape', 'no field names another key')
-      assert.equal(await refusal(pull(h.url, { ...pullRequest(aliceBuyer, 0, T0), profile: alice.address })), 'signature', 'the same person’s other profile')
-      assert.equal(await refusal(pull(h.url, { ...mine, after: 1 })), 'signature')
-      // Bob's own pull is fine, and finds nothing: messages go to the profile they are to only.
-      assert.equal((await pull(h.url, pullRequest(bob, 0, T0))).messages.length, 0)
-    } finally {
-      await h.close()
-    }
-  })
-
-  test('a pull is signed within ten minutes of the host’s clock, either way: stale', async () => {
-    const h = await hostWith(ANYONE)
-    try {
-      for (const [time, result] of [[T0 - 10 * MINUTE, 'ok'], [T0 + 10 * MINUTE, 'ok'], [T0 - 10 * MINUTE - 1, 'stale'], [T0 + 10 * MINUTE + 1, 'stale']] as const) {
-        assert.equal(await refusal(pulled(h, 0, time)), result, String(time - T0))
-      }
-    } finally {
-      await h.close()
-    }
-  })
-
   test('a pull answers that profile’s messages after the cursor, in arrival order, paged as the host chooses', async () => {
-    const h = await hostWith(ANYONE, { maxPageRecords: 2 })
+    const h = await hostWith(OPEN)
+    h.page = 2
     try {
-      const buyerProfile = { ...profileWith(ANYONE, 'algebra'), inboxKey: aliceBuyerInbox.encryptTo }
+      const buyerProfile = { ...profileWith(OPEN, 'algebra'), inboxKey: aliceBuyerInbox.encryptTo }
       await publish([h.url], [ownerRecord(aliceBuyer, 'profile', buyerProfile, T0)])
       const toBuyer = await message(bob, aliceBuyer.address, { text: 'for the buyer' }, T0, buyerProfile)
       const texts = ['one', 'two', 'three', 'four', 'five']
@@ -418,24 +166,12 @@ describe('pulling', () => {
     }
   })
 
-  test('a pull is a POST, so no URL carries it; GET is 405, and a pull that is not canonical is refused', async () => {
-    const h = await hostWith(ANYONE)
-    try {
-      assert.equal((await fetch(`${h.url}/v1/inbox/pull`)).status, 405)
-      assert.equal((await fetch(`${h.url}/v1/inbox`)).status, 405)
-      const res = await fetch(`${h.url}/v1/inbox/pull`, { method: 'POST', body: JSON.stringify(pullRequest(alice, 0, T0), null, 1) })
-      assert.deepEqual([res.status, ((await res.json()) as { error: string }).error], [400, 'canonical'])
-    } finally {
-      await h.close()
-    }
-  })
-
   test('a host that slips in a forged message, or one to someone else: the reader refuses each', async () => {
-    const h = await hostWith(ANYONE)
+    const h = await hostWith(OPEN)
     try {
       const m = await stamp()
       await deliver([h.url], [m])
-      const toBob = await message(alice, bob.address, { text: 'x' }, T0, profileWith(ANYONE))
+      const toBob = await message(alice, bob.address, { text: 'x' }, T0, profileWith(OPEN))
       const serve = h.pull.bind(h)
       h.pull = (text, now) => {
         const out = serve(text, now)

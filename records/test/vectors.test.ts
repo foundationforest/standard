@@ -1,23 +1,23 @@
 // The spec's pinned vectors: recomputed here, and each step checked with a second implementation:
-// node:crypto (OpenSSL) for SHA-256 and HMAC-SHA256, and zk-kit's EdDSA-Poseidon for Baby Jubjub,
+// node:crypto (OpenSSL) for SHA-256, and zk-kit's EdDSA-Poseidon for Baby Jubjub,
 // which reads the key from the address and the signature from its 64 bytes on its own. The keys and
 // the pay signatures are keys/'s, and keys/'s own tests recompute them.
 
 import assert from 'node:assert/strict'
-import { createHash, createHmac } from 'node:crypto'
+import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
 import { unpackPublicKey, unpackSignature, verifySignature } from '@zk-kit/eddsa-poseidon'
 import { b64u, base58, hex } from '../src/bytes.ts'
 import { checkBlobRequest, checkPull, decodeMessage } from '../src/message.ts'
 import { checkPay } from '../src/pay.ts'
-import { openMessage, openPrivate } from '../src/private.ts'
+import { openMessage } from '../src/private.ts'
 import { decodeRecord } from '../src/record.ts'
 import { KEYS } from './fixtures.ts'
-import { RULE, vectors } from './vectors.ts'
+import { vectors } from './vectors.ts'
 
 const pinned = JSON.parse(readFileSync(new URL('./vectors.json', import.meta.url), 'utf8'))
-const RECORDS = ['hosts', 'profileRecord', 'offer', 'deleted', 'rule'] as const
+const RECORDS = ['hosts', 'profileRecord', 'offer', 'deleted'] as const
 
 /** A packed point's 32 bytes, little-endian, as the number zk-kit takes. */
 const littleEndian = (bytes: Uint8Array) => bytes.reduceRight((n, b) => (n << 8n) | BigInt(b), 0n)
@@ -42,14 +42,6 @@ test("the profile is keys/'s pinned one, and its profile record gives its pinned
   assert.deepEqual(body.pay, Object.fromEntries(seller.map((p: { type: string; address: string }) => [p.type, p.address])))
   assert.deepEqual(body.paySig, Object.fromEntries(seller.map((p: { type: string; paySig: string }) => [p.type, p.paySig])))
   assert.deepEqual(checkPay(body, pinned.profile), ['solana', 'evm'])
-})
-
-test("the rule opens with tutoring/seller's pinned inbox key, encrypted to it alone, and its path's id is HMAC-SHA256 under keys/'s pinned rule key, by node:crypto", async () => {
-  const { record } = decodeRecord(pinned.rule.wire)
-  assert.deepEqual(await openPrivate(record.body!, KEYS.mainKeys[0].inbox.identity), RULE)
-  const { name: _name, ...named } = RULE.who
-  const id = createHmac('sha256', hex.decode(KEYS.mainKeys[0].ruleKey)).update(JSON.stringify({ connection: named.connection, connector: named.connector })).digest('hex').slice(0, 32)
-  assert.equal(record.path, `rule/${id}`)
 })
 
 test('each record checks with a second EdDSA-Poseidon and a second SHA-256', () => {

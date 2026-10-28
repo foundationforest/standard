@@ -7,6 +7,16 @@
   "dependentRequired": {
     "pay": ["paySig"]
   },
+  "allOf": [
+    {
+      "if": { "type": "object", "required": ["pay"], "properties": { "pay": { "type": "object", "required": ["solana"], "properties": { "solana": true } } } },
+      "then": { "type": "object", "properties": { "paySig": { "type": "object", "required": ["solana"], "properties": { "solana": true } } } }
+    },
+    {
+      "if": { "type": "object", "required": ["pay"], "properties": { "pay": { "type": "object", "required": ["evm"], "properties": { "evm": true } } } },
+      "then": { "type": "object", "properties": { "paySig": { "type": "object", "required": ["evm"], "properties": { "evm": true } } } }
+    }
+  ],
   "properties": {
     "market": {
       "type": "string",
@@ -20,8 +30,7 @@
     },
     "pay": {
       "type": "object",
-      "description": "Optional. The profile's pay addresses, one for each address type: keys/'s payAddresses(seed, label). Where payments to this profile go. A reader ignores a type it does not know, and counts an address only when its signature in paySig holds. With pay, paySig is required.",
-      "required": ["solana", "evm"],
+      "description": "Optional. The profile's pay addresses: any of the address types, each the one keys/'s payAddresses(seed, label) gives for it. Where payments to this profile go. A reader ignores a type it does not know, and counts an address only when its signature in paySig holds. With pay, paySig is required, with a signature for each type pay lists.",
       "properties": {
         "solana": {
           "type": "string",
@@ -39,8 +48,7 @@
     },
     "paySig": {
       "type": "object",
-      "description": "With pay: for each address type, its pay key's signature over 0xff || UTF-8(\"forest/v1/pay\\n\") || UTF-8(this profile's address), in base64url without padding (keys/'s signPay). A reader checks each (keys/'s checkPaySig, records' checkPay), so a profile cannot list an address that is not its own.",
-      "required": ["solana", "evm"],
+      "description": "With pay: for each address type pay lists, its pay key's signature over 0xff || UTF-8(\"forest/v1/pay\\n\") || UTF-8(this profile's address), in base64url without padding (keys/'s signPay). A reader checks each (keys/'s checkPaySig, records' checkPay), so a profile cannot list an address that is not its own.",
       "properties": {
         "solana": {
           "type": "string",
@@ -74,32 +82,9 @@
   "$defs": {
     "inbox": {
       "type": "object",
-      "description": "Optional. The profile's inbox: who may deliver a message to it on its hosts. Senders encrypt each message to inboxKey, so a profile with an inbox also gives inboxKey. Without this field there is no inbox, and hosts refuse deliveries. A host refuses deliveries to an inbox it cannot read: a field, a rule or a value it does not know.",
-      "required": ["senders"],
+      "description": "Optional. The profile's inbox, where anyone may deliver a message to it on its hosts. Senders encrypt each message to inboxKey, so a profile with an inbox also gives inboxKey. Without this field there is no inbox, and hosts refuse deliveries. A host refuses deliveries to an inbox it cannot read: a field or a value it does not know.",
       "additionalProperties": false,
       "properties": {
-        "senders": {
-          "description": "Who may deliver: anyone, or a profile whose profile record carries a stamp proof from this verifier, under any label.",
-          "oneOf": [
-            {
-              "const": "anyone"
-            },
-            {
-              "type": "object",
-              "required": ["verifier"],
-              "additionalProperties": false,
-              "properties": {
-                "verifier": {
-                  "type": "string",
-                  "description": "The verifier's key: its address, a packed point on Baby Jubjub in base58.",
-                  "minLength": 32,
-                  "maxLength": 44,
-                  "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$"
-                }
-              }
-            }
-          ]
-        },
         "maxBytes": {
           "type": "integer",
           "description": "Optional. The largest message it takes, as canonical text in bytes. A host also takes messages only up to its own size.",

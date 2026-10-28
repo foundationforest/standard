@@ -94,7 +94,7 @@ test('the info strings and the prefixes are exactly the standard', () => {
   assert.equal(INFO.inbox, 'forest/v1/inbox')
   assert.equal(INFO.pay('solana', 'tutoring/seller'), 'forest/v1/pay/solana/tutoring/seller')
   assert.equal(INFO.pay('evm', 'tutoring/seller'), 'forest/v1/pay/evm/tutoring/seller')
-  assert.equal(INFO.rule, 'forest/v1/rule')
+  assert.equal(INFO.permission, 'forest/v1/permission')
   assert.equal(INFO.seed, vectors.seedScalar.info)
   for (const p of vectors.mainKeys) assert.equal(INFO.profile(p.label), p.info)
   for (const p of vectors.payKeys) assert.equal(INFO.pay(p.type, p.label), p.info)
@@ -105,7 +105,7 @@ test('the info strings and the prefixes are exactly the standard', () => {
 })
 
 test('HKDF agrees with an independent implementation', async () => {
-  for (const info of [INFO.seed, INFO.profile('tutoring/seller'), INFO.profile(''), INFO.inbox, INFO.pay('solana', 'tutoring/seller'), INFO.pay('evm', 'tutoring/seller'), INFO.rule]) {
+  for (const info of [INFO.seed, INFO.profile('tutoring/seller'), INFO.profile(''), INFO.inbox, INFO.pay('solana', 'tutoring/seller'), INFO.pay('evm', 'tutoring/seller'), INFO.permission]) {
     assert.equal(hex.encode(await hkdf(seed, info)), hex.encode(mix(seed, info)), info)
   }
 })
@@ -369,16 +369,16 @@ test('an inbox key needs a 32-byte secret', async () => {
   await assert.rejects(inboxKey(new Uint8Array(64)), /secret must be 32 bytes/)
 })
 
-// Rule keys
+// Permission keys
 
-test("each profile gives the pinned rule key: HKDF of its secret, by an independent implementation", async () => {
+test("each profile gives the pinned permission key: HKDF of its secret, by an independent implementation", async () => {
   for (const expected of vectors.mainKeys) {
     const key = await mainKey(seed, expected.label)
-    assert.equal(hex.encode(await hkdf(key.secret, INFO.rule)), expected.ruleKey)
-    assert.equal(hex.encode(mix(mix(seed, expected.info), 'forest/v1/rule')), expected.ruleKey)
+    assert.equal(hex.encode(await hkdf(key.secret, INFO.permission)), expected.permissionKey)
+    assert.equal(hex.encode(mix(mix(seed, expected.info), 'forest/v1/permission')), expected.permissionKey)
   }
-  assert.notEqual(seller.ruleKey, buyer.ruleKey)
-  assert.notEqual(seller.ruleKey, seller.inbox.privateKey)
+  assert.notEqual(seller.permissionKey, buyer.permissionKey)
+  assert.notEqual(seller.permissionKey, seller.inbox.privateKey)
 })
 
 // Pay keys

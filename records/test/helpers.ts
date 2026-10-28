@@ -1,9 +1,9 @@
 // Test helpers: real HTTP hosts on loopback ports, and a clock tests can move.
 
-import { Host, type HostOptions } from '../src/host.ts'
+import { TestHost } from './host.ts'
 
-export async function startHost(options: HostOptions = {}): Promise<Host> {
-  const host = new Host(options)
+export async function startHost(options: { now?: () => number } = {}): Promise<TestHost> {
+  const host = new TestHost(options)
   await host.listen()
   return host
 }

@@ -60,7 +60,7 @@ const profile = {
   pay: await payAddresses(seed, LABEL),
   paySig: Object.fromEntries(await Promise.all(PAY_TYPES.map(async (type) => [type, signPay(await payKey(seed, LABEL, type), me.address)]))),
   inboxKey: (await inboxKey(me.secret)).encryptTo,
-  inbox: { senders: 'anyone', maxBytes: 16384 },
+  inbox: { maxBytes: 16384 },
   proofs: [
     {
       circuit: 'reputation',

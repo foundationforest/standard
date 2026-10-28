@@ -112,8 +112,8 @@ describe('records', () => {
     assert.throws(() => signRecord({ ...base, time: -1 }, alice), code('time'))
     assert.throws(() => signRecord({ ...base, body: [] as never }, alice), code('body'))
     assert.throws(() => signRecord({ ...base, by: alice.address } as never, alice), code('shape'), 'no by: only the main key signs')
-    assert.ok(checkRecord(ownerRecord(alice, 'rule/0123456789abcdef0123456789abcdef', { anything: ['at', 1] }, T0)), 'a rule is a content path like any other')
-    assert.ok(checkRecord(ownerRecord(alice, 'rule/x', null, T0)))
+    assert.ok(checkRecord(ownerRecord(alice, 'permission/0123456789abcdef0123456789abcdef', { anything: ['at', 1] }, T0)), 'a permission is a content path like any other')
+    assert.ok(checkRecord(ownerRecord(alice, 'permission/x', null, T0)))
   })
 
   test('a hosts body is exact: a field nobody knows refuses the record', () => {
@@ -127,7 +127,7 @@ describe('records', () => {
     assert.ok(checkRecord(ownerRecord(alice, 'hosts', null, T0)), 'a delete leaves no hosts')
   })
 
-  test('no size is a rule: how large a record to take is each host’s own choice (host.test.ts), and each reader’s', () => {
+  test('no size is a rule: how large a record to take is each host’s own choice, and each reader’s', () => {
     const big = ownerRecord(alice, 'profile', { about: 'x'.repeat(200_000) }, T0)
     assert.ok(decodeRecord(encodeRecord(big)).id)
     assert.ok(checkRecord(sizedRecord(alice, 'stamp/a', 100_000, 1)).id)

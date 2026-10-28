@@ -5,8 +5,8 @@
 //   { v: 1, to, from, time, body: { private }, host?, sig }
 //
 // `sig` is EdDSA-Poseidon on Baby Jubjub, as a record's, over 0xff || "forest/v1/message\n" ||
-// JCS(the rest), by `from`. `host`, one of `from`'s hosts, says where a receiving host reads
-// `from`'s profile record, for an inbox with a verifier's rule. A pull request,
+// JCS(the rest), by `from`. `host`, one of `from`'s hosts, tells the recipient's app where the
+// sender's folder is. A pull request,
 // `{ v: 1, profile, after, time, sig }`, is signed the same way by the profile's main key, over
 // 0xff || "forest/v1/pull\n" || JCS(the rest). A blob request,
 // `{ v: 1, action, profile, sha256, mimeType?, size?, time, sig }`, puts bytes in a folder or
@@ -36,7 +36,7 @@ export type UnsignedMessage = {
   from: string
   time: number
   body: EncryptedBody
-  /** One of from's hosts, where a receiving host reads from's profile record: needed only for an inbox with a verifier's rule. */
+  /** One of from's hosts: where the recipient's app finds the sender's folder. */
   host?: string
 }
 export type SignedMessage = UnsignedMessage & { sig: string }
@@ -116,7 +116,7 @@ export function messageId(unsigned: UnsignedMessage): string {
   return hex.encode(sha256(messageSigningInput(unsigned)))
 }
 
-/** The sender's own key, naming `host`, one of its hosts, where an inbox with a verifier's rule reads its profile record. */
+/** The sender's own key, naming `host`, one of its hosts, where the recipient's app finds its folder. */
 export type HostSender = { from: Key; host: string }
 /** Who signs a message: the sender's own key (a main key, or any key), with one of its hosts or not. */
 export type Sender = Key | HostSender
@@ -273,36 +273,24 @@ export function checkBlobRequest(text: string, now: number): SignedBlobRequest {
 // The inbox a profile declares
 
 export type Inbox = {
-  /**
-   * Who may deliver: anyone, or a profile whose profile record carries a stamp proof from this
-   * verifier, under any label. The verifier is named by its key's address.
-   */
-  senders: 'anyone' | { verifier: string }
   /** The largest message it takes, as canonical text in bytes. */
   maxBytes?: number
 }
 
 /**
  * The inbox a profile record's body declares: null when it declares none (no `inbox` field, or a
- * deleted or private profile record), 'unsupported' when it holds a rule, a field or a value this code does
- * not know. A host refuses deliveries to an inbox it cannot read rather than guess: a field it
- * skipped could be a limit the profile set, so a new kind of rule can be added later without an
- * old host taking what it should refuse.
+ * deleted or private profile record), 'unsupported' when it holds a field or a value this code
+ * does not know. A host refuses deliveries to an inbox it cannot read rather than guess: a field it
+ * skipped could be a limit the profile set, so a new one, a rule for senders among them, can be
+ * added later without an old host taking what it should refuse.
  */
 export function inboxOf(body: Body | null | undefined): Inbox | null | 'unsupported' {
   if (!body || !('inbox' in body)) return null
   const inbox = body.inbox
-  if (!isObject(inbox) || Object.keys(inbox).some((key) => !['senders', 'maxBytes'].includes(key))) return 'unsupported'
-  const { senders, maxBytes } = inbox
-  let rule: Inbox['senders']
-  if (senders === 'anyone') rule = 'anyone'
-  else if (isObject(senders) && Object.keys(senders).length === 1 && publicKeyFromAddress(senders.verifier)) rule = { verifier: senders.verifier as string }
-  else return 'unsupported'
+  if (!isObject(inbox) || Object.keys(inbox).some((key) => key !== 'maxBytes')) return 'unsupported'
+  const { maxBytes } = inbox
   if ('maxBytes' in inbox && (!Number.isSafeInteger(maxBytes) || (maxBytes as number) < 0)) return 'unsupported'
-  return {
-    senders: rule,
-    ...('maxBytes' in inbox && { maxBytes: maxBytes as number }),
-  }
+  return 'maxBytes' in inbox ? { maxBytes: maxBytes as number } : {}
 }
 
 /**

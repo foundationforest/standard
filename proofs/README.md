@@ -28,6 +28,9 @@ proofs ([keys](../keys/README.md#the-seed-scalar)), so the seed never leaves the
 both proofs, the profile's key is worked out from the seed scalar the way `keys/` mixes it, so a
 proof holds only for a profile of the seed behind it.
 
+A circuit never changes after its setup. A new version is a new circuit under a new name, with a
+setup of its own, and a profile can show a proof of each.
+
 ## Limits
 
 - **Each circuit's setup, the one-time step its proofs depend on, was made by one party.** Whoever
