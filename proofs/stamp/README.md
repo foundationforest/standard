@@ -48,8 +48,7 @@ number, facts*.
   keeps them private, so a reader learns nothing of them.
 - The verifier signs `Poseidon(prefix, stamp number, facts)` with its EdDSA key on Baby Jubjub, the
   curve the proofs' keys are on, over Poseidon (circomlib's), a hash made for proofs. The prefix is
-  `keccak256("forest/v1/note") >> 8`, always the same, so nothing a verifier signs for another
-  purpose can pass as a stamp.
+  `keccak256("forest/v1/note") >> 8`, always the same.
 - The verifier's key is an address, as every key in the standard is: its point packed into 32 bytes,
   in base58. `keys/`'s `pointOf` gives x and y back.
 - The person keeps the stamp on their device, as JSON: `{ stampNumber, facts, verifier, signature:

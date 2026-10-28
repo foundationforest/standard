@@ -7,7 +7,6 @@ import { inboxKey } from '@foundationforest/keys'
 import { bech32 } from '@scure/base'
 import { canonical } from '../src/canonical.ts'
 import { publish, readAll, readProfile } from '../src/client.ts'
-import { DAY, DEFAULT_MAX_LINE_BYTES } from '../src/host.ts'
 import { isPrivate, makePrivate, openPrivate, readerCount } from '../src/private.ts'
 import { hostsRecord, ownerRecord } from '../src/write.ts'
 import { KEYS, T0, alice, aliceBuyer, bob } from './fixtures.ts'
@@ -59,7 +58,7 @@ describe('private records', () => {
     }
   })
 
-  test('a reader is removed in the next version: they cannot open it; the old one stays on hosts until keep days pass', async () => {
+  test('a reader is removed in the next version: they cannot open it; the old one, while a host keeps it, they still can', async () => {
     const host = await startHost({ now: () => T0 })
     try {
       const v1 = ownerRecord(alice, 'stamp/door', await makePrivate({ text: 'first' }, [bobInbox.encryptTo, aliceInbox.encryptTo]), T0 + 1)
@@ -71,13 +70,11 @@ describe('private records', () => {
       assert.deepEqual(await openPrivate(current, aliceInbox.identity), { text: 'second' })
       await assert.rejects(openPrivate(current, bobInbox.identity), 'Bob cannot open the new version')
 
-      // Removal reaches what comes next, not what a reader already had: the old version is still
-      // on the host for its keep days, and Bob can open it there.
+      // Removal reaches what comes next, not what a reader already had: while a host keeps the old
+      // version, Bob can open it there.
       const stamps = async () => (await readAll(host.url, { profile: alice.address })).records.filter((c) => c.record.path === 'stamp/door')
       const old = (await stamps()).find((c) => c.record.time === T0 + 1)!
       assert.deepEqual(await openPrivate(old.record.body!, bobInbox.identity), { text: 'first' })
-      await host.prune(T0 + 31 * DAY)
-      assert.deepEqual((await stamps()).map((c) => c.record.time), [T0 + 2])
     } finally {
       await host.close()
     }
@@ -113,12 +110,11 @@ describe('private records', () => {
     assert.match(header, /^age-encryption\.org\/v1\n-> mlkem768x25519 /)
   })
 
-  test('each key adds about 2 KB, so a record the reference host takes, 65,536 bytes, is made for about 30', async () => {
-    const readers = await Promise.all(Array.from({ length: 32 }, (_, i) => inboxKey(new Uint8Array(32).fill(i + 1))))
+  test('each key adds about 2 KB, so the largest record a host takes bounds how many keys an envelope holds', async () => {
+    const readers = await Promise.all(Array.from({ length: 3 }, (_, i) => inboxKey(new Uint8Array(32).fill(i + 1))))
     const size = async (n: number) => canonical({ ...ownerRecord(alice, 'stamp/many', null, T0), body: await makePrivate({ text: 'x' }, readers.slice(0, n).map((r) => r.encryptTo)) }).length
-    const [one, two] = [await size(1), await size(2)]
+    const [one, two, three] = [await size(1), await size(2), await size(3)]
     assert.ok(two - one > 2000 && two - one < 2200, `${two - one} bytes a reader`)
-    assert.ok((await size(30)) <= DEFAULT_MAX_LINE_BYTES)
-    assert.ok((await size(32)) > DEFAULT_MAX_LINE_BYTES)
+    assert.equal(three - two, two - one, 'the same for each')
   })
 })

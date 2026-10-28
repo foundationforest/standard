@@ -5,5 +5,5 @@
     "lib": ["ES2024", "DOM", "DOM.Iterable"],
     "noUncheckedIndexedAccess": true
   },
-  "include": ["src/**/*.ts", "test/**/*.ts", "bench/**/*.ts", "scripts/**/*.ts"]
+  "include": ["src/**/*.ts", "test/**/*.ts", "scripts/**/*.ts"]
 }

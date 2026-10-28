@@ -1,0 +1,35 @@
+{
+  "name": "@foundationforest/signers",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Forest signers: how anyone asks a person's app to act for them. The asks and their answers, connecting an AI app and the live link's frames, and each profile's permissions, built and checked. No server and no socket.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "check": "tsc --noEmit",
+    "test": "node --test test/*.test.ts"
+  },
+  "dependencies": {
+    "@foundationforest/keys": "0.0.0",
+    "@foundationforest/records": "0.0.0",
+    "@noble/curves": "2.4.0",
+    "@noble/hashes": "2.4.0"
+  },
+  "devDependencies": {
+    "@zk-kit/eddsa-poseidon": "1.0.4"
+  }
+}

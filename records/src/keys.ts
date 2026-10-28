@@ -3,7 +3,7 @@
 // Records mixes no key: keys/ does (keys/README.md), and an app takes its keys from there. A
 // profile's main key comes from the person's seed and signs everything for its folder: its records,
 // its messages, its pulls and its blob requests. No other key signs for a profile: someone acting
-// for the person asks one of the person's signers, which signs with the main key. Every key signs
+// for the person asks one of the person's signers (signers/), which signs with the main key. Every key signs
 // with EdDSA-Poseidon on Baby Jubjub, by keys/'s signBytes, and every address is a packed point in
 // base58.
 

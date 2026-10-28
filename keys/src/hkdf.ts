@@ -17,8 +17,8 @@ export const INFO = {
    * with before evm was added, so every Solana address stays as it was.
    */
   pay: (type: 'solana' | 'evm', label: string) => `forest/v1/pay/${type}/${label}`,
-  /** A profile's rule key, mixed from its secret: it names the paths of the profile's rules (records/README.md, Rules). */
-  rule: 'forest/v1/rule',
+  /** A profile's permission key, mixed from its secret: it names the paths of the profile's permissions (signers/README.md, Permissions). */
+  permission: 'forest/v1/permission',
 } as const
 
 /** The seed is 32 bytes. */

@@ -23,6 +23,8 @@ and `test/vectors.json` pins its answers.
   BIP39's PBKDF2 step, which would hash the words into another seed.
 - Whoever controls the app that holds the seed controls the seed, since the app can do whatever the
   seed can. A web app's code arrives from its server on each visit; an installed app's does not.
+- The app that holds it is the person's signer: an AI, another person or a business acts for the
+  person only by asking it ([signers](../signers/README.md)).
 
 ### The recipe
 
@@ -33,8 +35,9 @@ The recipe uses words from the rest of the standard:
 - **stamp:** what a verifier, anyone who signs stamps, signs to a person's seed;
 - **tag:** the number an index, a service that scores profiles, knows a profile by in its tree,
   one for each verifier that signed the person a stamp;
-- **rule:** a private record in a profile's folder, the signed records kept under its main key,
-  saying who may ask the person's devices to act as that profile, and for what.
+- **permission:** a private record in a profile's folder, the signed records kept under its main
+  key, saying who may ask the person's signers to act as that profile, and for what
+  ([signers](../signers/README.md#permissions)).
 
 Two mixers, each a standard one-way mix:
 
@@ -59,7 +62,7 @@ proofs/stamp's ([stamp](../proofs/stamp/README.md#the-stamp-and-the-stamp-proof)
 | the seed scalar | Poseidon, the profile prefix and the label's scope | a main key: one profile's name and signature |
 | the seed | HKDF, `forest/v1/profile/<label>` | that profile's secret, which its inbox key comes from |
 | a profile's secret | HKDF, `forest/v1/inbox` | that profile's inbox key, which opens what is encrypted to it |
-| a profile's secret | HKDF, `forest/v1/rule` | that profile's rule key, which names the paths of its rules ([records](../records/README.md#rules)) |
+| a profile's secret | HKDF, `forest/v1/permission` | that profile's permission key, which names the paths of its permissions ([signers](../signers/README.md#permissions)) |
 | the seed | HKDF, `forest/v1/pay/<type>/<label>` | that profile's pay key for one address type, `solana` or `evm`, and its address |
 | the seed scalar | Poseidon, the verifier prefix and the verifier's name hash | the person's secret for one verifier, which their stamp number (what they give the verifier) and tags come from |
 
@@ -164,7 +167,8 @@ key of each type.
   never adjusted. Its address is the last 20 bytes of keccak256 of the uncompressed public key
   without its leading `04`, written in EIP-55's mixed-case checksum: that is its one spelling, and
   any other, all lower case included, is refused (`isEvmAddress`).
-- The profile's `pay` is both addresses, `{ solana, evm }` (`payAddresses`).
+- A profile record's `pay` lists any of them, each signed in `paySig`; `payAddresses` gives both,
+  `{ solana, evm }`.
 - Each pay key signs the address of the profile it pays, for the profile record's `paySig`
   (`signPay`, `checkPaySig`), over `0xff` ‖ UTF-8(`forest/v1/pay\n`) ‖ UTF-8(the profile's
   address), in base64url without padding. `solana`: an Ed25519 signature (RFC 8032), 64 bytes,
@@ -212,56 +216,6 @@ itself, from no seed. No person's key is ever one.
 - An index signs its roots with one ([proofs/reputation](../proofs/reputation/README.md)), and a
   verifier's stamp key is made the same way ([proofs/stamp](../proofs/stamp/README.md)).
 
-### Signers
-
-A signer is a device the person owns that holds their seed, such as their phone or their laptop.
-The seed lives only on signers, and no key is ever handed out: not a main key, not an inbox key,
-and no key made for someone else.
-
-Everyone else asks a signer:
-
-- an AI app, through its connection, the id a signer gave it to come through a relay: the relay
-  carries what the AI asks to the signer, and the answer back. Anyone can run one; the main way is
-  the connector, which AI apps call from their cloud.
-- a person or a business, by a message to the person's inbox, signed by the main key of a profile
-  of their own ([records](../records/README.md#inbox)).
-
-The signer decides by the rules of the profile it is asked to act as: private records in that
-profile's folder, which only the person's signers read ([records](../records/README.md#rules)). It
-never acts on an ask no rule covers without the person's yes; how it asks, a prompt or a message
-waiting in the inbox, is the app's. Whatever it does, it signs with the profile's main key, so a
-host or a reader checks one key per profile.
-
-A rule's `post` never covers a profile's profile record, its hosts record or a rule: a signer always
-asks the person for those, since an AI allowed to write them could move the folder, change the pay
-addresses or raise its own limits after reading an offer written to trick it.
-
-### What an app that holds keys should know
-
-The person decides what to do with their keys, and may expose or link them if they choose. This
-is what an app that holds the seed, a signer, should know:
-
-1. The seed stays on the person's own devices, behind each one's unlock. The main way is a passkey,
-   the device's own unlock, so there is no password to keep; anyone can use an OS keychain or a
-   hardware key instead. The recipe is the same whichever is used.
-2. The signer asks for the person's device unlock whenever the person acts with the seed: to sign
-   with a main key, or to make a proof. What others ask, it does only within the profile's rules,
-   and it asks the person about the rest.
-3. No key ever leaves a signer, to an app, a server, an AI or another person. What leaves is
-   signatures, proofs, and what the profile's rules let others read.
-4. An AI app asks through its connection, and a person or a business by a message signed by its
-   own profile's main key; the signer acts on either only by the profile's rules.
-5. Neither the AI app nor the connector ever receives the person's own profiles' addresses, keys
-   or folders, though what it posts is public, so it can find that one profile (hosts keep folders
-   and indexes read addresses, by design). An AI asks in words; the signer picks the profile, signs
-   and publishes straight to the host; answers carry no addresses.
-6. Proofs are made on the signer, never delegated.
-7. The app works with any host, and its host with any app.
-8. The app that holds the seed is open source.
-9. The app keeps a copy of every record it signs; a host may drop one, and the copy puts it back.
-10. The app keeps the verifier's stamp on the device, as JSON; a verifier that keeps what it signed
-    can hand a lost one back by its stamp number, if it chooses.
-
 ### Use it
 
 Everything is exported from `src/index.ts`. Everything that mixes from the seed is async; what
@@ -287,7 +241,7 @@ mixes from the seed scalar is not.
 | `publicKeyOf(scalar)`, `addressOf(publicKey)`, `pointOf(address)` | A public key, its address, and the key an address names |
 | `packPoint(point)`, `unpackPoint(bytes)` | A point's 32 packed bytes, and the point back, or null |
 | `scopeOf(label)`, `nameHashOf(name)`, `fieldHash(namespace, ...parts)`, `PREFIX` | Text as the proofs' numbers, and the two prefixes |
-| `hkdf(ikm, info)`, `INFO` | The mixer and its info strings; a profile's rule key is `hkdf(secret, INFO.rule)` |
+| `hkdf(ikm, info)`, `INFO` | The mixer and its info strings; a profile's permission key is `hkdf(secret, INFO.permission)` |
 
 ```
 npm ci && npm run build   # at the root: every package; keys/ to dist/, for the packages that import it
@@ -301,11 +255,11 @@ Node 22.18 or later runs the TypeScript directly.
 ### Test vectors
 
 `test/vectors.json` pins, for the seed `00 01 … 1f`: its words; its seed scalar; the two prefixes;
-the main keys for `tutoring/seller` and `tutoring/buyer`, each with its secret, its rule key and its
-inbox key, and their pay keys of both types, each with its signature over its profile's address; for
-two verifiers, `issuer-a.example` and `issuer-b.example`, the name hash, the person's secret, the
-stamp number and a tag for each label; one signature by the `tutoring/seller` main key; and a
-service key, from 32 bytes of `0x2a`. `npm test` checks each value and, but for the words,
+the main keys for `tutoring/seller` and `tutoring/buyer`, each with its secret, its permission key
+and its inbox key, and their pay keys of both types, each with its signature over its profile's
+address; for two verifiers, `issuer-a.example` and `issuer-b.example`, the name hash, the person's
+secret, the stamp number and a tag for each label; one signature by the `tutoring/seller` main
+key; and a service key, from 32 bytes of `0x2a`. `npm test` checks each value and, but for the words,
 recomputes it without the library: HKDF and keccak from `@noble/hashes`, the seed scalar step by
 step without zk-kit's `deriveSecretScalar`, Baby Jubjub's points and signatures from zk-kit
 (`@zk-kit/baby-jubjub`, `@zk-kit/eddsa-poseidon`), the address packed by hand, the signature's
@@ -326,7 +280,7 @@ same main key and tag ([proofs/stamp](../proofs/stamp/README.md)).
   them, as long as no two share a name: two under one name get the same stamp number from each
   person.
 - **No key gives the seed back.** Every mix is one way. A profile's secret gives its inbox key and
-  its rule key, and nothing else.
+  its permission key, and nothing else.
 - **Nothing leaves the device.** The library talks to no network and stores nothing.
 
 ## Limits
@@ -386,7 +340,7 @@ record's signature, so nothing asks for Poseidon there.
 device, from the seed: it is a standard, built into every browser's Web Crypto, and well studied.
 Inside a zero-knowledge proof, SHA-256 costs far more than Poseidon. So what a proof must work out
 (the verifier secret, the stamp number, a tag, a main key) is Poseidon of the seed scalar, and what
-no proof needs (the profiles' secrets, the pay keys, the rule keys) is HKDF of the seed or of a
+no proof needs (the profiles' secrets, the pay keys, the permission keys) is HKDF of the seed or of a
 profile's secret.
 Neither is ours; both are used unchanged.
 

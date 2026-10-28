@@ -1,9 +1,8 @@
-// Reaching a host a stranger named, and only on the public internet. A host that reads a sender's
-// records, or an app that follows a profile's hosts record, goes to an origin someone else chose:
-// one that may lead into the reader's own network, a cloud's metadata service, or a machine behind
-// a router. publicFetch refuses all of those before anything is sent, and follows no redirect, so
-// a public host cannot hand the request on to a private one. Services' host and the CLI share this
-// copy.
+// Reaching a host a stranger named, and only on the public internet. A service that follows a
+// profile's hosts record goes to an origin someone else chose: one that may lead into the
+// service's own network, a cloud's metadata service, or a machine behind a router. publicFetch
+// refuses all of those before anything is sent, and follows no redirect, so a public host cannot
+// hand the request on to a private one.
 //
 // Node only: it uses undici and Node's DNS. Everything else in records runs in a browser too.
 

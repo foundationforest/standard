@@ -13,24 +13,15 @@
 // opened. No forward secrecy: a key that leaks later opens every envelope ever encrypted to it.
 //
 // A message's body is one of these envelopes, encrypted to the inbox key of the profile it is to.
-// message() encrypts and signs one; openMessage() checks one and opens it. A profile's rules are
-// private records in its own folder, each encrypted to its own inbox key alone (rules.ts).
+// message() encrypts and signs one; openMessage() checks one and opens it.
 
-import { INFO, hkdf, inboxKey } from '@foundationforest/keys'
-import { hmac } from '@noble/hashes/hmac.js'
-import { sha256 } from '@noble/hashes/sha2.js'
 import { Decrypter, Encrypter } from 'age-encryption'
-import { b64u, hex, utf8 } from './bytes.ts'
-import { type Json, canonical, parseCanonical } from './canonical.ts'
-import type { Key } from './keys.ts'
+import { b64u } from './bytes.ts'
+import { canonical, parseCanonical } from './canonical.ts'
 import { type Sender, type SignedMessage, decodeMessage, encodeMessage, inboxKeyOf, signMessage } from './message.ts'
-import { type Body, type SignedRecord, isPrivate } from './record.ts'
-import { RULE_PREFIX, type Rule, type Who, checkRule } from './rules.ts'
-import type { View } from './view.ts'
-import { ownerRecord } from './write.ts'
+import { type Body, isPrivate } from './record.ts'
 
 export { isPrivate }
-export * from './rules.ts'
 
 /** A private body: `body` in an envelope encrypted to these keys (`age1pq1…`), which only they open. */
 export async function makePrivate(body: Body, readers: string[]): Promise<{ private: string }> {
@@ -76,54 +67,4 @@ export async function message(sender: Sender, to: string, body: Body, time: numb
 export async function openMessage(message: SignedMessage | string, identity: string): Promise<{ id: string; from: string; to: string; time: number; body: Body }> {
   const { message: m, id } = decodeMessage(typeof message === 'string' ? message : encodeMessage(message))
   return { id, from: m.from, to: m.to, time: m.time, body: await openPrivate(m.body, identity) }
-}
-
-/** A profile's main key, as keys/'s mainKey gives it: with the profile's secret, which its inbox key and rule key come from. */
-export type ProfileKey = Key & { secret: Uint8Array }
-
-/**
- * A rule's id, the last segment of its path: the first 32 hex characters of HMAC-SHA256, keyed by
- * the profile's rule key (keys/'s `hkdf(secret, INFO.rule)`), of the canonical text of `who`
- * without `key` and `name`. So one who has one rule per profile, whatever the person calls it; and
- * since only the person's signers hold the rule key, a path names no who, and one who's rules on two
- * profiles never share a path.
- */
-export async function ruleId(owner: { secret: Uint8Array }, who: Who): Promise<string> {
-  const { key: _key, name: _name, ...named } = who as { [field: string]: Json }
-  return hex.encode(hmac(sha256, await hkdf(owner.secret, INFO.rule), utf8(canonical(named)))).slice(0, 32)
-}
-
-/**
- * A rule's record: the rule, checked, encrypted to the profile's own inbox key alone, at
- * `rule/<id>` in its folder, signed by its main key. Write it at a time past the current one's at
- * that path (nextTime). A null body at the same path removes the rule.
- */
-export async function ruleRecord(owner: ProfileKey, rule: Rule, time: number): Promise<SignedRecord> {
-  checkRule(rule)
-  const { encryptTo } = await inboxKey(owner.secret)
-  return ownerRecord(owner, RULE_PREFIX + (await ruleId(owner, rule.who)), await makePrivate(rule as unknown as Body, [encryptTo]), time)
-}
-
-/**
- * A profile's rules, by id, from its view (readProfile's, read by POST), opened with its inbox key.
- * A rule that does not open, does not check, or sits at a path its who does not give is left out: a
- * rule a signer cannot read is no rule, so it asks the person, as for any ask no rule covers. A
- * signer reads them before it acts on any ask for the profile, so a rule removed on another device
- * stops here too.
- */
-export async function readRules(view: View, owner: { secret: Uint8Array }): Promise<Map<string, Rule>> {
-  const { identity } = await inboxKey(owner.secret)
-  const rules = new Map<string, Rule>()
-  for (const [path, { record }] of view.current) {
-    if (!path.startsWith(RULE_PREFIX) || record.body === null) continue
-    const id = path.slice(RULE_PREFIX.length)
-    try {
-      const rule = await openPrivate(record.body, identity)
-      checkRule(rule)
-      if ((await ruleId(owner, rule.who)) === id) rules.set(id, rule)
-    } catch {
-      // Left out: no rule, so the signer asks.
-    }
-  }
-  return rules
 }

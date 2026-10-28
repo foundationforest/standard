@@ -1,9 +1,8 @@
 // The proofs a profile record carries (README.md, Proofs), as their proof checks take them. Records
 // checks no proof itself: a stamp proof's check is proofs/stamp/client's checkStamp, a reputation
 // proof's proofs/reputation/client's checkReputation. These turn a profile record's proof into what
-// each one takes, for the profile that carries it, or null when the proof is not that shape. A host
-// that keeps inboxes with a verifier's rule is given checkStamp (HostOptions); a reader calls them
-// itself.
+// each one takes, for the profile that carries it, or null when the proof is not that shape. A
+// reader calls the proof check itself.
 
 import { b64u, hex } from './bytes.ts'
 import { publicKeyFromAddress } from './keys.ts'

@@ -83,9 +83,9 @@ describe('one key', () => {
     assert.equal(view([bobs]).current.size, 0, 'Bob’s record is in Bob’s folder')
   })
 
-  test('a rule is a content path like any other: the newest record there is current, and a delete deletes it', () => {
-    const path = 'rule/0123456789abcdef0123456789abcdef'
-    const one = ownerRecord(alice, path, { anything: 'what a rule says is private: any body here' }, T0)
+  test('a permission is a content path like any other: the newest record there is current, and a delete deletes it', () => {
+    const path = 'permission/0123456789abcdef0123456789abcdef'
+    const one = ownerRecord(alice, path, { anything: 'what a permission says is private: any body here' }, T0)
     const two = ownerRecord(alice, path, null, T0 + 1)
     assert.equal(view([one]).current.get(path)!.id, idOf(one))
     assert.equal(liveContent(view([one, two])).has(path), false)

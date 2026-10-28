@@ -37,7 +37,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        package: [keys, records, proofs/stamp/client, escrows/solana/client, proofs/reputation/client]
+        package: [keys, records, signers, proofs/stamp/client, escrows/solana/client, proofs/reputation/client]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7

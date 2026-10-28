@@ -2,7 +2,7 @@
   "name": "@foundationforest/records",
   "version": "0.0.0",
   "private": true,
-  "description": "Forest records: signed records on open hosts. The core library, a reference host, private records, a fetch that reaches only public addresses, the profile record's schema, tests and vectors.",
+  "description": "Forest records: signed records on open hosts. The core library, private records, a fetch that reaches only public addresses, the host check any host runs against its own address, the profile record's schema, tests and vectors.",
   "license": "Apache-2.0",
   "type": "module",
   "engines": {
@@ -13,9 +13,9 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
-    "./host": {
-      "types": "./dist/host.d.ts",
-      "default": "./dist/host.js"
+    "./check": {
+      "types": "./dist/check.d.ts",
+      "default": "./dist/check.js"
     },
     "./private": {
       "types": "./dist/private.d.ts",
@@ -36,7 +36,7 @@
     "build": "tsc -p tsconfig.build.json",
     "check": "tsc --noEmit",
     "test": "node --test --test-concurrency=1 --test-force-exit test/*.test.ts",
-    "bench": "node bench/throughput.ts"
+    "check-host": "node scripts/check-host.ts"
   },
   "dependencies": {
     "@foundationforest/keys": "0.0.0",

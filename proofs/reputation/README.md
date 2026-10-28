@@ -4,11 +4,11 @@ Part of Forest's standard: [the top README](../../README.md). Up: [proofs](../RE
 
 ## What it is
 
-The reputation proof lets a person carry a score from their profiles to another profile of their
-own, such as a new one, without naming any of them. A profile's reviews are its own, and nothing
-public ties a person's profiles together; the proof carries the score across without linking them,
-and only to a profile of the person's own, so nobody can lend their score to someone else.
-It has two uses:
+The reputation proof lets a person prove they are trusted on their other profiles, without saying
+which. A profile's reviews are its own, and nothing public ties a person's profiles together; the
+proof carries a score from their profiles to another profile of their own, such as a new one,
+without linking them, and only to a profile of the person's own, so nobody can lend their score to
+someone else. It has two uses:
 
 - **Across profiles:** the weighted average of up to eight profiles the person picks, naming none
   of them: each profile's score in the tree an index, a service that scores profiles, publishes,
@@ -42,9 +42,10 @@ index signs; a proof means only what that index says that root holds.
     to the seed behind the profile.
   - `scope`: the profile's label as a number, exactly as `keys/` makes it
     ([keys](../../keys/README.md#the-recipe)).
-  - `score` and `count`: each a whole number below 2^32 whose meaning is the index's (a rating and
-    the number of reviews behind it, for instance). The circuit outputs the scores' average, each
-    weighted by its count; any other aggregate is a new circuit.
+  - `score` and `count`: each a whole number below 2^32, meaning what the index says. Any index
+    can fill them as it chooses; the main way is the index's trust in each profile as its score,
+    with a count of 1, so the proof gives a plain average of the profiles counted. The circuit
+    outputs the scores' average, each weighted by its count; any other aggregate is a new circuit.
 - **One leaf per tag.**
 - **The tree** is Semaphore's lean incremental Merkle tree over Poseidon of pairs, with the leaves
   in the index's order: it hashes the leaves in pairs, level by level, up to one number, the root,

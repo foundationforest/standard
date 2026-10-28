@@ -75,15 +75,15 @@ describe('schemas', () => {
     for (const role of [7, null, 'x'.repeat(65)]) assert.ok(!fits('profile', edit('profile', ['role'], role)), String(role))
   })
 
-  test('a profile’s pay is keys/’s payAddresses for its label: its Solana address in base58 and its EVM address in EIP-55, both there', async () => {
+  test('a profile’s pay is keys/’s payAddresses for its label, any of its types: its Solana address in base58, its EVM address in EIP-55', async () => {
     const pay = example('profile').pay
     assert.deepEqual(pay, await payAddresses(SEED, 'tutoring/seller'))
     assert.equal(isEvmAddress(pay.evm), true)
     assert.ok(fits('profile', edit('profile', ['pay'], undefined)), 'optional')
     assert.ok(!fits('profile', edit('profile', ['paySig'], undefined)), 'but with it, paySig')
     assert.ok(fits('profile', edit('profile', ['pay', 'bitcoin'], 'bc1q…')), 'a type a reader does not know is ignored, not refused')
-    assert.ok(!fits('profile', edit('profile', ['pay'], pay.solana)), 'no longer one address')
-    for (const type of ['solana', 'evm']) assert.ok(!fits('profile', edit('profile', ['pay', type], undefined)), `both types: no ${type}`)
+    assert.ok(!fits('profile', edit('profile', ['pay'], pay.solana)), 'not one address: an object of them')
+    for (const type of ['solana', 'evm']) assert.ok(fits('profile', edit('profile', ['pay', type], undefined)), `one type is enough: no ${type}`)
     for (const bad of ['x', alice.address.replace(/^./, '0'), 'I'.repeat(44), 'a'.repeat(45), 7]) assert.ok(!fits('profile', edit('profile', ['pay', 'solana'], bad)), String(bad))
     for (const bad of [pay.evm.slice(2), pay.evm.slice(0, -1), pay.evm + '0', '0x' + 'g'.repeat(40), 7]) assert.ok(!fits('profile', edit('profile', ['pay', 'evm'], bad)), String(bad))
     assert.equal(isEvmAddress(pay.evm.toLowerCase()), false, 'the schema takes any case; the one spelling is keys/’s isEvmAddress')
@@ -99,7 +99,16 @@ describe('schemas', () => {
     assert.deepEqual(checkPay(edit('profile', ['pay', 'evm'], other.address), alice.address), ['solana'], 'an address that is not its own')
     assert.deepEqual(checkPay(edit('profile', ['paySig', 'solana'], body.paySig.evm.slice(0, 86)), alice.address), ['evm'])
     assert.deepEqual(checkPay(edit('profile', ['paySig'], undefined), alice.address), [], 'no paySig, no address')
-    for (const type of ['solana', 'evm']) assert.ok(!fits('profile', edit('profile', ['paySig', type], undefined)), `both types: no ${type}`)
+    for (const type of ['solana', 'evm']) assert.ok(!fits('profile', edit('profile', ['paySig', type], undefined)), `a type pay lists, with no signature: ${type}`)
+    for (const type of ['solana', 'evm'] as const) {
+      // A profile record that lists one type, with its signature alone.
+      const other = type === 'solana' ? 'evm' : 'solana'
+      const one: { [key: string]: any } = { ...body, pay: { [type]: body.pay[type] }, paySig: { [type]: body.paySig[type] } }
+      assert.ok(fits('profile', one), `${type} alone`)
+      assert.deepEqual(checkPay(one, alice.address), [type])
+      assert.ok(fits('profile', { ...one, paySig: { ...one.paySig, [other]: body.paySig[other] } }), 'a signature for a type pay does not list is ignored')
+      assert.deepEqual(checkPay({ ...one, paySig: body.paySig }, alice.address), [type], 'and not counted')
+    }
     for (const bad of [body.paySig.solana.slice(1), body.paySig.solana + 'A', body.paySig.solana.replace(/^./, '+'), 7]) assert.ok(!fits('profile', edit('profile', ['paySig', 'solana'], bad)), String(bad))
     for (const bad of [body.paySig.evm.slice(1), body.paySig.evm + 'A', body.paySig.evm.replace(/^./, '/'), 7]) assert.ok(!fits('profile', edit('profile', ['paySig', 'evm'], bad)), String(bad))
   })
@@ -111,15 +120,15 @@ describe('schemas', () => {
     for (const bad of ['age1pq1' + 'q'.repeat(60), alice.address, 'AGE1' + 'Q'.repeat(58), 'age1' + 'b'.repeat(58)]) assert.ok(!fits('profile', edit('profile', ['inboxKey'], bad)), bad)
   })
 
-  test('a profile’s inbox: open to anyone or to a verifier’s stamp proofs, a size; nothing else', async () => {
+  test('a profile’s inbox: open to anyone, with a size or not; nothing else', async () => {
     const reader = (await inboxKey(new Uint8Array(32).fill(5))).encryptTo
     const verifier = example('profile').proofs[at('stamp')].verifier
-    for (const inbox of [{ senders: 'anyone' }, { senders: { verifier } }, { senders: 'anyone', maxBytes: 4000 }]) {
+    for (const inbox of [{}, { maxBytes: 4000 }, { maxBytes: 0 }]) {
       assert.ok(fits('profile', edit('profile', ['inbox'], inbox)), JSON.stringify(inbox))
       assert.ok(inboxOf(edit('profile', ['inbox'], inbox)) !== 'unsupported', 'and a host reads it')
     }
     assert.ok(fits('profile', edit('profile', ['inbox'], undefined)), 'optional: no field, no inbox')
-    for (const inbox of [{}, 'anyone', { senders: 'everyone' }, { senders: { verifier: 'x' } }, { senders: { verifier: pointOf(verifier).map((n) => n.toString(16).padStart(64, '0')).join('') } }, { senders: { verifier: verifier + '0' } }, { senders: { verifier: pointOf(verifier).map(String) } }, { senders: { verifier, label: 'x' } }, { senders: { deposit: '5' } }, { senders: 'anyone', once: true }, { senders: 'anyone', maxBytes: -1 }, { senders: 'anyone', deposit: '5' }, { senders: 'anyone', readers: [reader] }, { senders: 'anyone', readers: [] }]) {
+    for (const inbox of ['anyone', [], { senders: 'anyone' }, { senders: { verifier } }, { maxBytes: -1 }, { maxBytes: 1.5 }, { maxBytes: '4000' }, { once: true }, { deposit: '5' }, { readers: [reader] }, { readers: [] }]) {
       assert.ok(!fits('profile', edit('profile', ['inbox'], inbox)), JSON.stringify(inbox))
       assert.equal(inboxOf(edit('profile', ['inbox'], inbox)), 'unsupported', 'and a host refuses deliveries to it')
     }
