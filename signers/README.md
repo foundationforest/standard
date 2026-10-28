@@ -30,8 +30,9 @@ standard.
   of a profile of their own (Asking by message).
 
 The app decides by the permissions of the profile it is asked to act as (Permissions): it does what
-one covers, and asks the person about the rest. Whatever it does, it signs with that profile's main
-key and publishes straight to the profile's hosts.
+one covers, refuses a few asks outright (Asks, Permissions), and asks the person about the rest.
+Whatever it does, it signs with that profile's main key and publishes straight to the profile's
+hosts.
 
 ### Asks
 
@@ -56,10 +57,13 @@ never by its address.
   `to`, another profile's address, instead of a path: the app encrypts the body to that profile's
   inbox key, signs it and delivers it ([records](../records/README.md#inbox)). A reply is a write to
   the sender's address.
-- **Making a profile** is a write of `profile` under a label the person has no profile under yet.
-  It always asks the person. The app makes the rest: the profile's hosts record, its inbox key and
-  pay addresses in the profile record, and its stamp proof, made on the device
-  ([proofs/stamp](../proofs/stamp/README.md)).
+- **A write of `profile`** always asks the person. Under a label with no profile yet, on a yes the
+  app makes the profile: its hosts record, and its profile record with `market`, `role`,
+  `inboxKey`, `pay` and `paySig`, and a stamp proof in `proofs` when the app holds a stamp, made on
+  the device ([proofs/stamp](../proofs/stamp/README.md)). For a profile that exists, on a yes the
+  app keeps the fields it manages itself (`market`, `role`, `inboxKey`, `inbox`, `pay`, `paySig`,
+  `proofs`) and takes only the market's own fields from the ask's body.
+- **A write of `hosts` or of a permission** is refused: the person does those in their app.
 - **pay,** as the profile with the label: `amount` of `currency` to `to`, an address or a post's
   full address, the address of the profile whose folder holds the post, `/`, then its path, such as
   `9bpP…azDC/offer/maths`. `amount` is decimal text, a whole number and up to six places (`"30"`,
@@ -182,9 +186,12 @@ reader checks them, since everything a host takes is signed by the profile's mai
 - `can`: the asks the who may make without the person's yes, `read`, `write` and `pay`, and nothing
   more. It may be empty: the who sees that profile, and every ask needs the person's yes. A read
   with nothing named needs none.
-- `write` never covers the profile record, the hosts record or a permission: those always ask the
-  person, since an AI allowed to write them could move the folder, change the pay addresses or
-  raise its own limits after reading an offer written to trick it.
+- `write` never covers the profile record, the hosts record or a permission: a write of `profile`
+  always asks the person, and one of `hosts` or of a permission is refused (Asks), since an AI
+  allowed to write them could change what the profile shows, move the folder or raise its own
+  limits after reading an offer written to trick it.
+- `read` never covers a permission, whatever `can` says: the app refuses it, even with the person's
+  yes, since a permission may hold a connection's private key (`refuses`).
 - `limit`: how much the who may pay as this profile in any one period, in one currency: a day is any
   24 hours, a week any 7 days, a month any 30 days. `amount` is decimal text, a whole number and up
   to six places; `currency` is any currency code. A payment in another currency is outside it. No
@@ -233,7 +240,7 @@ Everything is exported from `src/index.ts`, as `@foundationforest/signers`.
 | `signRegister(key, connector, challenge)`, `checkRegister(connection, connector, challenge, sig)` | A registration's signature and its check |
 | `linkUrl(connector)`, `readFrame(text)`, `askFrame(id, connection, ask)`, `answerFrame(id, answer)` | Where the live link opens; a frame, checked, or a RecordError `frame`; an ask and an answer as frames |
 | `permissionRecord(mainKey, permission, time)`, `readPermissions(view, mainKey)`, `permissionId(mainKey, who)` | A permission's record, encrypted and signed; a profile's permissions from its view; a permission's id |
-| `checkPermission(value)`, `knowsPermission(permission, currencies)`, `allows(permission, ask, { now, currencies, spent? })`, `isOwnPath(path)` | A permission's shape, or a RecordError `permission`; whether an app knows it whole; whether it covers an ask without the person's yes, `spent` what the who already paid in the limit's period; whether a write to a path always asks the person |
+| `checkPermission(value)`, `knowsPermission(permission, currencies)`, `allows(permission, ask, { now, currencies, spent? })`, `refuses(ask)` | A permission's shape, or a RecordError `permission`; whether an app knows it whole; whether it covers an ask without the person's yes, `spent` what the who already paid in the limit's period; whether an app refuses an ask whatever a permission says, even with the person's yes |
 | `ACTIONS`, `PERIODS`, `PERMISSION_PREFIX` | The actions, the periods in milliseconds, and `permission/` |
 
 ```

@@ -18,9 +18,9 @@ export const PERMISSION_PREFIX = 'permission/'
 
 /**
  * What a permission lets its who ask for without the person's yes: these three, and nothing more.
- * `write` never covers the profile record, the hosts record or a permission (isOwnPath). An action
- * outside the three is kept, as any value this code does not know, and an app acts on no
- * permission that has one (knowsPermission).
+ * `write` never covers the profile record, the hosts record or a permission, and `read` never
+ * covers a permission (allows, refuses). An action outside the three is kept, as any value this
+ * code does not know, and an app acts on no permission that has one (knowsPermission).
  */
 export const ACTIONS = ['read', 'write', 'pay'] as const
 export type Action = (typeof ACTIONS)[number]
@@ -97,9 +97,15 @@ export function knowsPermission(permission: Permission, currencies: Iterable<str
   return limit === undefined || (known(limit, ['amount', 'currency', 'per']) && [...currencies].includes(limit.currency) && Object.hasOwn(PERIODS, limit.per))
 }
 
-/** The paths no permission covers, which a write always asks the person for: the profile record, the hosts record and a permission. */
-export function isOwnPath(path: string): boolean {
-  return path === 'profile' || path === 'hosts' || path.split('/')[0] === PERMISSION_PREFIX.slice(0, -1)
+/**
+ * Whether an app refuses an ask whatever a permission's `can` says, even with the person's yes: a
+ * read of a permission, since one may hold a connection's private key, and a write of the hosts
+ * record or of a permission, which the person makes in their app. A write of the profile record is
+ * not refused: no permission covers it (allows), so it always asks the person.
+ */
+export function refuses(ask: Ask): boolean {
+  if (!('path' in ask) || ask.path === undefined) return false
+  return ask.path.split('/')[0] === PERMISSION_PREFIX.slice(0, -1) || (ask.ask === 'write' && ask.path === 'hosts')
 }
 
 /** Decimal text, up to six places, as whole millionths. */
@@ -111,15 +117,17 @@ function micros(amount: string): bigint {
 /**
  * Whether `permission`, on the profile an ask is for, lets the app do the ask without asking the
  * person, at `now`: a permission it knows whole, not ended, whose `can` covers the ask. A read with
- * nothing named needs no action. A write never covers the profile record, the hosts record or a
- * permission. A pay is within the limit only in its currency, with `spent`, what this who already
- * paid as this profile in that currency over the limit's period up to now, which the app counts.
+ * nothing named needs no action. Nothing covers an ask the app refuses (refuses), and a write
+ * never covers the profile record. A pay is within the limit only in its currency, with `spent`,
+ * what this who already paid as this profile in that currency over the limit's period up to now,
+ * which the app counts.
  */
 export function allows(permission: Permission, ask: Ask, options: { now: number; currencies: Iterable<string>; spent?: string }): boolean {
   if (!knowsPermission(permission, options.currencies)) return false
   if (permission.until !== undefined && options.now > permission.until) return false
+  if (refuses(ask)) return false
   if (ask.ask === 'read') return ask.label === undefined || permission.can.includes('read')
-  if (ask.ask === 'write') return permission.can.includes('write') && ('to' in ask || !isOwnPath(ask.path))
+  if (ask.ask === 'write') return permission.can.includes('write') && ('to' in ask || ask.path !== 'profile')
   if (!permission.can.includes('pay')) return false
   const limit = permission.limit
   return limit === undefined || (ask.currency === limit.currency && micros(options.spent ?? '0') + micros(ask.amount) <= micros(limit.amount))
