@@ -1,12 +1,16 @@
 // The client end to end over HTTP, against the minimal host (host.ts): two hosts, a profile
-// writing, readers reading both, updates, deletes, moving hosts, and hosts that misbehave. What a
-// host itself must do is the host check's (check.test.ts).
+// writing, readers reading both, updates, deletes, moving hosts, hosts that misbehave, and the
+// payment a write carries. What a host itself must do is the host check's (check.test.ts).
 
 import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
 import { after, before, describe, test } from 'node:test'
-import { MAX_LINE_READ, leave, readAll, readFolder, readInbox, readPage, write } from '../src/client.ts'
+import { sha256 } from '@noble/hashes/sha2.js'
+import { hex, utf8 } from '../src/bytes.ts'
+import { MAX_LINE_READ, type Payment, leave, readAll, readFolder, readInbox, readPage, upload, write } from '../src/client.ts'
 import { type SignedEntry, checkEntry, encodeEntry } from '../src/entry.ts'
+import { fileOf } from '../src/files.ts'
+import { encodeInbox } from '../src/inbox.ts'
 import { inboxEntry } from '../src/locked.ts'
 import { liveContent } from '../src/view.ts'
 import { entry, nextTime } from '../src/write.ts'
@@ -412,6 +416,74 @@ describe('limits: each host’s own batch and page; each reader’s own size; 60
     } finally {
       away.closeAllConnections()
       await new Promise((resolve) => away.close(resolve))
+      await h.close()
+    }
+  })
+})
+
+describe('payment: the forest-payment header a write carries', () => {
+  /** A request's body, as the client sends it: each line and a newline. */
+  const bodyOf = (lines: string[]) => utf8(lines.map((l) => l + '\n').join(''))
+  /** A payment that names its host and the hash of the bytes it was given: another for each host and each request. */
+  const payment: Payment = (host, body) => `${host} ${hex.encode(sha256(body))}`
+
+  test('each write, inbox entry and upload carries what the payment gives that host for that request; with none, or none given, no header', async () => {
+    const hosts = [await startHost({ now: () => T0 }), await startHost({ now: () => T0 })]
+    const urls = hosts.map((h) => h.url)
+    /** What each host was handed: the request, and its header. */
+    const got = new Map<string, Array<[string, string | undefined]>>()
+    for (const h of hosts) {
+      const seen: Array<[string, string | undefined]> = []
+      got.set(h.url, seen)
+      const [accept, leaveIt, uploadIt] = [h.accept.bind(h), h.leave.bind(h), h.upload.bind(h)]
+      h.accept = async (lines, paid) => (seen.push(['entries', paid]), accept(lines))
+      h.leave = async (lines, paid) => (seen.push(['inbox', paid]), leaveIt(lines))
+      h.upload = async (name, type, bytes, paid) => (seen.push(['file', paid]), uploadIt(name, type, bytes))
+    }
+    try {
+      const photo = Uint8Array.from({ length: 100 }, (_, i) => i)
+      const name = fileOf(photo, 'image/png')
+      const entries = [profileAt(alice, urls, T0), entry(alice, 'photo/1', { files: [name] }, T0)]
+      const left = await inboxEntry(bob, alice.address, { text: 'hi' }, T0, profileBody('maths'))
+      for (const outcome of await write(urls, entries, { payment })) assert.ok(outcome.results.every((r) => r.ok), JSON.stringify(outcome))
+      await leave(urls, [left], { payment })
+      assert.ok((await upload(urls, photo, 'image/png', { payment })).every((o) => o.ok))
+      await write(urls, [entry(alice, 'photo/2', { files: [name] }, T0)])
+      await leave(urls, [await inboxEntry(bob, alice.address, { text: 'again' }, T0, profileBody('maths'))])
+      await upload(urls, photo, 'image/png')
+      await write(urls, [entry(alice, 'photo/3', { files: [name] }, T0)], { payment: () => undefined })
+      for (const url of urls) {
+        assert.deepEqual(got.get(url), [
+          ['entries', `${url} ${hex.encode(sha256(bodyOf(entries.map(encodeEntry))))}`],
+          ['inbox', `${url} ${hex.encode(sha256(bodyOf([encodeInbox(left)])))}`],
+          ['file', `${url} ${name.sha256}`],
+          ['entries', undefined],
+          ['inbox', undefined],
+          ['file', undefined],
+          ['entries', undefined],
+        ])
+      }
+    } finally {
+      for (const h of hosts) await h.close()
+    }
+  })
+
+  test('a batch sent again in halves pays for each request it sends, with that request’s bytes', async () => {
+    const h = await startHost({ now: () => T0 })
+    const given: string[] = []
+    const accept = h.accept.bind(h)
+    // A host that takes one line a request, and is handed each request's payment.
+    h.accept = async (lines, paid) => {
+      given.push(paid ?? 'none')
+      return lines.length > 1 ? [{ i: 0, ok: false, error: 'batch', message: 'one line a request' }] : accept(lines)
+    }
+    try {
+      const entries = ['offer/a', 'offer/b'].map((path) => entry(alice, path, offerBody('1'), T0))
+      const [outcome] = await write([h.url], entries, { payment })
+      assert.ok(outcome!.results.every((r) => r.ok), JSON.stringify(outcome))
+      const lines = entries.map(encodeEntry)
+      assert.deepEqual(given, [lines, lines.slice(0, 1), lines.slice(1)].map((l) => `${h.url} ${hex.encode(sha256(bodyOf(l)))}`))
+    } finally {
       await h.close()
     }
   })

@@ -9,7 +9,7 @@
 // otherwise.
 
 import { sha256 } from '@noble/hashes/sha2.js'
-import { concat, hex } from './bytes.ts'
+import { concat, hex, utf8 } from './bytes.ts'
 import { type Checked, type SignedEntry, decodeEntry, encodeEntry } from './entry.ts'
 import { FolderError } from './fail.ts'
 import { fileOf } from './files.ts'
@@ -32,21 +32,30 @@ export const MAX_FILE_READ = 50_000_000
 /** How to reach a host: `fetch` and `redirect` as a read takes them (ReadHow). */
 export type Reach = Pick<ReadHow, 'fetch' | 'redirect'>
 
+/**
+ * A host's payment: given the host's origin and the bytes one request carries, the value of that
+ * request's `forest-payment` header, or none. Called for each request: again for each half of a
+ * batch sent in halves. What it holds is the host's own.
+ */
+export type Payment = (host: string, body: Uint8Array) => string | undefined | Promise<string | undefined>
+/** How to write to a host: as Reach, and the payment for each request, when given. */
+export type WriteHow = Reach & { payment?: Payment }
+
 /** Write entries to each host: each of the hosts the folder's profile entry names. A host that fails does not stop the others. */
-export async function write(hosts: string[], entries: SignedEntry[], how: Reach = {}): Promise<PublishOutcome[]> {
+export async function write(hosts: string[], entries: SignedEntry[], how: WriteHow = {}): Promise<PublishOutcome[]> {
   return post(hosts, '/v1/entries', entries.map(encodeEntry), how)
 }
 
 /** Leave inbox entries with each host: each of the hosts the profile entry of the folder they are to names. */
-export async function leave(hosts: string[], entries: InboxEntry[], how: Reach = {}): Promise<PublishOutcome[]> {
+export async function leave(hosts: string[], entries: InboxEntry[], how: WriteHow = {}): Promise<PublishOutcome[]> {
   return post(hosts, '/v1/inbox', entries.map(encodeInbox), how)
 }
 
-async function post(hosts: string[], path: string, lines: string[], how: Reach): Promise<PublishOutcome[]> {
+async function post(hosts: string[], path: string, lines: string[], how: WriteHow): Promise<PublishOutcome[]> {
   return Promise.all(
     hosts.map(async (host): Promise<PublishOutcome> => {
       try {
-        return { host, ...(await postLines(`${host}${path}`, lines, how)) }
+        return { host, ...(await postLines(host, path, lines, how)) }
       } catch (err) {
         return { host, status: 0, results: [], error: (err as Error).message }
       }
@@ -54,12 +63,19 @@ async function post(hosts: string[], path: string, lines: string[], how: Reach):
   )
 }
 
+/** A write's headers: its content type, and the payment, when the function gives one for this request. */
+async function writeHeaders(host: string, type: string, body: Uint8Array, how: WriteHow): Promise<Record<string, string>> {
+  const payment = await how.payment?.(host, body)
+  return { 'content-type': type, ...(payment !== undefined && { 'forest-payment': payment }) }
+}
+
 /**
  * One request; if the host finds it too big (413, whatever its body, or one `batch` refusal), each
  * half again, down to one line. The status is read first: a body is parsed only from a 200.
  */
-async function postLines(url: string, lines: string[], how: Reach): Promise<{ status: number; results: Result[] }> {
-  const res = await (how.fetch ?? fetch)(url, { method: 'POST', headers: { 'content-type': 'application/x-ndjson' }, body: lines.map((l) => l + '\n').join(''), ...(how.redirect && { redirect: how.redirect }) })
+async function postLines(host: string, path: string, lines: string[], how: WriteHow): Promise<{ status: number; results: Result[] }> {
+  const body = lines.map((l) => l + '\n').join('')
+  const res = await (how.fetch ?? fetch)(`${host}${path}`, { method: 'POST', headers: await writeHeaders(host, 'application/x-ndjson', utf8(body), how), body, ...(how.redirect && { redirect: how.redirect }) })
   let results: Result[] = []
   if (res.status === 200) {
     results = (await res.text())
@@ -72,8 +88,8 @@ async function postLines(url: string, lines: string[], how: Reach): Promise<{ st
   const tooBig = res.status === 413 || (results.length === 1 && results[0]!.error === 'batch')
   if (!tooBig || lines.length < 2) return { status: res.status, results }
   const half = Math.ceil(lines.length / 2)
-  const first = await postLines(url, lines.slice(0, half), how)
-  const second = await postLines(url, lines.slice(half), how)
+  const first = await postLines(host, path, lines.slice(0, half), how)
+  const second = await postLines(host, path, lines.slice(half), how)
   return { status: first.status !== 200 ? first.status : second.status, results: [...first.results, ...second.results.map((r) => ({ ...r, i: r.i + half }))] }
 }
 
@@ -248,12 +264,12 @@ export type FileOutcome = { host: string; status: number; ok: boolean; error?: s
  * takes them only while a current entry it holds names them, by their hash, type and size
  * (fileOf): write that entry first.
  */
-export async function upload(hosts: string[], bytes: Uint8Array, type: string, how: Reach = {}): Promise<FileOutcome[]> {
+export async function upload(hosts: string[], bytes: Uint8Array, type: string, how: WriteHow = {}): Promise<FileOutcome[]> {
   const name = fileOf(bytes, type)
   return Promise.all(
     hosts.map(async (host): Promise<FileOutcome> => {
       try {
-        const res = await (how.fetch ?? fetch)(`${host}/v1/files/${name.sha256}`, { method: 'PUT', headers: { 'content-type': type }, body: new Uint8Array(bytes), ...(how.redirect && { redirect: how.redirect }) })
+        const res = await (how.fetch ?? fetch)(`${host}/v1/files/${name.sha256}`, { method: 'PUT', headers: await writeHeaders(host, type, bytes, how), body: new Uint8Array(bytes), ...(how.redirect && { redirect: how.redirect }) })
         const answer = (await res.json().catch(() => ({ ok: false }))) as Omit<FileOutcome, 'host' | 'status'>
         return { host, status: res.status, ...answer, ok: res.ok && answer.ok }
       } catch (err) {
