@@ -49,8 +49,7 @@
     "undici": "7.30.0"
   },
   "devDependencies": {
-    "@foundationforest/reputation": "0.0.0",
-    "@foundationforest/verification": "0.0.0",
+    "@foundationforest/proofs": "0.0.0",
     "@zk-kit/baby-jubjub": "1.0.3",
     "@zk-kit/eddsa-poseidon": "1.0.4",
     "ajv": "8.20.0",

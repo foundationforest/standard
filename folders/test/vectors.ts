@@ -8,7 +8,7 @@
 import { readFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 import { fieldHash, profilesKey, seedScalar } from '@foundationforest/keys'
-import { signStamp, stampNumberOf, stampToJson } from '@foundationforest/verification'
+import { signStamp, stampNumberOf, stampToJson } from '@foundationforest/proofs'
 import { sha256 } from '@noble/hashes/sha2.js'
 import { hex } from '../src/bytes.ts'
 import { canonical } from '../src/canonical.ts'

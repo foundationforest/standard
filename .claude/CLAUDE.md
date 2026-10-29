@@ -37,7 +37,7 @@ What an app that holds keys should know: `keys/README.md`. Never copy it here.
   `foundationforest/markets`'s.
 - The repo is `keys/`, `proofs/` (`verification/`, `reputation/`), `folders/`, `escrows/`
   (`solana/`), `README.md` and `LICENSE`, with `.github/`, `.claude/CLAUDE.md`, and the npm
-  workspace's `package.json`, `package-lock.json`, `tsconfig.base.json` and `proofs/snarkjs.d.ts`.
+  workspace's `package.json`, `package-lock.json` and `tsconfig.base.json`.
   The README is the standard.
 - Keep the docs true in the same pull request: a change that makes a README wrong fixes it. A README
   says only what the code does. Devnet is named only inside escrows/, and only where something is
@@ -59,9 +59,9 @@ What an app that holds keys should know: `keys/README.md`. Never copy it here.
 - Run what `.github/workflows/checks.yml` runs before you push (Node 22.18 or later; Solana CLI
   4.2.2; circom 2.2.3); the commands are there. A test that skips fails CI: the summary must say
   `# skipped 0`. `npm ci` at the root installs every package, and `npm run build` there builds keys,
-  proofs/verification/client, proofs/reputation/client, folders and escrows/solana/client to their
-  `dist/`, in that order, so each is built before a package that imports it. Then, in each package,
-  `npm run check` and `npm test`; in each circuit, `npm run fetch` and `npm run compile` first.
+  proofs, folders and escrows/solana/client to their `dist/`, in that order, so each is built before
+  a package that imports it. Then, in each package, `npm run check` and `npm test`; in proofs, `npm
+  run fetch` and `npm run compile` first.
 
 The slower check, the escrow's fuzzer, runs nightly in CI; `escrows/solana/README.md` says how to
 run it.
