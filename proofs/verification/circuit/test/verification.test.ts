@@ -1,4 +1,4 @@
-// The stamp proof, end to end: keys/'s test person, a stamp a verifier signed for them, a proof for
+// The verification, end to end: keys/'s test person, a stamp a verifier signed for them, a proof for
 // one label and the main key their seed gives for it, and every way a proof must fail.
 //
 // They need the setup's files, committed in setup/: `npm run fetch` checks their hashes first. A
@@ -14,24 +14,23 @@ import { signMessage } from '@zk-kit/eddsa-poseidon'
 import { poseidon2 } from 'poseidon-lite/poseidon2'
 import { groth16 } from 'snarkjs'
 
-import { addressOf, keyScalar, mainKey, pointOf, publicKeyOf, seedScalar, signWithScalar, tagOf, verifierSecret } from '@foundationforest/keys'
+import { addressOf, keyScalar, mainKey, pointOf, publicKeyOf, seedScalar, signWithScalar } from '@foundationforest/keys'
 import {
   BN254_R,
+  checkVerification,
   fieldHash,
-  stampInput,
-  verifierKeyOf,
+  proveVerification,
+  signStamp,
   stampHash,
   stampNumberOf,
   stampSigned,
-  proveStamp,
-  signStamp,
-  toBytes32,
-  checkStamp,
+  verificationInput,
+  verifierKeyOf,
   type SignedStamp,
-} from '@foundationforest/stamp'
+} from '@foundationforest/verification'
 
 const here = dirname(fileURLToPath(import.meta.url))
-const artifacts = { wasm: join(here, '../setup/note.wasm'), zkey: join(here, '../setup/note.zkey') }
+const artifacts = { wasm: join(here, '../setup/verification.wasm'), zkey: join(here, '../setup/verification.zkey') }
 const keysVectors = JSON.parse(readFileSync(join(here, '../../../../keys/test/vectors.json'), 'utf8'))
 const seed = Uint8Array.from(Buffer.from(keysVectors.seed, 'hex'))
 const NAME = keysVectors.verifiers[0].name
@@ -60,33 +59,30 @@ const profile = await mainKey(seed, LABEL)
 const otherProfile = await mainKey(seed, OTHER_LABEL)
 const theirProfile = await mainKey(theirSeed, LABEL)
 
-const valid = await proveStamp({ seedScalar: mine, verifierName: NAME, stamp, label: LABEL, artifacts })
-const good = { proof: valid.proof, verifier, verifierName: NAME, label: LABEL, profile: profile.address, tag: valid.tag }
+const valid = await proveVerification({ seedScalar: mine, verifierName: NAME, stamp, label: LABEL, artifacts })
+const good = { proof: valid.proof, verifier, verifierName: NAME, label: LABEL, profile: profile.address }
 
 /** The circuit's witness for these inputs, proven straight through snarkjs. */
 const prove = (input: Record<string, unknown>) => groth16.fullProve(input, artifacts.wasm, artifacts.zkey)
-const inputOf = (n: SignedStamp, seedScalar = mine, label = LABEL) => stampInput({ seedScalar, verifierName: NAME, stamp: n, label }).input
+const inputOf = (n: SignedStamp, seedScalar = mine, label = LABEL) => verificationInput({ seedScalar, verifierName: NAME, stamp: n, label }).input
 /** What circom's witness generator says when a constraint does not hold: there is nothing to prove. */
 const NO_WITNESS = /Assert Failed/
 
-test("a valid proof: the verifier signed my stamp; my tag for this label; the profile's key is keys/'s main key", async () => {
+test("a valid proof: the verifier signed my stamp, and the profile's key is keys/'s main key", async () => {
   assert.equal(stampSigned(stamp), true)
-  assert.equal(await checkStamp(good), true)
-  assert.equal(await checkStamp({ ...good, tag: toBytes32(valid.tag) }), true, 'the tag as 32 bytes')
-  assert.equal(await checkStamp({ ...good, profile: profile.publicKey }), true, 'the profile as its key')
-  assert.equal(await checkStamp({ ...good, verifier: pointOf(verifier) }), true, 'the verifier as its point')
+  assert.equal(await checkVerification(good), true)
+  assert.equal(await checkVerification({ ...good, profile: profile.publicKey }), true, 'the profile as its key')
+  assert.equal(await checkVerification({ ...good, verifier: pointOf(verifier) }), true, 'the verifier as its point')
   assert.equal(valid.address, profile.address)
   assert.deepEqual(valid.profile, profile.publicKey)
-  assert.equal(valid.tag, tagOf((await verifierSecret(seed, NAME)).scalar, LABEL))
-  assert.equal(valid.tag.toString(), keysVectors.verifiers[0].tags[LABEL], "keys/'s pinned tag")
   assert.deepEqual(valid.verifier, verifier)
-  assert.equal(valid.publicSignals.length, 7, 'the tag, then profileX, profileY, issuerX, issuerY, scope, issuerNameHash')
+  assert.equal(valid.publicSignals.length, 6, 'profileX, profileY, verifierX, verifierY, scope, verifierNameHash')
 })
 
 test('a proof for another profile fails, and so does a key the seed does not give for the label', async () => {
   // Shown on my other profile, or on someone else's: not this proof.
-  assert.equal(await checkStamp({ ...good, profile: otherProfile.address }), false, 'my other profile')
-  assert.equal(await checkStamp({ ...good, profile: theirProfile.address }), false, "someone else's profile")
+  assert.equal(await checkVerification({ ...good, profile: otherProfile.address }), false, 'my other profile')
+  assert.equal(await checkVerification({ ...good, profile: theirProfile.address }), false, "someone else's profile")
   // Straight to the circuit: my other label's key, someone else's key, or a key of my choosing,
   // with my stamp and this label: no witness.
   for (const [what, key] of [
@@ -101,23 +97,22 @@ test('a proof for another profile fails, and so does a key the seed does not giv
 })
 
 test('a wrong verifier key or verifier name fails', async () => {
-  assert.equal(await checkStamp({ ...good, verifier: otherVerifier }), false, 'another key')
-  assert.equal(await checkStamp({ ...good, verifierName: OTHER_NAME }), false, 'another name')
-  // A stamp the other verifier signed, presented under this verifier's key: no witness. issuerX,
-  // issuerY and issuerNameHash are the circuit's names for the verifier's key and name hash.
+  assert.equal(await checkVerification({ ...good, verifier: otherVerifier }), false, 'another key')
+  assert.equal(await checkVerification({ ...good, verifierName: OTHER_NAME }), false, 'another name')
+  // A stamp the other verifier signed, presented under this verifier's key: no witness.
   const theirStamp = stampFor(stamp.stampNumber, otherPrivate)
-  await assert.rejects(prove({ ...inputOf(theirStamp), issuerX: pointOf(verifier)[0], issuerY: pointOf(verifier)[1] }), NO_WITNESS)
+  await assert.rejects(prove({ ...inputOf(theirStamp), verifierX: pointOf(verifier)[0], verifierY: pointOf(verifier)[1] }), NO_WITNESS)
   // My stamp, with another verifier's name: the stamp number the circuit computes is not the signed
   // one.
-  await assert.rejects(prove({ ...inputOf(stamp), issuerNameHash: fieldHash('forest/v1/issuer/', OTHER_NAME) }), NO_WITNESS)
-  await assert.rejects(proveStamp({ seedScalar: mine, verifierName: OTHER_NAME, stamp, label: LABEL, artifacts }), /not for this seed at this verifier/)
+  await assert.rejects(prove({ ...inputOf(stamp), verifierNameHash: fieldHash('forest/v1/issuer/', OTHER_NAME) }), NO_WITNESS)
+  await assert.rejects(proveVerification({ seedScalar: mine, verifierName: OTHER_NAME, stamp, label: LABEL, artifacts }), /not for this seed at this verifier/)
 })
 
 test('a forged signature fails, and so do a signature without the prefix and facts the verifier did not sign', async () => {
   // A key that is not the verifier's signs a stamp, which then claims the verifier's key.
   const forged = { ...stampFor(stamp.stampNumber, strangerPrivate), verifier }
   assert.equal(stampSigned(forged), false)
-  await assert.rejects(proveStamp({ seedScalar: mine, verifierName: NAME, stamp: forged, label: LABEL, artifacts }), /signature is not on this stamp/)
+  await assert.rejects(proveVerification({ seedScalar: mine, verifierName: NAME, stamp: forged, label: LABEL, artifacts }), /signature is not on this stamp/)
   await assert.rejects(prove(inputOf(forged)), NO_WITNESS)
   // The verifier's own signature with S changed, or with S plus the subgroup order: no witness.
   await assert.rejects(prove(inputOf({ ...stamp, signature: { ...stamp.signature, S: stamp.signature.S + 1n } })), NO_WITNESS)
@@ -128,31 +123,26 @@ test('a forged signature fails, and so do a signature without the prefix and fac
   await assert.rejects(prove(inputOf({ ...stamp, signature: signMessage(verifierPrivate, unprefixed) })), NO_WITNESS)
   // The signed stamp with other facts: no witness.
   await assert.rejects(prove(inputOf({ ...stamp, facts: stamp.facts + 1n })), NO_WITNESS)
-  await assert.rejects(proveStamp({ seedScalar: mine, verifierName: NAME, stamp: { ...stamp, facts: 0n }, label: LABEL, artifacts }), /signature is not on this stamp/)
+  await assert.rejects(proveVerification({ seedScalar: mine, verifierName: NAME, stamp: { ...stamp, facts: 0n }, label: LABEL, artifacts }), /signature is not on this stamp/)
 })
 
 test("another person's seed fails", async () => {
-  await assert.rejects(proveStamp({ seedScalar: theirs, verifierName: NAME, stamp, label: LABEL, artifacts }), /not for this seed at this verifier/)
-  // My proof does not hold for their tag either.
-  const theirTag = tagOf((await verifierSecret(theirSeed, NAME)).scalar, LABEL)
-  assert.equal(await checkStamp({ ...good, tag: theirTag }), false)
+  await assert.rejects(proveVerification({ seedScalar: theirs, verifierName: NAME, stamp, label: LABEL, artifacts }), /not for this seed at this verifier/)
 })
 
-test('a tag or a label for another label fails', async () => {
-  const otherTag = tagOf((await verifierSecret(seed, NAME)).scalar, OTHER_LABEL)
-  assert.equal(await checkStamp({ ...good, label: OTHER_LABEL }), false)
-  assert.equal(await checkStamp({ ...good, tag: otherTag }), false)
-  assert.equal(await checkStamp({ ...good, label: OTHER_LABEL, tag: otherTag }), false)
-  assert.equal(await checkStamp({ ...good, label: OTHER_LABEL, tag: otherTag, profile: otherProfile.address }), false, 'the other profile, whole')
+test('a label for another label fails', async () => {
+  assert.equal(await checkVerification({ ...good, label: OTHER_LABEL }), false)
+  assert.equal(await checkVerification({ ...good, label: OTHER_LABEL, profile: otherProfile.address }), false, 'the other profile, whole')
+  // Straight to the circuit: my stamp and key, with the other label's scope: no witness.
+  await assert.rejects(prove({ ...inputOf(stamp), scope: inputOf(stamp, mine, OTHER_LABEL).scope }), NO_WITNESS)
 })
 
 test('a public value outside the field, or a proof changed, fails', async () => {
-  assert.equal(await checkStamp({ ...good, tag: valid.tag + BN254_R }), false)
-  assert.equal(await checkStamp({ ...good, verifier: [pointOf(verifier)[0] + BN254_R, pointOf(verifier)[1]] }), false)
-  assert.equal(await checkStamp({ ...good, verifier: 'not an address' }), false)
-  assert.equal(await checkStamp({ ...good, profile: [profile.publicKey[0] + BN254_R, profile.publicKey[1]] }), false)
+  assert.equal(await checkVerification({ ...good, verifier: [pointOf(verifier)[0] + BN254_R, pointOf(verifier)[1]] }), false)
+  assert.equal(await checkVerification({ ...good, verifier: 'not an address' }), false)
+  assert.equal(await checkVerification({ ...good, profile: [profile.publicKey[0] + BN254_R, profile.publicKey[1]] }), false)
   const changed = { ...valid.proof, pi_a: [valid.proof.pi_c[0], valid.proof.pi_c[1], '1'] as typeof valid.proof.pi_a }
-  assert.equal(await checkStamp({ ...good, proof: changed }), false)
+  assert.equal(await checkVerification({ ...good, proof: changed }), false)
 })
 
 test("a verifier may sign with keys/'s signWithScalar: circomlib's EdDSAPoseidonVerifier, inside the proof, takes it", async () => {
@@ -162,6 +152,6 @@ test("a verifier may sign with keys/'s signWithScalar: circomlib's EdDSAPoseidon
   const unsigned = { stampNumber: stamp.stampNumber, facts: stamp.facts }
   const scalarStamp: SignedStamp = { ...unsigned, verifier: addressOf(key), signature: signWithScalar(scalar, stampHash(unsigned)) }
   assert.equal(stampSigned(scalarStamp), true)
-  const r = await proveStamp({ seedScalar: mine, verifierName: NAME, stamp: scalarStamp, label: LABEL, artifacts })
-  assert.equal(await checkStamp({ ...good, proof: r.proof, verifier: key }), true)
+  const r = await proveVerification({ seedScalar: mine, verifierName: NAME, stamp: scalarStamp, label: LABEL, artifacts })
+  assert.equal(await checkVerification({ ...good, proof: r.proof, verifier: key }), true)
 })

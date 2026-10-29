@@ -1,14 +1,13 @@
 // The person's secret for one verifier: a Poseidon mix of the seed scalar and the verifier's name.
 // A verifier is anyone who signs stamps for people, such as one that checks faces.
 //
-// The name, not the verifier's key: a verifier that changes its key changes no one's stamp number
-// or tags. A different secret at each verifier, so no two verifiers share a number for one person:
-// two verifiers comparing what they hold find nothing in common.
+// The name, not the verifier's key: a verifier that changes its key changes no one's stamp number.
+// A different secret at each verifier, so no two verifiers share a number for one person: two
+// verifiers comparing what they hold find nothing in common.
 
 import { poseidon1 } from 'poseidon-lite/poseidon1'
-import { poseidon2 } from 'poseidon-lite/poseidon2'
 import { poseidon3 } from 'poseidon-lite/poseidon3'
-import { PREFIX, isFieldElement, nameHashOf, scopeOf } from './field.ts'
+import { PREFIX, isFieldElement, nameHashOf } from './field.ts'
 import { SEED_LENGTH, assertBytes, assertText } from './hkdf.ts'
 import { seedScalar } from './scalar.ts'
 
@@ -22,16 +21,10 @@ export type VerifierSecret = {
   stampNumber: bigint
 }
 
-/** The person's secret for a verifier, from the seed scalar. The stamp circuit computes the same. */
+/** The person's secret for a verifier, from the seed scalar. The verification circuit computes the same. */
 export function verifierScalarOf(seed: bigint, name: string): bigint {
   if (!isFieldElement(seed)) throw new RangeError('a seed scalar is a field element')
   return poseidon3([PREFIX.verifier, seed, nameHashOf(name)])
-}
-
-/** The person's tag for a label at a verifier: `Poseidon(scope, verifier secret)`. */
-export function tagOf(verifierScalar: bigint, label: string): bigint {
-  if (!isFieldElement(verifierScalar)) throw new RangeError('a verifier secret is a field element')
-  return poseidon2([scopeOf(label), verifierScalar])
 }
 
 /**

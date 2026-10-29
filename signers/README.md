@@ -59,10 +59,10 @@ never by its address.
   the sender's address.
 - **A write of `profile`** always asks the person. Under a label with no profile yet, on a yes the
   app makes the profile: its hosts record, and its profile record with `market`, `role`,
-  `inboxKey`, `pay` and `paySig`, and a stamp proof in `proofs` when the app holds a stamp, made on
-  the device ([proofs/stamp](../proofs/stamp/README.md)). For a profile that exists, on a yes the
-  app keeps the fields it manages itself (`market`, `role`, `inboxKey`, `inbox`, `pay`, `paySig`,
-  `proofs`) and takes only the market's own fields from the ask's body.
+  `inboxKey`, `pay` and `paySig`, and a verification in `proofs` when the app holds a stamp, made on
+  the device ([proofs/verification](../proofs/verification/README.md)). For a profile that exists,
+  on a yes the app keeps the fields it manages itself (`market`, `role`, `inboxKey`, `inbox`, `pay`,
+  `paySig`, `proofs`) and takes only the market's own fields from the ask's body.
 - **A write of `hosts` or of a permission** is refused: the person does those in their app.
 - **pay,** as the profile with the label: `amount` of `currency` to `to`, an address or a post's
   full address, the address of the profile whose folder holds the post, `/`, then its path, such as

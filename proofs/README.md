@@ -7,9 +7,8 @@ Part of Forest's standard: [the top README](../README.md).
 The zero-knowledge proofs a person's device makes and anyone can check. A zero-knowledge proof
 shows that something is true of the person's secrets without showing the secrets.
 
-- [`stamp/`](stamp/README.md): a verifier, one who checks people and signs them stamps, signed a
-  stamp to the seed behind a profile, and this is the profile's tag for its label at that verifier,
-  the number the profile is known by in the score trees indexes publish.
+- [`verification/`](verification/README.md): what a profile shows to prove that a verifier, one who
+  checks people and signs them stamps, signed a stamp to the seed behind it.
 - [`reputation/`](reputation/README.md): a score across the person's profiles, from the tree an
   index, a service that scores profiles, publishes, without saying which profiles.
 
@@ -41,5 +40,5 @@ setup of its own, and a profile can show a proof of each.
 
 **Why are both proofs in one directory?**
 Both are made on the person's device from the seed scalar `keys/` gives, and both are checked by
-anyone. They share pieces: both take the tag, the scope (a label as a number) and the profile's key
-from `keys/`, and `reputation/`'s client takes the proof's 256-byte form from `stamp/`'s.
+anyone. They share pieces: both take the scope (a label as a number) and the profile's key from
+`keys/`, and `reputation/`'s client takes the proof's 256-byte form from `verification/`'s.

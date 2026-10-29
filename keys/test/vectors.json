@@ -1,5 +1,5 @@
 {
-  "about": "Fixed test vectors for Forest keys, v1. The seed is the 32 bytes 00 01 ... 1f: public by construction, so every key here is public; for tests only. The seed scalar; the two prefixes; two profiles (labels tutoring/seller and tutoring/buyer), each with its main key on Baby Jubjub, its secret, its permission key and its inbox key, and its pay keys, one on Solana and one for EVM chains, each with its signature over the profile's address; two verifiers, named issuer-a.example and issuer-b.example, each with the name hash, the person's secret, the stamp number and a tag for each label; one signature by the tutoring/seller main key; and a service key, from 32 bytes of 0x2a. Generated once by this library and pinned; test/keys.test.ts recomputes every value without it. Bytes are hex; numbers are decimal text. Changing any value here changes the standard.",
+  "about": "Fixed test vectors for Forest keys, v1. The seed is the 32 bytes 00 01 ... 1f: public by construction, so every key here is public; for tests only. The seed scalar; the two prefixes; two profiles (labels tutoring/seller and tutoring/buyer), each with its main key on Baby Jubjub, its secret, its permission key and its inbox key, and its pay keys, one on Solana and one for EVM chains, each with its signature over the profile's address; two verifiers, named issuer-a.example and issuer-b.example, each with the name hash, the person's secret and the stamp number; one signature by the tutoring/seller main key; and a service key, from 32 bytes of 0x2a. Generated once by this library and pinned; test/keys.test.ts recomputes every value without it. Bytes are hex; numbers are decimal text. Changing any value here changes the standard.",
   "seed": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
   "words": "abandon amount liar amount expire adjust cage candy arch gather drum bullet absurd math era live bid rhythm alien crouch range attend journey unaware",
   "seedScalar": {
@@ -98,21 +98,13 @@
       "name": "issuer-a.example",
       "nameHash": "219452492184015431260277562653274537888105273828285787745842555761057965337",
       "scalar": "5629892772345895787952929134382681377232146091822916382638829217623603238471",
-      "stampNumber": "20944015934799795826415284381445320057207905995401371295488411919908256593839",
-      "tags": {
-        "tutoring/seller": "2327944651732981339146279765558645113615552833733152291488539913087976417905",
-        "tutoring/buyer": "3534100140163934202859310020073852013493320131482854723584982721454545388370"
-      }
+      "stampNumber": "20944015934799795826415284381445320057207905995401371295488411919908256593839"
     },
     {
       "name": "issuer-b.example",
       "nameHash": "169468724244147987839213721535057357748161830469909663214439531519062145964",
       "scalar": "14496847564830337962183383804312567867039869492014565680488305615326389253370",
-      "stampNumber": "3058570164794231213499460291893243776721310030320496618757287275192926408296",
-      "tags": {
-        "tutoring/seller": "12537496965817969972363931159724620917247679209852986713926057325282241852780",
-        "tutoring/buyer": "21768946088152452210957651141834813459594726240647506086747099132467173444540"
-      }
+      "stampNumber": "3058570164794231213499460291893243776721310030320496618757287275192926408296"
     }
   ],
   "signature": {

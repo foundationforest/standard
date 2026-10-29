@@ -1,5 +1,3 @@
 node_modules/
 build/
-setup/reputation.zkey
-setup/reputation.wasm
 setup/*.ptau

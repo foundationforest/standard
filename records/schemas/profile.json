@@ -94,12 +94,12 @@
     },
     "proof": {
       "type": "object",
-      "description": "One proof, named by its circuit. A reader ignores a proof whose circuit it does not know, so a profile carrying a newer kind stays valid for an older app. A stamp proof and a reputation proof have the shapes below; another circuit's fields are its own.",
+      "description": "One proof, named by its circuit. A reader ignores a proof whose circuit it does not know, so a profile carrying a newer kind stays valid for an older app. A verification and a reputation proof have the shapes below; another circuit's fields are its own.",
       "required": ["circuit"],
       "properties": {
         "circuit": {
           "type": "string",
-          "description": "The circuit that checks it: stamp (proofs/stamp/) and reputation (proofs/reputation/) have the shapes below.",
+          "description": "The circuit that checks it: verification (proofs/verification/) and reputation (proofs/reputation/) have the shapes below.",
           "pattern": "^[a-z][a-z0-9-]{0,31}$"
         }
       },
@@ -120,24 +120,24 @@
           "if": {
             "properties": {
               "circuit": {
-                "const": "stamp"
+                "const": "verification"
               }
             }
           },
           "then": {
-            "$ref": "#/$defs/stamp"
+            "$ref": "#/$defs/verification"
           }
         }
       ]
     },
-    "stamp": {
+    "verification": {
       "type": "object",
-      "description": "A stamp proof (proofs/stamp/): the verifier with this key and this name signed a stamp for the person whose seed gives this profile's key for this label, and this is their tag for the label at that verifier. Everything checkStamp takes but the profile's key, which is the profile's own address.",
-      "required": ["circuit", "verifier", "verifierName", "label", "tag", "proof"],
+      "description": "A verification (proofs/verification/): the verifier with this key and this name signed a stamp for the person whose seed gives this profile's key for this label. Everything checkVerification takes but the profile's key, which is the profile's own address.",
+      "required": ["circuit", "verifier", "verifierName", "label", "proof"],
       "additionalProperties": false,
       "properties": {
         "circuit": {
-          "const": "stamp"
+          "const": "verification"
         },
         "verifier": {
           "type": "string",
@@ -158,11 +158,6 @@
           "minLength": 1,
           "maxLength": 128
         },
-        "tag": {
-          "type": "string",
-          "description": "The person's tag for the label at the verifier: 32 bytes big-endian, lowercase hex.",
-          "pattern": "^[0-9a-f]{64}$"
-        },
         "proof": {
           "type": "string",
           "description": "The proof's three points, uncompressed: 256 bytes in base64url without padding, in the reputation proof's order.",
@@ -172,7 +167,7 @@
     },
     "reputation": {
       "type": "object",
-      "description": "A reputation proof (proofs/reputation/): the count-weighted score of profiles in an index's tree that come from the same seed as this one, which profiles hidden. It holds only for this profile's key, which the proof derives from that seed. What the score means is what the index says its root holds. Everything checkReputation takes but the profile's key, which is the profile's own address.",
+      "description": "A reputation proof (proofs/reputation/): the plain average of the scores of profiles in an index's tree that come from the same seed as this one, which profiles hidden. It holds only for this profile's key, which the proof derives from that seed. What the score means is what the index says its root holds. Everything checkReputation takes but the profile's key, which is the profile's own address.",
       "required": ["circuit", "index", "root", "time", "signature", "score", "proof"],
       "additionalProperties": false,
       "properties": {
@@ -204,15 +199,9 @@
         },
         "score": {
           "type": "integer",
-          "description": "The score the proof shows: the count-weighted score of the profiles counted, rounded down.",
+          "description": "The score the proof shows: the plain average of the scores of the profiles counted, rounded down.",
           "minimum": 0,
           "maximum": 4294967295
-        },
-        "label": {
-          "type": "string",
-          "description": "Present only when the proof shows one market: the label of the one profile counted, exactly as the seed's mix took it.",
-          "minLength": 1,
-          "maxLength": 128
         },
         "proof": {
           "type": "string",

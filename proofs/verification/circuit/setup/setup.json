@@ -1,10 +1,10 @@
 {
   "note": "Made by one party, by setup/setup.sh. Whoever ran it could make a false proof. A public setup ceremony is on the list.",
   "parties": 1,
-  "made": "2026-10-16",
+  "made": "2026-10-29",
   "circuit": {
-    "file": "note.circom",
-    "constraints": 6466
+    "file": "verification.circom",
+    "constraints": 6226
   },
   "circom": {
     "version": "2.2.3",
@@ -22,24 +22,24 @@
   },
   "phase2": {
     "contributions": 1,
-    "contributionHash": "d5499fcf73499293ecb07c5ffb14caa1031b7d53487520a48e7943991a4453afb3179a46057707b1d93f76a0870f96dc7449a5030a5259127d12b2e1f696d408"
+    "contributionHash": "f6be809824cbe57b1fdb33d25c630e04fbd00932799f4a45b32fc1293e8dae058d8f147e06012b789911bb7b7469326e51fcbda735a26dac93b8ef0cebf7c6fb"
   },
   "r1cs": {
-    "bytes": 1987100,
-    "sha256": "15ba3c3bfc7d61a172c9d6bba26b5b94dcf468fa2569c09b1fd44585e4b514dc"
+    "bytes": 1872860,
+    "sha256": "7ba6c73e0796684a39f07798e40fdf74a64133460b0d091a34f9eaafa1deb9fb"
   },
   "files": {
-    "note.zkey": {
-      "bytes": 3912483,
-      "sha256": "bd6e6c6ad615fed272733cb20e867c1354b01d8e0d719b3a7c1a776ff0205771"
+    "verification.zkey": {
+      "bytes": 3793663,
+      "sha256": "7f6ff990afecf7b0b9c1f2dae14f25f798c3c1d2b45dc224ec1145f7681ec256"
     },
-    "note.wasm": {
-      "bytes": 3266311,
-      "sha256": "2c9dcfe926c7bafe1f5e9edb947fb481cfcee6d061f7c09ca643b83b23ca09f0"
+    "verification.wasm": {
+      "bytes": 2921483,
+      "sha256": "c30eefae7133b78cffb89b910a5fdc9c307a8a4cfcf4da2633e716ad3bcee3e0"
     },
     "verification-key.json": {
-      "bytes": 4025,
-      "sha256": "ad3cec965c8e36d31c51bc70e55c780978e0ca62e13f86522a584786b031f101"
+      "bytes": 3838,
+      "sha256": "871d497119d660855b90fe4adf9c94d3fea5a67c3c1a2a9ce6a28a5ffaea4b8a"
     }
   }
 }

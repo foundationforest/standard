@@ -1,4 +1,4 @@
-// The stamp proof as a browser runs it: with no Buffer. Node's global is taken away before the
+// The verification as a browser runs it: with no Buffer. Node's global is taken away before the
 // client and keys/ load; then a verifier signs a stamp, the device proves for one profile, and a
 // reader checks the proof, from its 256 bytes too.
 
@@ -14,10 +14,10 @@ Object.defineProperty(globalThis, 'Buffer', { configurable: true, get: () => (/\
 const { hexToBytes } = await import('@noble/hashes/utils.js')
 const { sha256 } = await import('@noble/hashes/sha2.js')
 const { mainKey, seedScalar } = await import('@foundationforest/keys')
-const { checkStamp, fieldHash, proofBytes, proveStamp, signStamp, stampNumberOf } = await import('../src/index.ts')
+const { checkVerification, fieldHash, proofBytes, proveVerification, signStamp, stampNumberOf } = await import('../src/index.ts')
 
 const here = dirname(fileURLToPath(import.meta.url))
-const artifacts = { wasm: join(here, '../../circuit/setup/note.wasm'), zkey: join(here, '../../circuit/setup/note.zkey') }
+const artifacts = { wasm: join(here, '../../circuit/setup/verification.wasm'), zkey: join(here, '../../circuit/setup/verification.zkey') }
 const seed = hexToBytes('000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f')
 const NAME = 'issuer-a.example'
 const LABEL = 'tutoring/seller'
@@ -29,10 +29,10 @@ test('with no Buffer: a verifier signs a stamp, the device proves, a reader chec
     stampNumber: stampNumberOf(S, NAME),
     facts: fieldHash('forest example attributes', 'issuer-a'),
   })
-  const r = await proveStamp({ seedScalar: S, verifierName: NAME, stamp, label: LABEL, artifacts })
+  const r = await proveVerification({ seedScalar: S, verifierName: NAME, stamp, label: LABEL, artifacts })
   const main = await mainKey(seed, LABEL)
   assert.equal(r.address, main.address)
-  const shown = { verifier: r.verifier, verifierName: NAME, label: LABEL, profile: main.address, tag: r.tag }
-  assert.equal(await checkStamp({ ...shown, proof: r.proof }), true)
-  assert.equal(await checkStamp({ ...shown, proof: proofBytes(r.proof) }), true, 'from its 256 bytes')
+  const shown = { verifier: r.verifier, verifierName: NAME, label: LABEL, profile: main.address }
+  assert.equal(await checkVerification({ ...shown, proof: r.proof }), true)
+  assert.equal(await checkVerification({ ...shown, proof: proofBytes(r.proof) }), true, 'from its 256 bytes')
 })

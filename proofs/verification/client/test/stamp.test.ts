@@ -1,6 +1,5 @@
-// The stamp: what a verifier signs, its signature, its JSON, and the circuit's input, checked
-// without proving. The proofs themselves are made and refused in the circuit's tests
-// (../../circuit/test/).
+// The stamp: what a verifier signs, its signature and its JSON, checked without proving. The
+// verifications made from it are the circuit's tests (../../circuit/test/).
 
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
@@ -13,21 +12,18 @@ import { signMessage } from '@zk-kit/eddsa-poseidon'
 import { poseidon2 } from 'poseidon-lite/poseidon2'
 import { poseidon3 } from 'poseidon-lite/poseidon3'
 
-import { mainKey, pointOf, seedScalar, tagOf, verifierSecret } from '@foundationforest/keys'
+import { pointOf, seedScalar, verifierSecret } from '@foundationforest/keys'
 import {
   BN254_R,
   STAMP_PREFIX,
   fromBytes32,
   fieldHash,
-  stampInput,
   verifierKeyOf,
-  nameHashOf,
   stampFromJson,
   stampHash,
   stampNumberOf,
   stampSigned,
   stampToJson,
-  scopeOf,
   signStamp,
   type Stamp,
 } from '../src/index.ts'
@@ -58,9 +54,8 @@ const hash = (bytes: Uint8Array) => fromBytes32(keccak_256(bytes)) >> 8n
 
 test('the prefix is keccak256("forest/v1/note") >> 8, the constant the circuit has', () => {
   assert.equal(STAMP_PREFIX, hash(new TextEncoder().encode('forest/v1/note')))
-  const circuit = readFileSync(join(here, '../../circuit/note.circom'), 'utf8')
-  // note.circom keeps its bytes, the name of its constant among them: NOTE_TAG is the prefix.
-  assert.ok(circuit.includes(`var NOTE_TAG = ${STAMP_PREFIX};`), 'note.circom carries the same prefix')
+  const circuit = readFileSync(join(here, '../../circuit/verification.circom'), 'utf8')
+  assert.ok(circuit.includes(`var STAMP_PREFIX = ${STAMP_PREFIX};`), 'verification.circom carries the same prefix')
 })
 
 test('a verifier signs Poseidon(prefix, stamp number, facts)', () => {
@@ -129,28 +124,4 @@ test("fields a verifier adds beside the stamp pass through signing and JSON unch
   assert.equal(stampSigned(back), true)
   assert.deepEqual(stampToJson(back), json)
   assert.equal(stampSigned({ ...back, model: 'another' }), true, 'an added field is the verifier’s, not the stamp’s')
-})
-
-test("the circuit's input: keys/'s tag and main key, and the public signals in order", async () => {
-  const label = 'tutoring/seller'
-  const { input, publicSignals } = stampInput({ seedScalar: S, verifierName: verifierA.name, stamp: signed, label })
-  const main = await mainKey(seed, label)
-  const a = await verifierSecret(seed, verifierA.name)
-  assert.deepEqual(publicSignals, [
-    tagOf(a.scalar, label),
-    main.publicKey[0],
-    main.publicKey[1],
-    ...pointOf(signed.verifier),
-    scopeOf(label),
-    nameHashOf(verifierA.name),
-  ])
-  assert.equal(publicSignals[0].toString(), verifierA.tags[label], "keys/'s pinned tag")
-  assert.equal(input.seedScalar, BigInt(keysVectors.seedScalar.scalar))
-  const other = stampInput({ seedScalar: S, verifierName: verifierA.name, stamp: signed, label: 'tutoring/buyer' }).publicSignals
-  assert.notEqual(other[0], publicSignals[0], 'another label, another tag')
-  assert.notEqual(other[1], publicSignals[1], 'and another key')
-  assert.throws(() => stampInput({ seedScalar: BN254_R, verifierName: verifierA.name, stamp: signed, label }), /field element/)
-  assert.throws(() => stampInput({ seedScalar: S, verifierName: verifierA.name, stamp: { ...signed, facts: BN254_R }, label }), /field element/)
-  // The circuit's signal for the facts keeps its name, attributes: note.circom keeps its bytes.
-  assert.equal(input.attributes, signed.facts, 'the facts go in as the verifier signed them')
 })
