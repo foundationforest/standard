@@ -15,7 +15,6 @@ import { sha256, sha512 } from '@noble/hashes/sha2.js'
 import { base58 } from '@scure/base'
 import { poseidon5 } from 'poseidon-lite/poseidon5'
 import { BN254_R, isFieldElement } from './field.ts'
-import { utf8 } from './hkdf.ts'
 
 /** A point on Baby Jubjub, x then y. */
 export type Point = [bigint, bigint]
@@ -43,10 +42,7 @@ const Fp = Curve.Fp
 export const SCALAR_BITS = 250
 const MASK = (1n << 250n) - 1n
 
-/** What a signature's secret nonce is mixed under. */
-const NONCE = 'forest/v1/nonce'
-
-/** A key's scalar from a Poseidon output: its lowest 250 bits. */
+/** A key's scalar from a number, a Poseidon mix or a service key's bytes: its lowest 250 bits. */
 export function keyScalar(raw: bigint): bigint {
   return raw & MASK
 }
@@ -137,16 +133,15 @@ export function unpackSignature(bytes: Uint8Array): Signature | null {
 }
 
 /**
- * Sign a field element with a key's scalar. The nonce is SHA-512 of a fixed text, the scalar and
- * the message, so the same message always gets the same signature and no two messages share a
- * nonce. `S = r + 8·hm·scalar mod l`, so `S·Base8 = R8 + 8·hm·A`, the equation zk-kit and
- * circomlib check.
+ * Sign a field element with a key's scalar. The nonce is SHA-512 of the scalar and the message, so
+ * the same message always gets the same signature and no two messages share a nonce.
+ * `S = r + 8·hm·scalar mod l`, so `S·Base8 = R8 + 8·hm·A`, the equation zk-kit and circomlib check.
  */
 export function signWithScalar(scalar: bigint, message: bigint): Signature {
   assertScalar(scalar)
   if (!isFieldElement(message)) throw new RangeError('a message is a field element')
   const [ax, ay] = publicKeyOf(scalar)
-  const r = fromLe(sha512(concat(utf8(NONCE), le32(scalar), le32(message)))) % L
+  const r = fromLe(sha512(concat(le32(scalar), le32(message)))) % L
   const R8 = affine(Curve.BASE.multiply(r))
   const hm = poseidon5([R8[0], R8[1], ax, ay, message])
   return { R8, S: (r + ((8n * hm) % L) * scalar) % L }
@@ -176,8 +171,8 @@ export function checkWithPublicKey(publicKey: Point | string, message: bigint, s
 
 /**
  * The number a signature over bytes signs: SHA-256 of the bytes, read big-endian, shifted right one
- * byte so it is a field element. Entries, messages, inbox deletes and an index's roots are signed
- * this way, each over its own signed bytes.
+ * byte so it is a field element. An entry, a message and an index's root are signed this way, each
+ * over the canonical JSON of itself, which says by its own fields what it is.
  */
 export function bytesMessage(bytes: Uint8Array): bigint {
   return sha256(bytes).reduce((v, b) => (v << 8n) | BigInt(b), 0n) >> 8n

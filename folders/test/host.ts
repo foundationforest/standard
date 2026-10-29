@@ -13,7 +13,7 @@ import type { Result } from '../src/client.ts'
 import { type Checked, MAX_FUTURE_MS, PROFILE_PATH, type SignedEntry, decodeEntry } from '../src/entry.ts'
 import { FolderError } from '../src/fail.ts'
 import { filesOf, isMediaType } from '../src/files.ts'
-import { type CheckedInbox, decodeDelete, decodeInbox } from '../src/inbox.ts'
+import { type CheckedInbox, decodeInbox } from '../src/inbox.ts'
 import { canDo, openKeyOf } from '../src/profile.ts'
 import { type View, liveContent, viewFolder } from '../src/view.ts'
 
@@ -111,7 +111,6 @@ export class TestHost {
     }
     const { entry: e, id } = c
     const refuse = (error: string, message: string): Answer => ({ id, ok: false, error, message })
-    if (e.time > now + MAX_FUTURE_MS) return refuse('future', 'dated more than ten minutes ahead')
     if (this.inbox.some((r) => r.id === id)) return refuse('duplicate', 'this inbox entry is already here')
     if (!openKeyOf(this.view(e.to, now).current.get(PROFILE_PATH)?.entry.body)) return refuse('no_inbox', 'the profile entry here has no openKey: the folder takes no inbox entries')
     this.inbox.push({ seq: ++this.seq, profile: e.to, id, text: line })
@@ -121,26 +120,6 @@ export class TestHost {
   /** A folder's inbox entries after the cursor, in the order they arrived: to anyone. */
   readInbox(to: string, after = 0): Page {
     return this.paged(this.inbox.filter((r) => r.profile === to && r.seq > after), after)
-  }
-
-  async remove(lines: string[]): Promise<Result[]> {
-    const now = this.now()
-    return lines.map((line, i) => ({ i, ...this.removeOne(line, now) }))
-  }
-
-  private removeOne(line: string, now: number): Answer {
-    let request
-    try {
-      request = decodeDelete(line)
-    } catch (err) {
-      return refusal(err)
-    }
-    const { to, id, key } = request
-    if (key !== undefined && !canDo(this.view(to, now).current.get(PROFILE_PATH)?.entry.body, key, 'read-inbox')) return { id, ok: false, error: 'unlisted', message: 'the profile entry here lists no such key with read-inbox' }
-    const at = this.inbox.findIndex((r) => r.profile === to && r.id === id)
-    if (at === -1) return { id, ok: true, message: 'not here' }
-    this.inbox.splice(at, 1)
-    return { id, ok: true }
   }
 
   // ------------------------------------------------------------------------------------------
@@ -195,7 +174,7 @@ export class TestHost {
     const url = URL.parse(req.url ?? '/', 'http://host.invalid')
     if (!url) return void res.writeHead(400).end()
     const file = FILE_PATH.exec(url.pathname)?.[1]
-    const posts = ['/v1/entries', '/v1/entries/read', '/v1/inbox', '/v1/inbox/read', '/v1/inbox/delete']
+    const posts = ['/v1/entries', '/v1/entries/read', '/v1/inbox', '/v1/inbox/read']
     const methods = url.pathname === '/v1/entries' ? ['GET', 'POST'] : posts.includes(url.pathname) ? ['POST'] : file ? ['GET', 'PUT'] : []
     if (!methods.length) return void res.writeHead(404).end()
     if (!methods.includes(req.method ?? '')) return void res.writeHead(405, { allow: methods.join(', ') }).end()
@@ -223,7 +202,7 @@ export class TestHost {
       return sendLines(res, field === 'profile' ? this.read({ profile: asked.folder, after: asked.after }) : this.readInbox(asked.folder, asked.after))
     }
     const lines = text(body).split('\n').filter((l) => l.length > 0)
-    const results = url.pathname === '/v1/inbox' ? await this.leave(lines) : url.pathname === '/v1/inbox/delete' ? await this.remove(lines) : await this.accept(lines)
+    const results = url.pathname === '/v1/inbox' ? await this.leave(lines) : await this.accept(lines)
     res.writeHead(200, { 'content-type': 'application/x-ndjson' }).end(results.map((r) => JSON.stringify(r) + '\n').join(''))
   }
 }

@@ -130,10 +130,13 @@ describe('the host check', () => {
       const leave = h.leave.bind(h)
       h.leave = async (lines) => (await leave(lines)).map((r) => (r.error === 'no_inbox' ? { i: r.i, id: r.id, ok: true } : r))
     }, 'takes an inbox entry for a folder whose profile entry has openKey, and refuses each check in the plug’s order'],
-    ['deletes an inbox entry for any key', (h) => {
-      const remove = h.remove.bind(h)
-      h.remove = async (lines) => (await remove(lines)).map((r) => (r.error === 'unlisted' ? { i: r.i, id: r.id, ok: true } : r))
-    }, 'lists a folder’s inbox to anyone, after a cursor, in arrival order, and deletes an entry only for its main key or a key with read-inbox'],
+    ['lists an inbox out of the order it arrived', (h) => {
+      const readInbox = h.readInbox.bind(h)
+      h.readInbox = (to, after) => {
+        const out = readInbox(to, after)
+        return { ...out, lines: out.lines.reverse() }
+      }
+    }, 'lists a folder’s inbox to anyone, after a cursor, in arrival order'],
     ['takes bytes no entry names', (h) => {
       const upload = h.upload.bind(h)
       h.upload = async (name, type, bytes) => {

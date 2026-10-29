@@ -1,7 +1,7 @@
 // The profile entry: the entry at `profile` in a folder, written by the main key only, and the one
 // body every host reads. The fields the standard reads (README.md, The profile entry):
 //
-//   { market?, role?, hosts, openKey?, pay?, paySig?, proofs?, keys?, files? }
+//   { market?, role?, hosts, openKey?, pay?, proofs?, keys?, files? }
 //
 // `hosts` says where the folder lives; `openKey`, the main key's opening half, is what envelopes
 // are locked to, and a folder whose profile entry has one takes inbox entries; `keys` lists the
@@ -48,7 +48,7 @@ export function normalizeOrigin(url: string): string | null {
  * The fields of a profile entry's body a host reads: `hosts`, 1 to MAX_HOSTS distinct origins;
  * `openKey`, an open key; `keys`, each with a usable address listed once, `can` a list of text, and
  * `open`, an open key, whenever it can read or read-inbox. Throws FolderError with code `profile`.
- * The rest is a reader's to check (schemas/profile.json, checkPay, the proof checks).
+ * The rest is a reader's to check (schemas/profile.json, the proof checks).
  */
 export function checkProfileBody(body: Body): void {
   const hosts = body.hosts

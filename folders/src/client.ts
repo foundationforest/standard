@@ -1,5 +1,5 @@
-// Talking to hosts over HTTP: write entries and read them back; leave inbox entries, list and
-// delete them; upload and fetch files. Every entry and inbox entry read is checked here, and every
+// Talking to hosts over HTTP: write entries and read them back; leave inbox entries and list them;
+// upload and fetch files. Every entry and inbox entry read is checked here, and every
 // file's bytes hashed, whatever host they came from: a reader trusts no host.
 //
 // How many lines a request or a page holds is each host's choice, and this handles any: a request
@@ -13,7 +13,7 @@ import { concat, hex } from './bytes.ts'
 import { type Checked, type SignedEntry, decodeEntry, encodeEntry } from './entry.ts'
 import { FolderError } from './fail.ts'
 import { fileOf } from './files.ts'
-import { type CheckedInbox, type InboxEntry, type SignedDelete, decodeInbox, encodeDelete, encodeInbox } from './inbox.ts'
+import { type CheckedInbox, type InboxEntry, decodeInbox, encodeInbox } from './inbox.ts'
 import { type View, viewFolder } from './view.ts'
 
 /** A host's answer to one line of a request: its place in the request, the id, and why not if not taken. */
@@ -40,11 +40,6 @@ export async function write(hosts: string[], entries: SignedEntry[], how: Reach 
 /** Leave inbox entries with each host: each of the hosts the profile entry of the folder they are to names. */
 export async function leave(hosts: string[], entries: InboxEntry[], how: Reach = {}): Promise<PublishOutcome[]> {
   return post(hosts, '/v1/inbox', entries.map(encodeInbox), how)
-}
-
-/** Send inbox deletes to each host: each of the hosts the folder's profile entry names. */
-export async function deleteInbox(hosts: string[], deletes: SignedDelete[], how: Reach = {}): Promise<PublishOutcome[]> {
-  return post(hosts, '/v1/inbox/delete', deletes.map(encodeDelete), how)
 }
 
 async function post(hosts: string[], path: string, lines: string[], how: Reach): Promise<PublishOutcome[]> {

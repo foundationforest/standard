@@ -1,0 +1,41 @@
+{
+  "name": "@foundationforest/proofs",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Forest's two zero-knowledge proofs, each its own circuit and setup, and the one client for both: the stamp a verifier signs and the verification a device makes from it for one profile; the tree an index publishes and the reputation proof a device makes from it for one of the person's own profiles; and the check any reader makes of each.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "check": "tsc --noEmit",
+    "fetch": "node scripts/fetch.ts",
+    "compile": "node scripts/compile.ts",
+    "test": "node --test --test-force-exit test/*.test.ts"
+  },
+  "dependencies": {
+    "@foundationforest/keys": "0.0.0",
+    "@semaphore-protocol/group": "4.12.1",
+    "poseidon-lite": "0.3.0",
+    "snarkjs": "0.7.5"
+  },
+  "devDependencies": {
+    "@noble/hashes": "2.4.0",
+    "@zk-kit/binary-merkle-root.circom": "2.0.0",
+    "@zk-kit/eddsa-poseidon": "1.0.4",
+    "circomlib": "2.0.5",
+    "ffjavascript": "0.3.1"
+  }
+}

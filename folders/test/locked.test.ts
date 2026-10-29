@@ -1,17 +1,15 @@
 // Locked entries: a body only chosen keys open, the main key's opening half among them. Hosts
 // check and store them like any entry, and read none. Notes about access keys and the Profiles
-// folder are locked entries at keyed paths.
+// folder's entries are locked entries at random paths.
 
 import assert from 'node:assert/strict'
-import { createHmac } from 'node:crypto'
 import { describe, test } from 'node:test'
-import { accessKey, openingHalf, profilesKey } from '@foundationforest/keys'
-import { stampFromJson, stampToJson } from '@foundationforest/verification'
+import { accessKey, mainKey, openingHalf } from '@foundationforest/keys'
+import { stampFromJson, stampToJson } from '@foundationforest/proofs'
 import { bech32 } from '@scure/base'
 import { canonical } from '../src/canonical.ts'
 import { readAll, readFolder, write } from '../src/client.ts'
 import { isLocked, lock, lockCount, openLocked } from '../src/locked.ts'
-import { keyedId, labelPath, notePath, stampPath } from '../src/paths.ts'
 import { lockKeysOf } from '../src/profile.ts'
 import { entry } from '../src/write.ts'
 import { KEYS, SEED, T0, access, alice, aliceBuyerOpening, aliceOpening, asAccess, bobOpening, listed, profileBody } from './fixtures.ts'
@@ -43,7 +41,7 @@ describe('locked entries', () => {
   test('locked to the main key and to each listed key that can read: each opens it; the host, a stranger, a key that only writes and the person’s other profile cannot', async () => {
     const host = await startHost({ now: () => T0 })
     try {
-      const writer = await accessKey(new Uint8Array(32).fill(0x2d))
+      const writer = await accessKey(new Uint8Array(64).fill(0x2d))
       const body = profileBody('maths', { hosts: [host.url], keys: [listed(['read']), listed(['write'], writer)] })
       const secret = { text: 'My phone is +00 555 0100; call after six.', createdAt: '2026-10-02T12:00:00Z' }
       assert.deepEqual(lockKeysOf(body), [aliceOpening.openKey, access.openKey])
@@ -128,55 +126,62 @@ describe('locked entries', () => {
   })
 })
 
-/** A keyed id by a second HMAC-SHA256, node:crypto's. */
-const byHand = (secret: Uint8Array, text: string) => createHmac('sha256', secret).update(text, 'utf8').digest('hex').slice(0, 32)
+/** A random id, as an app makes one: 16 random bytes in hex. */
+const randomId = () => Buffer.from(crypto.getRandomValues(new Uint8Array(16))).toString('hex')
 
-describe('keyed paths', () => {
-  test('a keyed id: the first 32 hex characters of HMAC-SHA256 keyed by the folder’s secret; another secret, another id', () => {
-    assert.equal(keyedId(alice.secret, access.address), byHand(alice.secret, access.address))
-    assert.equal(notePath(alice.secret, access.address), `key/${byHand(alice.secret, access.address)}`)
-    assert.notEqual(notePath(alice.secret, access.address), notePath(new Uint8Array(32).fill(1), access.address))
-    assert.throws(() => keyedId(new Uint8Array(16), 'x'), /32 bytes/)
+describe('notes and the Profiles folder: locked entries at random paths', () => {
+  test('a note about an access key is locked to the main key alone and names its key inside: the key it is about cannot open it, nor find it; the app lists and opens', async () => {
+    const host = await startHost({ now: () => T0 })
+    try {
+      const body = profileBody('maths', { hosts: [host.url], keys: [listed(['read', 'write'])] })
+      const about = { key: access.address, holder: 'my tutoring AI', since: T0 }
+      const note = entry(alice, `key/${randomId()}`, await lock(about, [aliceOpening.openKey]), T0)
+      await write([host.url], [entry(alice, 'profile', body, T0), note])
+      assert.match(note.path, /^key\/[0-9a-f]{32}$/)
+      assert.ok(!note.path.includes(access.address.slice(0, 8)), 'the path names nothing')
+      await assert.rejects(openLocked(note.body!, access.identity), 'a key that can read opens no note: a note is locked to the main key alone')
+      // The app finds the note about a key by listing key/ and opening each.
+      const folder = await readFolder([host.url], alice.address, T0)
+      const notes = await Promise.all([...folder.current].filter(([path]) => path.startsWith('key/')).map(async ([, c]) => openLocked(c.entry.body!, aliceOpening.identity)))
+      assert.deepEqual(notes.filter((n) => n.key === access.address), [about])
+    } finally {
+      await host.close()
+    }
   })
 
-  test('a note about an access key is locked to the main key alone: the key it is about cannot open it, nor find it', async () => {
-    const note = entry(alice, notePath(alice.secret, access.address), await lock({ holder: 'my tutoring AI', since: T0 }, [aliceOpening.openKey]), T0)
-    assert.deepEqual(await openLocked(note.body!, aliceOpening.identity), { holder: 'my tutoring AI', since: T0 })
-    await assert.rejects(openLocked(note.body!, access.identity))
-    assert.ok(!note.path.includes(access.address.slice(0, 8)), 'the path names nothing')
-  })
-
-  test('the Profiles folder: its profile entry holds only hosts; every entry in it is locked to its own opening half, at paths keyed by its secret', async () => {
-    const profiles = await profilesKey(SEED)
-    assert.equal(profiles.address, KEYS.profilesKey.address)
+  test("the Profiles folder: the empty label's folder, its profile entry holding only hosts; every entry in it is locked to its own opening half, at random paths", async () => {
+    const profiles = await mainKey(SEED, '')
+    const opening = await openingHalf(profiles.secret)
+    assert.equal(profiles.address, KEYS.mainKeys[2].address)
     const host = await startHost({ now: () => T0 })
     try {
       // A stamp whose verifier added fields an entry's narrowed JSON cannot spell, a fraction and a
       // key with `_`: kept as text, it fits whole.
-      const added = { stampNumber: '7', facts: '9', verifier: KEYS.serviceKey.address, signature: { r8: ['1', '2'], s: '3' }, score: 0.97, checked_at: '2026-10-01' }
+      const added = { stampNumber: '7', facts: '9', verifier: KEYS.serviceKey.address, verifierName: 'verifier-a.example', signature: { r8: ['1', '2'], s: '3' }, score: 0.97, checked_at: '2026-10-01' }
       assert.throws(() => canonical(added), /whole|key/, 'not as JSON in a body')
       const text = JSON.stringify(stampToJson(stampFromJson(added)))
       const stamp = { stamp: text }
       const label = { label: 'tutoring/seller', time: T0 }
       await write([host.url], [
         entry(profiles, 'profile', { hosts: [host.url] }, T0),
-        entry(profiles, labelPath(profiles.secret, label.label), await lock(label, [profiles.openKey]), T0),
-        entry(profiles, stampPath(profiles.secret, text), await lock(stamp, [profiles.openKey]), T0),
+        entry(profiles, `label/${randomId()}`, await lock(label, [opening.openKey]), T0),
+        entry(profiles, `stamp/${randomId()}`, await lock(stamp, [opening.openKey]), T0),
       ])
-      // A new device: the seed gives the Profiles folder key, its folder gives every label, and
+      // A new device: the seed gives the Profiles folder's key, its folder gives every label, and
       // each label its folder.
-      const again = await profilesKey(SEED)
+      const again = await mainKey(SEED, '')
       const folder = await readFolder([host.url], again.address, T0)
       assert.deepEqual(folder.hosts, [host.url])
       assert.equal(folder.current.get('profile')!.entry.body!.openKey, undefined, 'no openKey: it takes no inbox entries')
-      const opened = await Promise.all([...folder.current].filter(([path]) => path !== 'profile').map(async ([path, c]) => [path, await openLocked(c.entry.body!, again.identity)] as const))
-      assert.deepEqual(Object.fromEntries(opened), { [labelPath(again.secret, 'tutoring/seller')]: label, [stampPath(again.secret, text)]: stamp })
-      const back = stampFromJson(JSON.parse(opened.find(([path]) => path.startsWith('stamp/'))![1].stamp as string))
+      const { identity } = await openingHalf(again.secret)
+      const opened = await Promise.all([...folder.current].filter(([path]) => path !== 'profile').map(async ([path, c]) => [path.split('/')[0], await openLocked(c.entry.body!, identity)] as const))
+      assert.deepEqual(Object.fromEntries(opened), { label, stamp })
+      const back = stampFromJson(JSON.parse(opened.find(([kind]) => kind === 'stamp')![1].stamp as string))
       assert.deepEqual([back.score, back.checked_at], [0.97, '2026-10-01'], 'what the verifier added comes back as it wrote it')
-      assert.equal(labelPath(profiles.secret, 'tutoring/seller'), `label/${byHand(profiles.secret, 'tutoring/seller')}`)
-      assert.equal(stampPath(profiles.secret, text), `stamp/${byHand(profiles.secret, text)}`)
       // Nothing in it names a label: not the paths, not what the host holds.
       assert.ok(!host.dump().join('\n').includes('tutoring'))
+      const labelEntry = [...folder.current].find(([path]) => path.startsWith('label/'))![1]
+      for (const other of [aliceOpening.identity, access.identity]) await assert.rejects(openLocked(labelEntry.entry.body!, other), 'only its own opening half opens it')
     } finally {
       await host.close()
     }

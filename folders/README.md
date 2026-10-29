@@ -47,14 +47,14 @@ Its folder is every entry signed for it, one current entry per path:
 | Path | What it holds |
 |---|---|
 | `profile` | the profile entry: hosts, market and role, open key, pay addresses, proofs, access keys |
-| `key/<id>` | a note for the person about one access key (Access keys) |
+| `key/<id>` | a note for the person about one access key, at a random id (Access keys) |
 | any other | anything the writer chooses: a market's offers and reviews, an app's own entries, a photo |
 
 - A path is 1 to 4 segments separated by `/`, each `[a-z0-9][a-z0-9._-]{0,63}`, at most 256
   bytes. `profile` is a single path: `profile/<anything>` is refused.
 - Beside `profile`, paths and their bodies are the writer's. The main way is the market's, the one
   the profile's label names: [foundationforest/markets](https://github.com/foundationforest/markets)
-  keeps `offer/<id>` and `review/<id>` among the kinds a market defines. Readers MAY ignore a first
+  keeps `post/<id>` and `review/<id>` among the kinds a market defines. Readers MAY ignore a first
   segment they do not know.
 - An entry sits in the folder of the profile that wrote it, so the profile a review is about
   cannot erase it; the one who wrote it can.
@@ -71,11 +71,11 @@ Its folder is every entry signed for it, one current entry per path:
 - `key` is the address of the access key that signed; it is absent when the main key signed, and
   never the main key's own address.
 - `sig` is EdDSA-Poseidon on Baby Jubjub ([keys](../keys/README.md#signatures)) by `key` when
-  there is one, else by `profile`, the main key, over the signing input `0xff` ‖
-  UTF-8(`forest/v1/entry\n`) ‖ UTF-8(canonical text of the entry without `sig`): the 64 bytes, R8
-  packed then S, in base64url without padding. The signed number is SHA-256 of the signing input,
-  shifted right one byte. The check is strict: R8 a point on the curve in its one spelling, S below
-  `l`, the key a point of the prime-order subgroup, then `S · Base8 = R8 + 8 · hm · A`.
+  there is one, else by `profile`, the main key, over the signing input, UTF-8 of the canonical text
+  of the entry without `sig` and nothing else: the 64 bytes, R8 packed then S, in base64url without
+  padding. The signed number is SHA-256 of the signing input, shifted right one byte. The check is
+  strict: R8 a point on the curve in its one spelling, S below `l`, the key a point of the
+  prime-order subgroup, then `S · Base8 = R8 + 8 · hm · A`.
 - The id is lowercase hex of SHA-256(signing input).
 
 **Canonical text.** An entry travels as exactly its canonical text: RFC 8785 (JCS) over a narrowed
@@ -85,15 +85,15 @@ coordinates are decimal text (`"30"`, `"38.72"`); arrays have no holes; object k
 and refuse the entry unless the result equals the bytes it received.
 
 **Keys by address.** An address has one spelling: decoding and encoding again MUST give the same
-text, 32 bytes, a point packed as keys/ packs it. A key named by its address anywhere, in an entry,
-a message or an inbox delete, MUST be a point of the prime-order subgroup other than the identity;
-anything else is refused.
+text, 32 bytes, a point packed as keys/ packs it. A key named by its address anywhere, in an entry
+or a message, MUST be a point of the prime-order subgroup other than the identity; anything else is
+refused.
 
-**Signed texts.** The signed bytes of an entry, a message and an inbox delete each begin with
-`0xff`, then their own text (`forest/v1/entry\n`, `forest/v1/message\n`,
-`forest/v1/inbox/delete\n`), so no signature is ever two of them, nor a pay key's
-(`forest/v1/pay\n`, [keys](../keys/README.md#pay-keys)) or an index's (`forest/v1/reputation\n`,
-[proofs/reputation](../proofs/reputation/README.md)). Payments are the pay keys', on their chains.
+**Signed values.** A signature carries no words: an entry and a message are each signed as their
+own canonical text without `sig`, and an index's root as the canonical text of `{ root, time }`
+([proofs](../proofs/README.md#the-tree-an-index-publishes)). Each says what it is by its own fields,
+an entry by `profile` and `path`, a message by `from` and `to`, so no signature is ever two of
+them. Payments are the pay keys', on their chains.
 
 **Which entry counts.** A reader's view of a folder is a pure function of the entries it holds and
 its clock `now`:
@@ -117,7 +117,7 @@ and its market (the trade a label names, such as `tutoring`) adds fields beside 
 
 ```
 { "market"?: <text>, "role"?: <text>, "hosts": [<origin>, …], "openKey"?: <open key>,
-  "pay"?: { … }, "paySig"?: { … }, "proofs"?: [ … ],
+  "pay"?: { … }, "proofs"?: [ … ],
   "keys"?: [ { "key": <address>, "open"?: <open key>, "can": [ … ] }, … ], "files"?: [ … ] }
 ```
 
@@ -131,14 +131,9 @@ and its market (the trade a label names, such as `tutoring`) adds fields beside 
 - **`openKey`** is the main key's opening half, as its open key, `age1pq1…`
   ([keys](../keys/README.md#opening-halves)). Locked entries and inbox entries are locked to it. A
   folder whose profile entry has one takes inbox entries.
-- **`pay`** lists any of the profile's pay addresses, by address type, `solana` or `evm`. A profile
-  entry that carries `pay` MUST carry `paySig`, a signature for each address it lists, each by that
-  type's pay key over `0xff` ‖ UTF-8(`forest/v1/pay\n`) ‖ UTF-8(the profile's address), in
-  base64url without padding: `solana`, an Ed25519 signature, 64 bytes; `evm`, a secp256k1 signature
-  over keccak256 of the bytes, 65 bytes, r ‖ s ‖ the recovery id, checked by recovering the key and
-  comparing its EIP-55 address ([keys](../keys/README.md#pay-keys)). A reader checks each and counts
-  an address only when its signature holds (`checkPay`), so a profile cannot list an address that
-  is not its own; a host MAY check them.
+- **`pay`** lists any of the profile's pay addresses, by chain, `solana` or `evm`, each the one
+  keys/'s `payAddresses` gives ([keys](../keys/README.md#pay-keys)). They are unsigned: the main key
+  signed the profile entry, so they are where the profile says it is paid.
 - **`proofs`** carries up to four proofs (Proofs).
 - **`keys`** lists the access keys the profile hands out (Access keys).
 - **`files`**, as in any entry (Files), names a photo of the profile, say.
@@ -156,7 +151,7 @@ any of:
 | `can` | The key |
 |---|---|
 | `read` | opens the folder's locked entries: every one written after the profile entry listed it is locked to it |
-| `read-inbox` | opens the folder's inbox entries, and deletes them |
+| `read-inbox` | opens the folder's inbox entries |
 | `write` | writes any entry in the folder but `profile`: an entry it signs, naming itself in `key`, counts |
 | `message` | signs messages as the profile, which the recipient's app shows as the profile's |
 
@@ -173,22 +168,10 @@ any of:
 - A `can` this code does not know grants nothing, and a listed key with a field this code does not
   know counts for nothing (FAQ).
 - **Notes.** Each access key may have a note for the person: who holds it, since when, whatever
-  the app keeps. It is a locked entry at `key/<id>`, locked to the main key's open key alone, so no
-  access key reads it, its id keyed by the access key's address (Keyed paths), so the path names no
-  key.
-
-### Keyed paths
-
-An entry about something the person keeps to themselves sits at a path that names nothing:
-`<prefix>/<id>`, where the id is the first 32 hex characters of HMAC-SHA256, keyed by the folder's
-own secret, of a text saying what the entry is about (`keyedId`). Only the person's devices, which
-mix that secret from the seed, can tell what a path is about.
-
-| Path | In | Keyed by | Its text |
-|---|---|---|---|
-| `key/<id>` (`notePath`) | a profile's folder | the profile's secret, keys/'s `mainKey(seed, label).secret` | the access key's address |
-| `label/<id>` (`labelPath`) | the Profiles folder | the Profiles folder key's secret, keys/'s `profilesKey(seed).secret` | the label |
-| `stamp/<id>` (`stampPath`) | the Profiles folder | the same | the stamp's JSON, as the text its entry holds |
+  the app keeps. It is a locked entry at `key/<id>`, the id random, so the path names no key,
+  locked to the main key's open key alone, so no access key reads it. Its locked body names the
+  access key it is about, `{ "key": <address>, … }`; the app lists the folder's `key/` entries and
+  opens each to find it.
 
 ### Locked entries
 
@@ -236,35 +219,35 @@ An inbox entry is what anyone leaves in a folder whose profile entry has `openKe
 signed outside, and it names only the folder it is to:
 
 ```
-{ "v": 1, "to": <address>, "time": <ms since 1970>, "body": { "private": <base64url of an age file> } }
+{ "v": 1, "to": <address>, "private": <base64url of an age file> }
 ```
 
-- `v` is 1. No other field is allowed, in the inbox entry or in its body.
-- Its id is lowercase hex of SHA-256 of its canonical text.
+- `v` is 1. No other field is allowed.
+- Its id is lowercase hex of SHA-256 of its canonical text. Each host keeps it for its keep days.
 - Its envelope is locked to `to`'s open key and to every key `to`'s profile entry lists with
   `read-inbox` (`inboxLockKeysOf`). The sender locks it so; nobody can check.
 
 Locked inside it is one message:
 
 ```
-{ "from": <address>, "key"?: <address>, "host"?: <origin>, "time": <ms since 1970>,
-  "body": <object>, "sig": <base64url> }
+{ "from": <address>, "to": <address>, "key"?: <address>, "host"?: <origin>,
+  "time": <ms since 1970>, "body": <object>, "sig": <base64url> }
 ```
 
-- `from` is the sender's profile. `key`, when there is one, is the access key that signed, which
-  `from`'s profile entry lists with `message`; else `from`'s main key signed.
+- `from` is the sender's profile, and `to` the folder it is left in. `key`, when there is one, is
+  the access key that signed, which `from`'s profile entry lists with `message`; else `from`'s main
+  key signed.
 - `host`, which a message MAY carry, is one of `from`'s hosts, an origin as a profile entry writes
   it: it tells the recipient's app where the sender's folder is.
 - `body` is what the message says: the two apps' to agree. The main way, for a plain message, is
   `{ "text": <text> }`.
-- `sig` is EdDSA-Poseidon, strict as an entry's, by `key` or `from`, over `0xff` ‖
-  UTF-8(`forest/v1/message\n`) ‖ UTF-8(canonical text of the message without `sig`, with `"to"`, the
-  folder it is left in, beside its fields). The signature names the folder, so nobody can move a
-  message to another inbox as its sender's.
-- **The recipient's app checks** the signature (`openInbox`), then the sender's profile entry,
-  from the sender's hosts: that it lists `key` with `message`, if a key signed (`senderCounts`), and
-  anything else it wants, such as a verification, a market and a role. Then it decides what to
-  show.
+- `sig` is EdDSA-Poseidon, strict as an entry's, by `key` or `from`, over UTF-8 of the canonical
+  text of the message without `sig`. `to` is among the fields it signs, so nobody can move a message
+  to another inbox as its sender's.
+- **The recipient's app checks** that `to` is the folder it was left in, and the signature
+  (`openInbox`), then the sender's profile entry, from the sender's hosts: that it lists `key` with
+  `message`, if a key signed (`senderCounts`), and anything else it wants, such as a verification, a
+  market and a role. Then it decides what to show.
 
 **Leave.** The sender reads the profile entry of the folder it writes to, for its hosts and the
 open keys to lock to; it signs the message, locks it, and leaves the inbox entry with each host
@@ -275,25 +258,14 @@ it on its own (Hosts).
 page, so the next ask starts after it (`POST /v1/inbox/read`, with `{ "to", "after"? }`). Only the
 envelopes protect it.
 
-**Delete.** The folder's main key, or a key its profile entry lists with `read-inbox`, deletes an
-inbox entry (`POST /v1/inbox/delete`):
-
-```
-{ "v": 1, "to": <address>, "id": <inbox entry's id>, "key"?: <address>, "sig": <base64url> }
-```
-
-- `sig` is EdDSA-Poseidon by `key`, or by `to`'s main key when there is none, over `0xff` ‖
-  UTF-8(`forest/v1/inbox/delete\n`) ‖ UTF-8(canonical text without `sig`).
-- It names one exact inbox entry, so sending it again, or to every host, deletes nothing more.
-
 How many inbox entries a host takes, and from whom, is each host's spam limit (What a host
 chooses).
 
 ### The Profiles folder
 
 The person's Profiles folder lists every profile they made and every stamp they hold, so a new
-device needs only the seed. It is a folder like any other, signed by the Profiles folder key, which
-the seed alone gives ([keys](../keys/README.md#the-profiles-folder-key)).
+device needs only the seed. It is a folder like any other, the empty label's, signed by its main
+key, which the seed alone gives ([keys](../keys/README.md#the-profiles-folder)).
 
 - **Its profile entry holds only `hosts`**: no market, no role, no `openKey`, so it takes no inbox
   entries, and no access keys.
@@ -302,13 +274,13 @@ the seed alone gives ([keys](../keys/README.md#the-profiles-folder-key)).
   - one for each profile the person made, at `label/<id>`: `{ "label": <label>, "time": <ms since
     1970> }`, its label and when it was made;
   - one for each stamp the person holds, at `stamp/<id>`: `{ "stamp": <text> }`, the stamp's JSON
-    ([proofs/verification](../proofs/verification/README.md#the-stamp-and-the-verification)) as
-    text, so any field a verifier adds fits, whatever the narrowed JSON of an entry can spell.
-- Their paths are keyed by its secret (Keyed paths), so they name nothing.
+    ([proofs](../proofs/README.md#the-stamp-and-the-verification)) as text, so any field a verifier
+    adds fits, whatever the narrowed JSON of an entry can spell.
+- Each id is random, so the paths name nothing.
 - An app adds every new profile there, and every new stamp.
-- **A new device:** the seed gives the Profiles folder key; any host that holds the folder gives
-  its entries, which give every label; each label gives its main key and its folder. Anyone can also
-  try the labels in the markets directory
+- **A new device:** the seed gives the Profiles folder's key; any host that holds the folder gives
+  its entries, which the device lists and opens, each giving a label or a stamp; each label gives
+  its main key and its folder. Anyone can also try the labels in the markets directory
   ([foundationforest/markets](https://github.com/foundationforest/markets)): the seed and a label
   give the main key, and a host answers whether that folder exists; a label outside the directory
   is found that way only by whoever remembers it.
@@ -321,28 +293,27 @@ counts for one main key: a reader checks it against the address of the profile t
 a proof copied to another profile fails. A reader ignores a proof whose circuit it does not know,
 so a newer kind never makes a profile invalid for an older app. `verification` and `reputation`,
 below, are ours: the field takes any circuit's name, and anyone can add one. An app puts a proof in
-the profile entry only when the person chooses to show it there:
-[proofs/reputation/](../proofs/reputation/README.md#limits) says what one can reveal. Folders checks
-no proof itself: `verificationCheck` and `reputationCheck` turn a proof on a profile entry into what
-its proof check takes, for the profile that carries it.
+the profile entry only when the person chooses to show it there: [proofs/](../proofs/README.md#limits)
+says what one can reveal. Folders checks no proof itself: `verificationCheck` and `reputationCheck`
+turn a proof on a profile entry into what its proof check takes, for the profile that carries it.
 
 - **`verification`** shows that a verifier signed a stamp to the seed that gives this profile's key
-  for its label ([proofs/verification/](../proofs/verification/README.md)). It carries the
+  for its label ([proofs/](../proofs/README.md#the-stamp-and-the-verification)). It carries the
   verifier's key, as its address, and its name, the label, and the proof's 256 bytes, in the
-  reputation proof's order. A reader checks it with proofs/verification/client's
-  `checkVerification`, which works the name hash and the scope, the numbers the proof takes for the
-  name and the label, out of them itself. Each reader decides which verifiers it trusts.
+  reputation proof's order. A reader checks it with proofs/'s `checkVerification`, which works the
+  name hash and the scope, the numbers the proof takes for the name and the label, out of them
+  itself. Each reader decides which verifiers it trusts.
 - **`reputation`** shows the average score of profiles the person holds in an index's tree,
   without saying which. It carries the index's key, the root and time the index signed and its
-  signature, the score, and the proof's 256 bytes. A reader checks it with
-  proofs/reputation/client's `checkReputation`: the proof derives this profile's key from the same
-  seed as the profiles it counts, so nobody can lend their score to someone else. Each reader
-  decides which indexes it trusts and how old a time it accepts. How it is made is
-  [proofs/reputation/](../proofs/reputation/README.md)'s.
+  signature, the score, and the proof's 256 bytes. A reader checks it with proofs/'s
+  `checkReputation`: the proof derives this profile's key from the same seed as the profiles it
+  counts, so nobody can lend their score to someone else. Each reader decides which indexes it
+  trusts and how old a time it accepts. How it is made is
+  [proofs/](../proofs/README.md#the-reputation-proof)'s.
 
 ### Hosts
 
-A host is an address that answers eight requests, the plug, however many machines stand behind
+A host is an address that answers seven requests, the plug, however many machines stand behind
 it. It has no keys, no sign-up and no login: an entry's signature is all it asks for. It is open: it
 takes signed entries for any folder and serves them to anyone; it takes inbox entries for any folder
 whose profile entry on it has `openKey`, and lists them to anyone; it takes the bytes a current
@@ -356,7 +327,6 @@ entry names, and serves them to anyone. It reads no body but the profile entry's
 | `GET /v1/entries?after=` | none | NDJSON of every stored entry after the cursor, in the order taken |
 | `POST /v1/inbox` | NDJSON, one canonical inbox entry a line | as for entries (Taking an inbox entry in) |
 | `POST /v1/inbox/read` | `{ "to": <address>, "after"?: <cursor> }` | NDJSON of the inbox entries left for that folder after the cursor, in arrival order |
-| `POST /v1/inbox/delete` | NDJSON, one canonical inbox delete a line | as for entries (Deleting an inbox entry) |
 | `PUT /v1/files/<sha256>` | the raw bytes, `content-type` their type | `{ok, error?, message?}` (Taking a file in) |
 | `GET /v1/files/<sha256>` | none | the bytes, with the type they came in with, or 404 |
 
@@ -386,18 +356,10 @@ entry names, and serves them to anyone. It reads no body but the profile entry's
 **Taking an inbox entry in**, in this order, error code in brackets:
 
 1. No larger than the host takes [`size`]; then the checks of The inbox [`canonical`, `shape`,
-   `version`, `key`, `time`, `body`], and `time ≤ now + 600,000` [`future`].
+   `version`, `key`].
 2. No inbox entry with the same id is here already [`duplicate`].
 3. The current profile entry of `to` on this host has `openKey` [`no_inbox`].
 4. A host MAY refuse an inbox entry by its own choice [`refused`]: its spam limits.
-
-**Deleting an inbox entry**, in this order:
-
-1. No larger than the host takes [`size`]; its canonical text and shape [`canonical`, `shape`,
-   `version`, `key`], and its signature, by `key` or by `to`'s main key [`signature`].
-2. Signed by an access key: the current profile entry of `to` on this host lists it with
-   `read-inbox` [`unlisted`].
-3. An inbox entry that is not here is `not here`; else the host deletes it.
 
 **Taking a file in**, in this order, error code in brackets; before all of it, a declared size
 larger than the host takes is answered 413, unread:
@@ -420,9 +382,9 @@ one seed, under the labels `check/a` and `check/b`, and an access key it makes, 
 above, and checks each answer: entries taken, and served, one folder's and everyone's, in the order
 taken; each refusal with its code; the newest kept at each path; a newer profile entry always taken;
 an access key's entry taken while listed with `write`, refused otherwise, and no longer counting
-once removed; reading after a cursor; inbox entries refused in the order above, listed to anyone,
-and deleted only for the main key or a key with `read-inbox`; files taken only while named, served,
-and refused when they do not match. A refusal the plug lets a host make by its own choice, such as
+once removed; reading after a cursor; inbox entries refused in the order above, and listed to
+anyone in arrival order; files taken only while named, served, and refused when they do not
+match. A refusal the plug lets a host make by its own choice, such as
 a folder's first profile entry or a size it does not take, is no failure: what it stops is
 reported unchecked, and given a seed whose folders the host holds already, the check runs it all.
 Folders' own tests run it against a minimal host in `test/host.ts`, which holds everything in
@@ -441,44 +403,37 @@ Nothing here is the standard's: each host chooses, and says its numbers where it
   size (Taking an entry in).
 - **Keeping.** An entry that stops being current, or stops counting, is kept for a number of days
   the host chooses, by its own clock, then deleted. An inbox entry is kept for a number of days from
-  when it arrived, or until it is deleted. A file is kept while a current entry names it, then for
-  the host's keep days. A host that drops a current entry withholds it.
+  when it arrived, then it leaves. A file is kept while a current entry names it, then for the
+  host's keep days. A host that drops a current entry withholds it.
 - **Spam.** How many inbox entries it takes, for which folders, and from where.
 
 ### Use it
 
-`@foundationforest/folders` has four import paths, each built to `dist/` with types, and the shapes:
+`@foundationforest/folders` has three import paths, each built to `dist/` with types, and the shapes:
 
 - `@foundationforest/folders`: keys as addresses (`publicKeyFromAddress`, `keyFromScalar`);
   canonical text; entries (`entry`, the `Writer` that signs one, a main key or `{ profile, key }`,
   `nextTime`, `signEntry`, `checkEntry`, `encodeEntry`, `decodeEntry`, `entryId`); the profile entry
   (`checkProfileBody`, `hostsOf`, `openKeyOf`, `keysOf`, `canDo`, `lockKeysOf`, `inboxLockKeysOf`,
-  `CAN`); the view (`viewFolder`, `liveContent`); keyed paths (`keyedId`, `notePath`, `labelPath`,
-  `stampPath`); files (`fileOf`, `filesOf`); the inbox (`decodeInbox`, `inboxId`, `signMessage`,
-  `checkMessage`, `senderCounts`, `inboxDelete`, `decodeDelete`); a profile entry's proofs as their
-  proof checks take them (`proofsOf`, `verificationCheck`, `reputationCheck`), and its pay addresses
-  whose signature holds (`checkPay`); talking to hosts (`write`, `readPage`, `readAll`,
-  `readFolder`, `leave`, `readInbox`, `deleteInbox`, `upload`, `fetchFile`). A host that fails does
+  `CAN`); the view (`viewFolder`, `liveContent`); files (`fileOf`, `filesOf`); the inbox
+  (`decodeInbox`, `inboxId`, `signMessage`, `checkMessage`, `senderCounts`); a profile entry's proofs
+  as their proof checks take them (`proofsOf`, `verificationCheck`, `reputationCheck`); talking to
+  hosts (`write`, `readPage`, `readAll`, `readFolder`, `leave`, `readInbox`, `upload`, `fetchFile`). A host that fails does
   not stop `readFolder`: it reads the others and lists that host, with the error, in `failed`. A
   read ends with an error on a cursor that is not a whole number or does not move forward, and its
   `timeout` bounds the whole read. A write reads each answer's HTTP status before its body, and
   sends a batch again in halves when the host answers 413 or one [`batch`] result. Every request
   goes through the caller's own `fetch` if given, and, given `redirect: 'error'`, refuses a host
   that redirects. No server, database or encryption library is in it. The keys themselves,
-  `mainKey`, `openingHalf`, `profilesKey` and `newAccessKey` among them, are keys/'s.
+  `mainKey`, `openingHalf` and `newAccessKey` among them, are keys/'s.
 - `@foundationforest/folders/locked`: `lock`, `openLocked`, `lockCount`, `isLocked`; `inboxEntry`
   (sign a message, and lock it to the open keys a profile entry gives for its inbox) and
-  `openInbox` (open one, and check its message's signature).
+  `openInbox` (open one, and check that its message is to that folder and its signature).
 - `@foundationforest/folders/check`: `checkHost(url, { seed?, type? })`, the host check, and
   `CHECK_LABELS`, the labels of the profiles it writes from (Hosts).
-- `@foundationforest/folders/public`: `publicFetch`, a fetch that reaches only public addresses and
-  follows no redirect, for a service that goes to a host a stranger named: it refuses loopback,
-  private, link-local, carrier-grade NAT, NAT64, 6to4, multicast and every other range IANA's
-  special-purpose registries mark not globally reachable, written in the URL or behind a name.
-  `isPublic` checks one address. Node only.
 - `@foundationforest/folders/schemas/profile.json`: the profile entry's shape, as a JSON Schema.
 
-Write a profile with one offer, hand out an access key that can write and read the inbox, and put
+Write a profile with one post, hand out an access key that can write and read the inbox, and put
 a photo in the folder:
 
 ```ts
@@ -486,14 +441,14 @@ import { mainKey, newAccessKey, openingHalf } from '@foundationforest/keys' // k
 import { entry, fileOf, readFolder, upload, write } from '@foundationforest/folders'
 
 const me = await mainKey(seed, 'tutoring/seller') // seed: its 32 bytes
-const ai = await newAccessKey() // its 32 bytes, ai.secret, go to whoever it is for
+const ai = await newAccessKey() // its 64 bytes, ai.secret, go to whoever it is for
 const profile = {
   market: 'tutoring', role: 'seller', hosts: [host],
   openKey: (await openingHalf(me.secret)).openKey,
   keys: [{ key: ai.address, open: ai.openKey, can: ['write', 'read-inbox'] }],
 }
-const maths = { ...fields } // an offer's fields are its market's (foundationforest/markets)
-await write([host], [entry(me, 'profile', profile, Date.now()), entry(me, 'offer/maths', maths, Date.now())])
+const maths = { ...fields } // a post's fields are its market's (foundationforest/markets)
+await write([host], [entry(me, 'profile', profile, Date.now()), entry(me, 'post/maths', maths, Date.now())])
 // Whoever holds the access key writes for the profile, naming the folder it writes in:
 const photo = fileOf(jpeg, 'image/jpeg') // jpeg: the photo's bytes
 await write([host], [entry({ profile: me.address, key: ai }, 'photo/1', { files: [photo] }, Date.now())])
@@ -524,7 +479,7 @@ for (const e of page.entries) {
 ```
 # The tests take their keys from keys/, and check the example profile entry's proofs with the
 # proofs' clients.
-npm ci && npm run build   # at the root: every package; keys/, both clients and folders to dist/
+npm ci && npm run build   # at the root: every package; keys/, proofs/ and folders to dist/
 cd folders
 npm run check          # type-check
 npm test               # everything, on loopback
@@ -535,32 +490,32 @@ node scripts/example-profile.ts   # make the example profile entry's proofs agai
 
 Node 22.18 or later. Built from existing pieces, unchanged: `@noble/curves`, `@noble/hashes`,
 `@scure/base`, `poseidon-lite` and `canonicalize` for the core, with keys/'s Baby Jubjub;
-`age-encryption` for locking; `undici` for the public fetch.
+`age-encryption` for locking.
 
 ### Test vectors
 
 `test/vectors.json`, for keys/'s `tutoring/seller` profile from its test seed `00 01 … 1f`: its
 profile entry, whose `openKey` is that profile's main key's opening half, `pay` its pay addresses,
-`paySig` their signatures, and `keys` keys/'s access key, from 32 bytes of `0x2b`, with `read-inbox`
-and `write`; an offer by the main key, an offer by the access key, a photo (the 26 letters `a` to
-`z`, as `text/plain`) and a delete, each with its wire text, signing input and id; an inbox entry
-from keys/'s `tutoring/buyer`, with its id and its message's wire text and signing input, and the
-access key's inbox delete of it; the main key's note about the access key, at its keyed path; and
-the seed's Profiles folder, its profile entry, its entry for `tutoring/seller`, and its entry for
-one stamp, the example verifier's, held as text with a fraction the verifier added. The seed and
-every key are pinned in `keys/test/vectors.json`, and checked there. The locked bodies are pinned as
-made, in `test/envelopes.json`, since age's encryption is random. `test/vectors.test.ts` recomputes
-every entry, the inbox entry and its delete, checks each with a second SHA-256 and HMAC-SHA256
-(node:crypto) and a second EdDSA-Poseidon (zk-kit's, from the address and the 64 bytes on its own),
-opens each locked body with the pinned keys it was locked to and no other, and checks the profile
-entry's pay signatures. The profile is `9bpPbLYCPwNWq9BZqnJr3EqRNqymFZ4g58Zk9K86azDC`; every signing
-input begins `ff 66 6f 72 65 73 74 2f` (`0xff`, then `forest/`).
+and `keys` keys/'s access key, from 32 bytes of `0x2b` then 32 of `0x2c`, with `read-inbox` and
+`write`; an offer by the main key, an offer by the access key, a photo (the 26 letters `a` to `z`,
+as `text/plain`) and a delete, each with its wire text, signing input and id; an inbox entry from
+keys/'s `tutoring/buyer`, with its id and its message's wire text and signing input; the main key's
+note about the access key, at a random path; and the seed's Profiles folder, its profile entry, its
+entry for `tutoring/seller`, and its entry for one stamp, the example verifier's, held as text with
+a fraction the verifier added. The seed and every key are pinned in `keys/test/vectors.json`, and
+checked there. The locked bodies are pinned as made, in `test/envelopes.json`, and the random ids in
+`test/vectors.ts`, since age's encryption and the ids are random. `test/vectors.test.ts` recomputes
+every entry and the inbox entry, checks each with a second SHA-256 (node:crypto) and a second
+EdDSA-Poseidon (zk-kit's, from the address and the 64 bytes on its own), and opens each locked body
+with the pinned keys it was locked to and no other. The profile is
+`6VQ37dtNvGa5HuC56g9gfhqXXPjxPmktdKaEMaL3rnZL`; every signing input is the canonical text of what it
+signs, without `sig`.
 
 The example profile entry, [schemas/examples/profile.json](schemas/examples/profile.json), is that
-profile's, with its pay addresses each signed by its pay key, keys/'s access key listed with `read`
-and `write`, a verification from an example verifier and a reputation proof from an example index's
-tree, made with the circuits' setups by `scripts/example-profile.ts`; `test/schemas.test.ts` checks
-both proofs with their proof checks and the pay signatures with `checkPay`.
+profile's, with its pay addresses, keys/'s access key listed with `read` and `write`, a verification
+from an example verifier and a reputation proof from an example index's tree, made with the
+circuits' setups by `scripts/example-profile.ts`; `test/schemas.test.ts` checks both proofs with
+their proof checks.
 
 ## Promises
 
@@ -577,8 +532,8 @@ both proofs with their proof checks and the pay signatures with `checkPay`.
   refuse a folder's first, so joining a host can cost.
 - **A host holds nothing secret of the people it serves.** No keys, no sign-up, no login, and it
   cannot open a locked entry or an inbox entry, though it sees whom an inbox entry is for (Limits).
-- **Only a folder's main key, and the keys its profile entry lists with `read-inbox`, delete its
-  inbox entries.**
+- **Only the keys an inbox entry was locked to open it,** and a sender locks it to the folder's main
+  key and the keys its profile entry lists with `read-inbox`.
 
 ## Limits
 
@@ -606,10 +561,10 @@ both proofs with their proof checks and the pay signatures with `checkPay`.
 
 ## Who decides what
 
-- **The standard:** the entry, the inbox entry, the message and the inbox delete, and what makes
-  each valid (the ten-minute window); the eight requests and their codes; the profile entry's
-  fields, the access keys and what each `can` lets one do; locking; keyed paths; a file's name; the
-  Profiles folder's paths; the proofs field.
+- **The standard:** the entry, the inbox entry and the message, and what makes each valid (the
+  ten-minute window); the seven requests and their codes; the profile entry's fields, the access
+  keys and what each `can` lets one do; locking; a file's name; the Profiles folder's paths; the
+  proofs field.
 - **A market chooses:** its roles, its content paths and their bodies, and where an entry names
   files ([foundationforest/markets](https://github.com/foundationforest/markets)).
 - **A host chooses:** whether it takes a folder it does not hold yet, and at what price; its keep

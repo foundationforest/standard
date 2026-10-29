@@ -2,18 +2,18 @@
 //
 //   { v: 1, profile, path, time, body | null, key?, sig }
 //
-// `sig` is EdDSA-Poseidon on Baby Jubjub, by keys/'s signBytes, over the signed bytes
-// 0xff || "forest/v1/entry\n" || JCS(the rest): by the access key `key` names when there is one,
-// else by the profile's main key. It signs SHA-256 of those bytes, shifted right one byte, as a
-// number, and is written as 64 bytes, R8 packed then S, in base64url. A message's and an inbox
-// delete's signed bytes start with their own text, so no signature is ever two of them.
+// `sig` is EdDSA-Poseidon on Baby Jubjub, by keys/'s signBytes, over JCS(the rest), the canonical
+// text of the entry without its sig and nothing else: by the access key `key` names when there is
+// one, else by the profile's main key. It signs SHA-256 of those bytes, shifted right one byte, as a
+// number, and is written as 64 bytes, R8 packed then S, in base64url. A message and an index's root
+// each say what they are by their own fields, so no signature is ever two of them.
 //
 // Whether an access key's entry counts is the view's (view.ts): only while the folder's current
 // profile entry lists the key with write. No access key writes `profile`, so that is refused here.
 
 import { sha256 } from '@noble/hashes/sha2.js'
 import { type Point, checkBytes, packSignature, publicKeyOf, signBytes, unpackSignature } from '@foundationforest/keys/curve'
-import { b64u, concat, hex, utf8 } from './bytes.ts'
+import { b64u, hex, utf8 } from './bytes.ts'
 import { type Json, canonical, checkValue, parseCanonical } from './canonical.ts'
 import { fail } from './fail.ts'
 import { checkFiles } from './files.ts'
@@ -21,7 +21,6 @@ import { type Key, publicKeyFromAddress } from './keys.ts'
 import { checkProfileBody } from './profile.ts'
 
 export const VERSION = 1
-export const SIGN_PREFIX = concat(Uint8Array.of(0xff), utf8('forest/v1/entry\n'))
 /** Hosts refuse, and readers hold back, entries dated further ahead than this. */
 export const MAX_FUTURE_MS = 10 * 60 * 1000
 /** The path of a folder's profile entry: the one entry every host reads, written by the main key only. */
@@ -93,8 +92,9 @@ export function unsignedOf(entry: SignedEntry): UnsignedEntry {
   return rest
 }
 
+/** What an entry's signature signs: the canonical text of the entry without its sig. */
 export function signingInput(unsigned: UnsignedEntry): Uint8Array {
-  return concat(SIGN_PREFIX, utf8(canonical(unsigned)))
+  return utf8(canonical(unsigned))
 }
 
 /** The entry's id: SHA-256 of what was signed, so a re-encoded signature is not a new entry. */
