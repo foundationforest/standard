@@ -54,7 +54,7 @@ Its folder is every entry signed for it, one current entry per path:
   bytes. `profile` is a single path: `profile/<anything>` is refused.
 - Beside `profile`, paths and their bodies are the writer's. The main way is the market's, the one
   the profile's label names: [foundationforest/markets](https://github.com/foundationforest/markets)
-  keeps `offer/<id>` and `review/<id>` as the two kinds a market defines. Readers MAY ignore a first
+  keeps `offer/<id>` and `review/<id>` among the kinds a market defines. Readers MAY ignore a first
   segment they do not know.
 - An entry sits in the folder of the profile that wrote it, so the profile a review is about
   cannot erase it; the one who wrote it can.
