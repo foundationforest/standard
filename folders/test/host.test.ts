@@ -391,28 +391,38 @@ describe('limits: each host’s own batch and page; each reader’s own size; 60
     }
   })
 
-  test('writing, leaving and listing go through the fetch given too, and may refuse redirects', async () => {
+  test('writing, leaving, listing and uploading go through the fetch given too, and may refuse redirects', async () => {
     const h = await startHost({ now: () => T0 })
     const away = createServer((req, res) => res.writeHead(307, { location: `${h.url}${req.url}` }).end())
     await new Promise<void>((resolve) => away.listen(0, '127.0.0.1', resolve))
     const url = `http://127.0.0.1:${(away.address() as { port: number }).port}`
     const profile = profileAt(alice, [h.url], T0)
     const left = await inboxEntry(bob, alice.address, { text: 'hi' }, T0, profileBody('maths'))
+    const photo = Uint8Array.from({ length: 100 }, (_, i) => i)
+    const name = fileOf(photo, 'image/png')
     try {
       const asked: string[] = []
       const counting: typeof fetch = (input, init) => {
         asked.push(String(input))
         return fetch(input, init)
       }
-      await write([h.url], [profile], { fetch: counting })
+      await write([h.url], [profile, entry(alice, 'photo/1', { files: [name] }, T0)], { fetch: counting })
       await leave([h.url], [left], { fetch: counting })
       await readInbox(h.url, alice.address, { fetch: counting })
-      assert.deepEqual(asked.map((u) => new URL(u).pathname), ['/v1/entries', '/v1/inbox', '/v1/inbox/read'])
+      await upload([h.url], photo, 'image/png', { fetch: counting })
+      assert.deepEqual(asked.map((u) => new URL(u).pathname), ['/v1/entries', '/v1/inbox', '/v1/inbox/read', `/v1/files/${name.sha256}`])
 
       assert.equal((await write([url], [profile], { redirect: 'error' }))[0]!.status, 0, 'a host that redirects takes nothing')
       assert.equal((await leave([url], [left], { redirect: 'error' }))[0]!.status, 0)
       await assert.rejects(readInbox(url, alice.address, { redirect: 'error' }))
+      assert.equal((await upload([url], photo, 'image/png', { redirect: 'error' }))[0]!.status, 0)
       assert.equal((await write([url], [profile]))[0]!.status, 200, 'followed unless told')
+      // An upload is sent again whole, its payment with it: the host checks the hash before it says it holds the bytes.
+      const paid: Array<string | undefined> = []
+      const take = h.upload.bind(h)
+      h.upload = async (file, type, bytes, payment) => (paid.push(payment), take(file, type, bytes))
+      assert.deepEqual((await upload([url], photo, 'image/png', { payment: (host) => `paid ${host}` })).map((o) => [o.status, o.ok]), [[200, true]], 'followed unless told')
+      assert.deepEqual(paid, [`paid ${url}`])
     } finally {
       away.closeAllConnections()
       await new Promise((resolve) => away.close(resolve))
