@@ -1,14 +1,14 @@
 // The host check, run against the minimal host (host.ts): every check passes. Against a host that
-// charges to join, or takes only small lines, as the plug lets a host choose, nothing fails, and
-// given a seed whose folders it holds, every check runs. Against hosts that break the plug, the
-// check says which promise broke.
+// charges to join or for every write, or takes only small lines, as the plug lets a host choose,
+// nothing fails, and given a seed whose folders it holds, or the payment it asks for, every check
+// runs. Against hosts that break the plug, the check says which promise broke.
 
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 import { mainKey } from '@foundationforest/keys'
 import { utf8 } from '../src/bytes.ts'
 import { CHECK_LABELS, type HostCheck, checkHost } from '../src/check.ts'
-import { type Result, write } from '../src/client.ts'
+import { type Payment, type Result, write } from '../src/client.ts'
 import { decodeEntry } from '../src/entry.ts'
 import { entry } from '../src/write.ts'
 import { startHost } from './helpers.ts'
@@ -16,6 +16,34 @@ import type { TestHost } from './host.ts'
 
 const statuses = (results: HostCheck[]) => results.map((r) => `${r.status}: ${r.name}${r.why ? `. ${r.why}` : ''}`)
 const failed = (results: HostCheck[]) => results.filter((r) => r.status === 'failed').map((r) => r.name)
+
+/** What the charging host below takes as paid: its own business, here one word. */
+const PAID = 'paid'
+const pay: Payment = () => PAID
+/**
+ * A host that charges for every write, as the plug lets it: by its own choice, so never for a
+ * profile entry of a folder it holds, unless `always`, which breaks the plug.
+ */
+function charge(h: TestHost, always = false) {
+  const [accept, leave, upload] = [h.accept.bind(h), h.leave.bind(h), h.upload.bind(h)]
+  const unpaid = { ok: false, error: 'refused', message: 'pay this host' }
+  h.accept = async (lines, payment) => {
+    const out: Result[] = []
+    for (const [i, line] of lines.entries()) {
+      let free = true
+      try {
+        const { profile, path } = decodeEntry(line).entry
+        free = !always && path === 'profile' && h.view(profile).current.has('profile')
+      } catch {
+        // What does not check is refused by the plug, before any choice.
+      }
+      out.push(payment === PAID || free ? { ...(await accept([line]))[0]!, i } : { i, ...unpaid })
+    }
+    return out
+  }
+  h.leave = async (lines, payment) => (payment === PAID ? leave(lines) : lines.map((_, i) => ({ i, ...unpaid })))
+  h.upload = async (name, type, bytes, payment) => (payment === PAID ? upload(name, type, bytes) : unpaid)
+}
 
 describe('the host check', () => {
   test('the minimal host passes every check, and passes again with the same seed, its folders now held', async () => {
@@ -72,6 +100,30 @@ describe('the host check', () => {
       paid.clear()
       const results = await checkHost(h.url, { seed })
       assert.ok(results.every((r) => r.status === 'ok'), statuses(results).join('\n'))
+    } finally {
+      await h.close()
+    }
+  })
+
+  test('a host that charges for every write fails nothing; given its payment, every check runs, from a new seed', async () => {
+    const h = await startHost()
+    charge(h)
+    try {
+      const unpaid = await checkHost(h.url)
+      assert.deepEqual(failed(unpaid), [], statuses(unpaid).join('\n'))
+      assert.equal(unpaid[0]!.status, 'unchecked', 'the folder was let in unpaid')
+      const paid = await checkHost(h.url, { payment: pay })
+      assert.ok(paid.every((r) => r.status === 'ok'), statuses(paid).join('\n'))
+    } finally {
+      await h.close()
+    }
+  })
+
+  test('a host that charges for a profile entry of a folder it holds fails the check that a person can always move, even given its payment', async () => {
+    const h = await startHost()
+    charge(h, true)
+    try {
+      assert.deepEqual(failed(await checkHost(h.url, { payment: pay })), ['takes a newer profile entry for a folder it holds, so a person can always move'])
     } finally {
       await h.close()
     }

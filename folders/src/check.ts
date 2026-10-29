@@ -7,12 +7,12 @@
 // folder it does not hold yet, an entry, an inbox entry or a file it does not take, a size it does
 // not take. What such a refusal stops is reported unchecked, with why. To check it all on a host
 // that charges to join or caps sizes, give a seed whose folders under CHECK_LABELS the host holds
-// already.
+// already, and on a host that charges for writes, its payment.
 
 import { mainKey, newAccessKey, openingHalf, serviceKey } from '@foundationforest/keys'
-import { hex } from './bytes.ts'
+import { hex, utf8 } from './bytes.ts'
 import { canonical } from './canonical.ts'
-import { type Result, readAll, readInbox, readPage, upload } from './client.ts'
+import { type Payment, type Result, readAll, readInbox, readPage, upload } from './client.ts'
 import { type Body, MAX_FUTURE_MS, type SignedEntry, encodeEntry, entryId, signAs, signingInput, unsignedOf } from './entry.ts'
 import { fileOf } from './files.ts'
 import { type InboxEntry, encodeInbox, inboxId } from './inbox.ts'
@@ -29,6 +29,8 @@ export type CheckOptions = {
   seed?: Uint8Array
   /** The media type of the file the check uploads: `image/png` when omitted. */
   type?: string
+  /** The payment each write carries, for a host that charges (client.ts's Payment): none when omitted. */
+  payment?: Payment
 }
 
 /** What the host refused by its own choice, as the plug lets it: the check stops there, unchecked. */
@@ -74,9 +76,15 @@ export async function checkHost(url: string, options: CheckOptions = {}): Promis
     if (!holds) throw new Unchecked('the host holds no folder of this seed: give the check a seed whose folders it holds')
   }
 
+  /** A write's headers: its content type, and the payment, if any, unless told not to pay. */
+  const headers = async (type: string, body: Uint8Array, pay = true): Promise<Record<string, string>> => {
+    const payment = pay ? await options.payment?.(host, body) : undefined
+    return { 'content-type': type, ...(payment !== undefined && { 'forest-payment': payment }) }
+  }
   /** One line, alone in a request: the host's one result for it. A 413 is a size the host does not take. */
-  const send = async (path: string, line: string): Promise<Result> => {
-    const res = await fetch(`${host}${path}`, { method: 'POST', headers: { 'content-type': 'application/x-ndjson' }, body: line + '\n' })
+  const send = async (path: string, line: string, pay = true): Promise<Result> => {
+    const body = line + '\n'
+    const res = await fetch(`${host}${path}`, { method: 'POST', headers: await headers('application/x-ndjson', utf8(body), pay), body })
     if (res.status === 413) {
       await res.body?.cancel()
       return { i: 0, ok: false, error: 'size' }
@@ -158,7 +166,8 @@ export async function checkHost(url: string, options: CheckOptions = {}): Promis
   await run('takes a newer profile entry for a folder it holds, so a person can always move', async () => {
     needsFolders()
     for (const hosts of [[host, 'https://elsewhere.example'], [host]]) {
-      const r = await send('/v1/entries', encodeEntry(entry(b!, 'profile', { ...bProfile(), hosts }, time())))
+      // Unpaid: a host charges for no profile entry of a folder it holds.
+      const r = await send('/v1/entries', encodeEntry(entry(b!, 'profile', { ...bProfile(), hosts }, time())), false)
       if (r.error === 'size') throw new Unchecked('the host refused a profile entry for its size')
       expect(r.ok, `a newer profile entry for a folder it holds: answered ${r.error}`)
     }
@@ -260,7 +269,7 @@ export async function checkHost(url: string, options: CheckOptions = {}): Promis
     const bytes = crypto.getRandomValues(new Uint8Array(64))
     const name = fileOf(bytes, type)
     const said = async (body: Uint8Array, change: { type?: string; sha256?: string } = {}) => {
-      const res = await fetch(`${host}/v1/files/${change.sha256 ?? name.sha256}`, { method: 'PUT', headers: { 'content-type': change.type ?? type }, body: new Uint8Array(body) })
+      const res = await fetch(`${host}/v1/files/${change.sha256 ?? name.sha256}`, { method: 'PUT', headers: await headers(change.type ?? type, body), body: new Uint8Array(body) })
       if (res.status === 413) throw new Unchecked('the host refused a file for its size, by its own choice')
       const answer = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; message?: string }
       if (!answer.ok && OWN_CHOICE.includes(answer.error ?? '')) throw new Unchecked(`the host refused a file by its own choice: ${answer.error}`)

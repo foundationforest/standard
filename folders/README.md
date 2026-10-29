@@ -195,7 +195,8 @@ An inbox entry is what anyone leaves in a folder whose profile entry has `openKe
 
 - `v` is 1, and no other field is allowed. Its id is lowercase hex of SHA-256 of its canonical
   text. Each host keeps it for its keep days.
-- It is not signed outside, so no host sees who wrote to whom, and names only the folder it is to.
+- It is not signed outside, so it shows no host who wrote to whom, and names only the folder it is
+  to.
 - Its envelope is locked to `to`'s open key and to every key `to`'s profile entry lists with
   `read-inbox` (`inboxLockKeysOf`). The sender locks it so; nobody can check.
 
@@ -277,10 +278,11 @@ takes.
 ### Hosts
 
 A host is an address that answers seven requests, the plug, however many machines stand behind it.
-It has no keys, no sign-up and no login: a signature is all it asks for. It takes signed entries for
-any folder, inbox entries for any folder whose profile entry on it has `openKey`, and the bytes a
-current entry names, and serves each to anyone. It reads no body but the profile entry's and each
-body's `files`, and needs nothing from an index or another host.
+It has no keys, no sign-up and no login: a signature is all it asks for, and a payment if it
+charges. It takes signed entries for any folder, inbox entries for any folder whose profile entry
+on it has `openKey`, and the bytes a current entry names, and serves each to anyone. It reads no
+body but the profile entry's and each body's `files`, and needs nothing from an index or another
+host.
 
 | Request | Body | Answer |
 |---|---|---|
@@ -298,6 +300,14 @@ body's `files`, and needs nothing from an index or another host.
 - A folder is read by POST, its address in the body, since the proxies and platforms in front of a
   host log URLs. A read with a field the host does not know, or no folder, is answered 400.
 - A request with more lines than the host takes gets one [`batch`] result; with more bytes, 413.
+
+**Payment.** A request that writes, `POST /v1/entries`, `POST /v1/inbox` or
+`PUT /v1/files/<sha256>`, MAY carry one header, `forest-payment`. What it holds, what the host
+charges for and how it is paid are the host's own. A host that charges MAY refuse what comes without
+a payment it takes, by its own choice [`refused`], where the steps below let it: so never a profile
+entry for a folder it holds. `write`, `leave`, `upload` and `checkHost` take a `payment`: a function
+given the host's origin and the bytes one request carries, called for each request, whose answer,
+if any, is that request's header.
 
 **Taking an entry in**, in this order, error code in brackets:
 
@@ -341,7 +351,8 @@ address, `npm run check-host -- <address>`, to show it fits the plug. It writes 
 one seed, `check/a` and `check/b` (`CHECK_LABELS`), and an access key it makes, sends each request
 above, and checks every answer and every refusal's code. A refusal the plug lets a host make by its
 own choice, such as a folder's first profile entry or a size, is no failure: what it stops is
-reported unchecked, and given a seed whose folders the host already holds, the check runs it all.
+reported unchecked, and given a seed whose folders the host already holds, and the payment it asks
+for, the check runs it all.
 
 **What a host chooses**, and says where it describes itself:
 
@@ -429,8 +440,8 @@ second SHA-256 and a second EdDSA-Poseidon, and checks both proofs in
 - Checking signatures in JavaScript is slow; a busy host or index checks them in native code.
 - A host keeps only the newest entry at each path, and what it replaced for its keep days; older
   history is in the app's copies, or nowhere.
-- A host sees whom an inbox entry is for, when it came and its size, never who wrote it or what it
-  says.
+- A host sees whom an inbox entry is for, when it came, its size and any payment it came with;
+  never what it says, and who wrote it only if that payment tells.
 - Nobody checks what an envelope was locked to: a writer that leaves out a key, the main key's
   among them, shuts that key out.
 - A key that can write can write any path but `profile` until it is removed; removing it takes back

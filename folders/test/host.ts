@@ -1,9 +1,10 @@
 // A minimal host, for folders' own tests only and never exported: the plug (README.md, Hosts) and
 // nothing more. It holds what it takes in memory and chooses nothing of its own: it takes any size
 // and any number of lines, refuses nothing by its own choice, keeps every entry, inbox entry and
-// file it took, and answers a page whole unless a test sets `page`. The host check runs against it
-// (check.test.ts). A host someone runs, with its storage and its choices, is a product, and lives
-// outside the standard.
+// file it took, and answers a page whole unless a test sets `page`. Each write is given its
+// request's `forest-payment` header, which this host ignores: a test that charges reads it. The
+// host check runs against it (check.test.ts). A host someone runs, with its storage and its
+// choices, is a product, and lives outside the standard.
 
 import { type IncomingMessage, type Server, type ServerResponse, createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
@@ -45,7 +46,7 @@ export class TestHost {
   // ------------------------------------------------------------------------------------------
   // Entries: Taking an entry in, in the plug's order.
 
-  async accept(lines: string[]): Promise<Result[]> {
+  async accept(lines: string[], payment?: string): Promise<Result[]> {
     const now = this.now()
     return lines.map((line, i) => ({ i, ...this.acceptOne(line, now) }))
   }
@@ -97,7 +98,7 @@ export class TestHost {
   // ------------------------------------------------------------------------------------------
   // The inbox: Taking an inbox entry in, and Deleting one, in the plug's order.
 
-  async leave(lines: string[]): Promise<Result[]> {
+  async leave(lines: string[], payment?: string): Promise<Result[]> {
     const now = this.now()
     return lines.map((line, i) => ({ i, ...this.leaveOne(line, now) }))
   }
@@ -136,7 +137,7 @@ export class TestHost {
     return false
   }
 
-  async upload(name: string, type: string, bytes: Uint8Array): Promise<Answer> {
+  async upload(name: string, type: string, bytes: Uint8Array, payment?: string): Promise<Answer> {
     if (!isMediaType(type)) return { ok: false, error: 'shape', message: 'content-type is a media type, type/subtype in lower case' }
     if (!this.named(name)) return { ok: false, error: 'unnamed', message: 'no current entry here names these bytes' }
     if (!this.named(name, type, bytes.length)) return { ok: false, error: 'shape', message: 'no current entry here names these bytes with this type and size' }
@@ -179,6 +180,7 @@ export class TestHost {
     if (!methods.length) return void res.writeHead(404).end()
     if (!methods.includes(req.method ?? '')) return void res.writeHead(405, { allow: methods.join(', ') }).end()
     const body = await readBody(req)
+    const payment = req.headers['forest-payment'] as string | undefined
 
     if (file && req.method === 'GET') {
       const held = await this.fetchFile(file)
@@ -186,7 +188,7 @@ export class TestHost {
       return void res.writeHead(200, { 'content-type': held.type, 'content-length': held.bytes.length }).end(held.bytes)
     }
     if (file) {
-      const answer = await this.upload(file, (req.headers['content-type'] ?? '').trim(), body)
+      const answer = await this.upload(file, (req.headers['content-type'] ?? '').trim(), body, payment)
       return sendJson(res, answer.ok ? 200 : 400, answer)
     }
     if (req.method === 'GET') {
@@ -202,7 +204,7 @@ export class TestHost {
       return sendLines(res, field === 'profile' ? this.read({ profile: asked.folder, after: asked.after }) : this.readInbox(asked.folder, asked.after))
     }
     const lines = text(body).split('\n').filter((l) => l.length > 0)
-    const results = url.pathname === '/v1/inbox' ? await this.leave(lines) : await this.accept(lines)
+    const results = url.pathname === '/v1/inbox' ? await this.leave(lines, payment) : await this.accept(lines, payment)
     res.writeHead(200, { 'content-type': 'application/x-ndjson' }).end(results.map((r) => JSON.stringify(r) + '\n').join(''))
   }
 }

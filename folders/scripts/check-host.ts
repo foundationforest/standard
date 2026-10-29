@@ -2,7 +2,8 @@
 // writes to the host from two profiles of a new seed; SEED, 64 hex characters, gives instead a
 // seed whose folders under check/a and check/b the host holds already, for a host that charges to
 // join. Each check prints ok, unchecked (what the host refused by its own choice stopped it) or
-// FAILED; it exits 1 if any failed.
+// FAILED; it exits 1 if any failed. A host that charges for writes calls checkHost from code, with
+// its payment: a payment is a function of each request, which no flag here could spell.
 
 import { hex } from '../src/bytes.ts'
 import { checkHost } from '../src/check.ts'
