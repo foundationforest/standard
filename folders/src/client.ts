@@ -266,10 +266,12 @@ export type FileOutcome = { host: string; status: number; ok: boolean; error?: s
  */
 export async function upload(hosts: string[], bytes: Uint8Array, type: string, how: WriteHow = {}): Promise<FileOutcome[]> {
   const name = fileOf(bytes, type)
+  // A Blob, which fetch sends again after a 307 or 308: the first send detaches a Uint8Array's buffer.
+  const body = new Blob([new Uint8Array(bytes)])
   return Promise.all(
     hosts.map(async (host): Promise<FileOutcome> => {
       try {
-        const res = await (how.fetch ?? fetch)(`${host}/v1/files/${name.sha256}`, { method: 'PUT', headers: await writeHeaders(host, type, bytes, how), body: new Uint8Array(bytes), ...(how.redirect && { redirect: how.redirect }) })
+        const res = await (how.fetch ?? fetch)(`${host}/v1/files/${name.sha256}`, { method: 'PUT', headers: await writeHeaders(host, type, bytes, how), body, ...(how.redirect && { redirect: how.redirect }) })
         const answer = (await res.json().catch(() => ({ ok: false }))) as Omit<FileOutcome, 'host' | 'status'>
         return { host, status: res.status, ...answer, ok: res.ok && answer.ok }
       } catch (err) {
