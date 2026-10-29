@@ -1,8 +1,7 @@
 // @foundationforest/folders: the core every reader and every app that writes needs, and nothing
 // that needs a server, a database or an encryption library. Locked entries, and locking and
-// opening inbox entries, are @foundationforest/folders/locked; a fetch that reaches only public
-// addresses is @foundationforest/folders/public; the host check, which any host runs against its
-// own address, is @foundationforest/folders/check. The rules are README.md's.
+// opening inbox entries, are @foundationforest/folders/locked; the host check, which any host runs
+// against its own address, is @foundationforest/folders/check. The rules are README.md's.
 
 export * from './keys.ts'
 export * from './canonical.ts'
