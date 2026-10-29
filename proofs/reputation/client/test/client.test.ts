@@ -66,7 +66,7 @@ test('an index signs 0xff, its text, the root as 32 bytes and the time as 8, bot
   assert.equal(BigInt('0x' + Buffer.from(bytes.subarray(1 + text.length, -8)).toString('hex')), tree.root)
   assert.equal(Buffer.from(bytes.subarray(-8)).readBigUInt64BE(), time)
   const signature = signBytes(indexKey.scalar, bytes)
-  assert.ok(checkBytes(indexKey.address, bytes, signature), 'signed as a record is: keys/\'s signBytes')
+  assert.ok(checkBytes(indexKey.address, bytes, signature), 'signed as an entry is: keys/\'s signBytes')
   assert.equal(packSignature(signature).length, 64)
 })
 

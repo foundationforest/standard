@@ -116,12 +116,12 @@ test("a proof lands only on the prover's own profile: it cannot be lent", async 
   await refused(borrowed)
 })
 
-test('the 256 bytes a record stores: the same proof back, and it checks from them', async () => {
+test('the 256 bytes a profile entry stores: the same proof back, and it checks from them', async () => {
   const r = await proveReputation({ seedScalar: S, labels, leaves, profileLabel, artifacts })
   const { pi_a, pi_b, pi_c } = r.proof
   const bytes = proofBytes(r.proof)
   const order = [pi_a[0], pi_a[1], pi_b[0][1], pi_b[0][0], pi_b[1][1], pi_b[1][0], pi_c[0], pi_c[1]]
-  assert.deepEqual(Buffer.from(bytes), Buffer.concat(order.map((s) => toBytes32(BigInt(s)))), "records/'s order")
+  assert.deepEqual(Buffer.from(bytes), Buffer.concat(order.map((s) => toBytes32(BigInt(s)))), "folders/'s order")
   assert.deepEqual(proofFromBytes(bytes), { pi_a, pi_b, pi_c })
   const shown = { ...shownOf(r), proof: bytes }
   assert.equal(await checkReputation(shown), true)

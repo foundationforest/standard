@@ -7,7 +7,7 @@
 //   bytes of keccak256 of the uncompressed public key without its 04, written in EIP-55's
 //   mixed-case checksum, the one spelling this standard takes.
 //
-// Each pay key signs its profile's address, so a profile record lists only addresses that are its
+// Each pay key signs its profile's address, so a profile entry lists only addresses that are its
 // own: `0xff || "forest/v1/pay\n" || address`, in UTF-8. 0xff begins no Solana transaction and no
 // EVM one, so the signature can never pass as either.
 
@@ -36,7 +36,7 @@ export type PayKey = {
   address: string
 }
 
-/** A profile's pay addresses, one per address type: its profile record's `pay`. */
+/** A profile's pay addresses, one per address type: its profile entry's `pay`. */
 export type PayAddresses = { [type in PayType]: string }
 
 /**
@@ -58,7 +58,7 @@ export async function payKey(seed: Uint8Array, label: string, type: PayType): Pr
   return { label, type, privateKey, publicKey, address: evmAddressOf(publicKey) }
 }
 
-/** The profile's pay address of each type, for `label`: what its profile record's `pay` holds. */
+/** The profile's pay address of each type, for `label`: what its profile entry's `pay` holds. */
 export async function payAddresses(seed: Uint8Array, label: string): Promise<PayAddresses> {
   const [solana, evm] = await Promise.all(PAY_TYPES.map(async (type) => (await payKey(seed, label, type)).address))
   return { solana: solana!, evm: evm! }
@@ -86,7 +86,7 @@ function payBytes(profileAddress: string): Uint8Array {
 }
 
 /**
- * A pay key's signature over the address of the profile it pays, for that profile record's
+ * A pay key's signature over the address of the profile it pays, for that profile entry's
  * `paySig`, in base64url without padding. solana: an Ed25519 signature (RFC 8032), 64 bytes. evm: a
  * secp256k1 signature over keccak256 of the bytes, 65 bytes, r || s || the recovery id. Both are
  * deterministic: the same key and address always give the same signature.
@@ -106,7 +106,7 @@ export function signPay(key: PayKey, profileAddress: string): string {
  * Whether `sig` is the pay key at `payAddress` signing `profileAddress`. solana: the Ed25519
  * signature holds for the key the address spells, checked strictly (RFC 8032, no ZIP-215
  * leniency). evm: the key recovered from r, s and the recovery id has this EIP-55 address. A high
- * s is not refused: the record around the signature is signed by the profile's main key, so no one
+ * s is not refused: the entry around the signature is signed by the profile's main key, so no one
  * else can put its twin spelling there.
  */
 export function checkPaySig(type: PayType, payAddress: string, profileAddress: string, sig: string): boolean {

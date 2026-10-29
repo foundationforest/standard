@@ -12,7 +12,7 @@ shows that something is true of the person's secrets without showing the secrets
 - [`reputation/`](reputation/README.md): a score across the person's profiles, from the tree an
   index, a service that scores profiles, publishes, without saying which profiles.
 
-A profile record's proofs list takes any circuit name, and a reader skips the ones it does not
+A profile entry's proofs list takes any circuit name, and a reader skips the ones it does not
 know: these two circuits are ours, and anyone can add one.
 
 ## How it works

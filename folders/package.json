@@ -1,0 +1,59 @@
+{
+  "name": "@foundationforest/folders",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Forest folders: a profile's signed entries on open hosts, the access keys its profile entry lists, locked entries, files, and the inbox. The core library, locking and opening, a fetch that reaches only public addresses, the host check any host runs against its own address, the profile entry's schema, tests and vectors.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./check": {
+      "types": "./dist/check.d.ts",
+      "default": "./dist/check.js"
+    },
+    "./locked": {
+      "types": "./dist/locked.d.ts",
+      "default": "./dist/locked.js"
+    },
+    "./public": {
+      "types": "./dist/public.d.ts",
+      "default": "./dist/public.js"
+    },
+    "./schemas/*": "./schemas/*",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "schemas"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "check": "tsc --noEmit",
+    "test": "node --test --test-concurrency=1 --test-force-exit test/*.test.ts",
+    "check-host": "node scripts/check-host.ts"
+  },
+  "dependencies": {
+    "@foundationforest/keys": "0.0.0",
+    "@noble/curves": "2.4.0",
+    "@noble/hashes": "2.4.0",
+    "@scure/base": "2.4.0",
+    "age-encryption": "0.3.1",
+    "canonicalize": "5.1.0",
+    "poseidon-lite": "0.3.0",
+    "undici": "7.30.0"
+  },
+  "devDependencies": {
+    "@foundationforest/reputation": "0.0.0",
+    "@foundationforest/verification": "0.0.0",
+    "@zk-kit/baby-jubjub": "1.0.3",
+    "@zk-kit/eddsa-poseidon": "1.0.4",
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1"
+  }
+}
