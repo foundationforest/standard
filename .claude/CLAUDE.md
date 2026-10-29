@@ -3,12 +3,12 @@ Read `README.md` and the README of the directory you work in before any task.
 
 ## Words
 
-Use these words: seed, seed scalar, main key, signing half, opening half, open key, access key,
-profile, Profiles folder, profile entry, entry, folder, address, label, scope, prefix, verifier,
-verified, stamp, stamp number, facts, verification, reputation proof, check, host, plug, host
-check, service key, connector, private, locked (an entry, to a key), envelope, message, inbox,
-inbox entry, file, keyed path, pay address, pay key, escrow, receipt, deal, index, fee payer, app,
-market, role. Plain words, no em-dashes.
+Use these words: seed, seed's number, main key, signing half, opening half, open key, access key,
+profile, Profiles folder, profile entry, entry, folder, address, label, scope, verifier, verified,
+stamp, stamp number, facts, verification, reputation proof, check, host, plug, host check, service
+key, connector, private, locked (an entry, to a key), envelope, message, inbox, inbox entry, file,
+pay address, pay key, escrow, receipt, deal, index, fee payer, app, market, role. Plain words, no
+em-dashes.
 
 - Never "record" for what a folder holds (it is an entry), "signer" (a chain's transaction signer
   keeps the chain's word, in escrows/), "permission", "inbox key" (it is the main key's opening
@@ -17,9 +17,8 @@ market, role. Plain words, no em-dashes.
 - Check, never verify: a reader checks a proof or a signature. The tooling keeps its own names
   (snarkjs's verifier, `verification-key.json`), and prose calls that part the proof check.
 - Never "account" for a person: a person has a seed and profiles.
-- A string baked into a recipe or a circuit keeps its bytes even when its words are old
-  (`forest/v1/issuer`, `forest/v1/note`, `forest/v1/inbox`): rename the code around it, never the
-  string, and say why in a comment beside it.
+- A string baked into a recipe or a circuit keeps its bytes even when its words are old: rename the
+  code around it, never the string, and say why in a comment beside it.
 
 The test for what goes in this repo: the standard holds formats (what bytes mean), recipes (how a
 number is derived) and checks (what a reader runs); meanings and choices live outside it.

@@ -34,8 +34,8 @@ Four things stay outside: what a stamp means is the reader's; what an entry says
 
 | Directory | What it is | What runs | Where |
 |---|---|---|---|
-| [`keys/`](keys/README.md) | The recipe that mixes every key from the person's seed: each profile's main key, its pay addresses, the Profiles folder key, and the person's secret for each verifier; every key's opening half; and access keys, made from random bytes to be handed out | a library | on the person's device |
-| [`proofs/`](proofs/README.md) | The zero-knowledge proofs a device makes and anyone can check: [`verification/`](proofs/verification/README.md) (what a profile shows to prove its key comes from a seed a verifier signed a stamp to) and [`reputation/`](proofs/reputation/README.md) (carrying trust from the person's other profiles, scored in an index's tree, without saying which) | circuits and client libraries | made on the device; checked by anyone in milliseconds |
+| [`keys/`](keys/README.md) | The recipe that mixes every key from the person's seed, on three texts: each profile's main key and its opening half, the Profiles folder's among them, its pay addresses, and the person's stamp number at each verifier; and access keys, made from random bytes to be handed out | a library | on the person's device |
+| [`proofs/`](proofs/README.md) | The zero-knowledge proofs a device makes and anyone can check, each its own circuit: [the verification](proofs/README.md#the-stamp-and-the-verification) (what a profile shows to prove its key comes from a seed a verifier signed a stamp to) and [the reputation proof](proofs/README.md#the-reputation-proof) (carrying trust from the person's other profiles, scored in an index's tree, without saying which) | circuits and a client library | made on the device; checked by anyone in milliseconds |
 | [`folders/`](folders/README.md) | How a profile speaks: its folder's entries, each signed by its main key or an access key its profile entry lists, and replaced by its next version; locked entries, which only the keys chosen open; files, kept while an entry names them; the inbox; the Profiles folder; the plug every host fits, and the host check that shows a host fits it | a library | wherever an app, AI, host or index runs |
 | [`escrows/`](escrows/README.md) | On-chain lockboxes that release money when a side gives it to the other, both sides agree, a chosen arbiter decides, or the schedule set at the start says so (one directory per chain; only [`solana/`](escrows/solana/README.md) has one) | an on-chain program and client library | on chain when a deal uses escrow |
 
@@ -53,7 +53,7 @@ Once people use Forest, what exists never changes: a recipe's strings, a circuit
 
 ## For builders
 
-- **Check a profile.** Read its profile entry, the entry at `profile` in its folder, from any host. It holds the profile's `market` and `role`, its `hosts`, its `openKey`, any of its seed-derived `pay` addresses with `paySig`, each address signed by its own pay key so a profile cannot list an address that is not its own, its `keys`, and its `proofs` array. The array takes any circuit's proofs, and a reader skips the ones it does not know: `verification` and `reputation` are ours, and anyone can add one. Check each `verification` against the verifier's key to see which verifiers signed a stamp to the seed behind the profile.
+- **Check a profile.** Read its profile entry, the entry at `profile` in its folder, from any host. It holds the profile's `market` and `role`, its `hosts`, its `openKey`, any of its seed-derived `pay` addresses, its `keys`, and its `proofs` array. The array takes any circuit's proofs, and a reader skips the ones it does not know: `verification` and `reputation` are ours, and anyone can add one. Check each `verification` against the verifier's key to see which verifiers signed a stamp to the seed behind the profile.
 - **Find a profile's folder.** A profile's address is the public half of its main key, a key on Baby Jubjub, the curve the proofs work on. Ask any host you know for its folder, and follow the `hosts` its profile entry names to every host that holds it.
 - **Act for a person.** Anyone can, with an access key the person's app hands them: the profile entry lists it with what it can do (`read`, `read-inbox`, `write`, `message`), every host and reader checks that, and removing it from the list stops it. The main way for an AI app is a connector in [services](https://github.com/foundationforest/services). The seed and the main keys stay on the person's devices ([keys/](keys/README.md#what-an-app-that-holds-keys-should-know)).
 - **Write offers and reviews.** Their paths and bodies are defined by the market the profile lives in ([markets](https://github.com/foundationforest/markets)); the standard names none of them. A photo is an entry whose body is its file, the bytes kept by the folder's hosts while an entry names them.
@@ -61,8 +61,8 @@ Once people use Forest, what exists never changes: a recipe's strings, a circuit
 ## Privacy
 
 What Forest does:
-- Nothing in a person's keys ties their profiles together. Each main key, opening half and default pay address is mixed separately from the seed and label, and an access key is random bytes (`keys/`). The Profiles folder, which lists the person's profiles and stamps, is locked to its own opening half, at paths that name nothing (`folders/`).
-- A verification shows which verifier signed the person a stamp, never who the person is, what the stamp holds, or which other profiles they hold (`proofs/verification/`).
+- Nothing in a person's keys ties their profiles together. Each main key, opening half and default pay address is mixed separately from the seed and label, and an access key is random bytes (`keys/`). The Profiles folder, which lists the person's profiles and stamps, is locked to its own opening half, at random paths that name nothing (`folders/`).
+- A verification shows which verifier signed the person a stamp, never who the person is, what the stamp holds, or which other profiles they hold (`proofs/`).
 - Locked entries and inbox entries are locked with `age`, a widely used encryption format, in its post-quantum kind; an inbox entry names only the folder it is for, its sender locked inside (`folders/`).
 - No blockchain is touched to create a seed, get a stamp, open a profile, post an offer, send a message or write a review. Only payments and escrows touch a chain.
 
@@ -76,7 +76,7 @@ What others can still see:
 ## Promises
 
 - **Nothing in the standard needs the seed or a main key to leave the device.** `keys/` mixes every key from the seed on the device; everything else takes only what it mixes, and an access key handed out holds nothing of the seed. What an app does with the seed is the app's (`keys/`, What an app that holds keys should know).
-- **One seed, one profile per label.** The verification circuit derives the main key inside the proof, making a second main key for the same seed and label mathematically invalid, though a person with two seeds has a profile under the label for each (`proofs/verification/`).
+- **One seed, one profile per label.** The verification circuit derives the main key inside the proof, making a second main key for the same seed and label mathematically invalid, though a person with two seeds has a profile under the label for each (`proofs/`).
 - **Updates and deletes are just writes.** Every path holds its newest entry that counts; an entry with a null body deletes the path, though what was read before stays with whoever read it (`folders/`).
 - **Nothing in the standard charges a fee.** There is no coin and no cut on deals.
 - **Escrows have no admin key.** Once the program holds real money and can no longer change, nothing moves the money but a side giving, both agreeing, the arbiter, or the schedule (`escrows/`).
@@ -88,6 +88,6 @@ What others can still see:
 
 ## What it is built from
 
-- **Keys, entries and envelopes:** Baby Jubjub EdDSA-Poseidon (the signatures of main keys, access keys, the Profiles folder key, stamps, and service keys, an index's or a verifier's own), Ed25519 (Solana pay addresses), secp256k1 and keccak256 with EIP-55 (EVM pay addresses), RFC 8785 canonical JSON, HMAC-SHA256 (keyed paths), and post-quantum `age` envelopes.
+- **Keys, entries and envelopes:** Baby Jubjub EdDSA-Poseidon (the signatures of main keys, access keys, stamps, and service keys, an index's or a verifier's own), Ed25519 (Solana pay addresses), secp256k1 and keccak256 with EIP-55 (EVM pay addresses), RFC 8785 canonical JSON, and post-quantum `age` envelopes.
 - **Proofs:** Circom, `circomlib` (Poseidon and Baby Jubjub), `zk-kit` and Semaphore's Lean Incremental Merkle Tree, Perpetual Powers of Tau, and `snarkjs` (Groth16).
 - **Escrows:** Anchor and SPL Token on Solana (`escrows/solana/`).

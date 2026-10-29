@@ -1,8 +1,8 @@
 // The proofs a profile entry carries (README.md, Proofs), as their proof checks take them. Folders
-// checks no proof itself: a verification's check is proofs/verification/client's checkVerification,
-// a reputation proof's proofs/reputation/client's checkReputation. These turn a profile entry's
-// proof into what each one takes, for the profile that carries it, or null when the proof is not
-// that shape. A reader calls the proof check itself.
+// checks no proof itself: a verification's check is proofs/'s checkVerification, a reputation
+// proof's its checkReputation. These turn a profile entry's proof into what each one takes, for the
+// profile that carries it, or null when the proof is not that shape. A reader calls the proof check
+// itself.
 
 import { b64u } from './bytes.ts'
 import { publicKeyFromAddress } from './keys.ts'
