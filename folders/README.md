@@ -188,7 +188,7 @@ mix that secret from the seed, can tell what a path is about.
 |---|---|---|---|
 | `key/<id>` (`notePath`) | a profile's folder | the profile's secret, keys/'s `mainKey(seed, label).secret` | the access key's address |
 | `label/<id>` (`labelPath`) | the Profiles folder | the Profiles folder key's secret, keys/'s `profilesKey(seed).secret` | the label |
-| `stamp/<id>` (`stampPath`) | the Profiles folder | the same | the stamp's canonical text |
+| `stamp/<id>` (`stampPath`) | the Profiles folder | the same | the stamp's JSON, as the text its entry holds |
 
 ### Locked entries
 
@@ -301,8 +301,9 @@ the seed alone gives ([keys](../keys/README.md#the-profiles-folder-key)).
   from the seed:
   - one for each profile the person made, at `label/<id>`: `{ "label": <label>, "time": <ms since
     1970> }`, its label and when it was made;
-  - one for each stamp the person holds, at `stamp/<id>`: the stamp's JSON
-    ([proofs/verification](../proofs/verification/README.md#the-stamp-and-the-verification)).
+  - one for each stamp the person holds, at `stamp/<id>`: `{ "stamp": <text> }`, the stamp's JSON
+    ([proofs/verification](../proofs/verification/README.md#the-stamp-and-the-verification)) as
+    text, so any field a verifier adds fits, whatever the narrowed JSON of an entry can spell.
 - Their paths are keyed by its secret (Keyed paths), so they name nothing.
 - An app adds every new profile there, and every new stamp.
 - **A new device:** the seed gives the Profiles folder key; any host that holds the folder gives
@@ -540,20 +541,20 @@ Node 22.18 or later. Built from existing pieces, unchanged: `@noble/curves`, `@n
 
 `test/vectors.json`, for keys/'s `tutoring/seller` profile from its test seed `00 01 … 1f`: its
 profile entry, whose `openKey` is that profile's main key's opening half, `pay` its pay addresses,
-`paySig` their signatures, and `keys` keys/'s access key, from 32 bytes of `0x2b`, with
-`read-inbox` and `write`; an offer by the main key, an offer by the access key, a photo (the 26
-letters `a` to `z`, as `text/plain`) and a delete, each with its wire text, signing input and id; an
-inbox entry from keys/'s `tutoring/buyer`, with its id and its message's wire text and signing
-input, and the access key's inbox delete of it; the main key's note about the access key, at its
-keyed path; and the seed's Profiles folder, its profile entry and its entry for `tutoring/seller`.
-The seed and every key are pinned in `keys/test/vectors.json`, and checked there. The locked bodies
-are pinned as made, in `test/envelopes.json`, since age's encryption is random.
-`test/vectors.test.ts` recomputes every entry, the inbox entry and its delete, checks each with a
-second SHA-256 and HMAC-SHA256 (node:crypto) and a second EdDSA-Poseidon (zk-kit's, from the address
-and the 64 bytes on its own), opens each locked body with the pinned keys it was locked to and no
-other, and checks the profile entry's pay signatures. The profile is
-`9bpPbLYCPwNWq9BZqnJr3EqRNqymFZ4g58Zk9K86azDC`; every signing input begins
-`ff 66 6f 72 65 73 74 2f` (`0xff`, then `forest/`).
+`paySig` their signatures, and `keys` keys/'s access key, from 32 bytes of `0x2b`, with `read-inbox`
+and `write`; an offer by the main key, an offer by the access key, a photo (the 26 letters `a` to
+`z`, as `text/plain`) and a delete, each with its wire text, signing input and id; an inbox entry
+from keys/'s `tutoring/buyer`, with its id and its message's wire text and signing input, and the
+access key's inbox delete of it; the main key's note about the access key, at its keyed path; and
+the seed's Profiles folder, its profile entry, its entry for `tutoring/seller`, and its entry for
+one stamp, the example verifier's, held as text with a fraction the verifier added. The seed and
+every key are pinned in `keys/test/vectors.json`, and checked there. The locked bodies are pinned as
+made, in `test/envelopes.json`, since age's encryption is random. `test/vectors.test.ts` recomputes
+every entry, the inbox entry and its delete, checks each with a second SHA-256 and HMAC-SHA256
+(node:crypto) and a second EdDSA-Poseidon (zk-kit's, from the address and the 64 bytes on its own),
+opens each locked body with the pinned keys it was locked to and no other, and checks the profile
+entry's pay signatures. The profile is `9bpPbLYCPwNWq9BZqnJr3EqRNqymFZ4g58Zk9K86azDC`; every signing
+input begins `ff 66 6f 72 65 73 74 2f` (`0xff`, then `forest/`).
 
 The example profile entry, [schemas/examples/profile.json](schemas/examples/profile.json), is that
 profile's, with its pay addresses each signed by its pay key, keys/'s access key listed with `read`
@@ -600,9 +601,6 @@ both proofs with their proof checks and the pay signatures with `checkPay`.
   it.
 - **No forward secrecy.** An opening half that leaks opens every envelope locked to it, from any
   host or copy that still holds them.
-- **Time can link the Profiles folder to a profile.** A host that holds both sees a label entry
-  written in the same moment as a new folder's first profile entry. An app that writes the label
-  entry later, or to another host, keeps them apart.
 - **A host's size bounds an envelope.** Each key it is locked to adds about 2 KB, and each host
   chooses the largest entry and inbox entry it takes.
 

@@ -8,6 +8,7 @@ import { createHash, createHmac } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
 import { profilesKey } from '@foundationforest/keys'
+import { stampFromJson, stampSigned } from '@foundationforest/verification'
 import { unpackPublicKey, unpackSignature, verifySignature } from '@zk-kit/eddsa-poseidon'
 import { b64u, base58, hex } from '../src/bytes.ts'
 import { decodeEntry } from '../src/entry.ts'
@@ -100,11 +101,11 @@ test("the note sits at its path keyed by tutoring/seller's secret, a second HMAC
   await assert.rejects(openLocked(entry.body!, KEYS.accessKey.opening.identity))
 })
 
-test("the Profiles folder is keys/'s pinned Profiles folder key's: its profile entry holds only hosts, and its label entry sits at a path keyed by its secret and opens with its open key", async () => {
+test("the Profiles folder is keys/'s pinned Profiles folder key's: its profile entry holds only hosts, and its label and stamp entries sit at paths keyed by its secret and open with its open key", async () => {
   const v = pinned.profilesFolder
   assert.equal(v.profile, KEYS.profilesKey.address)
   assert.equal((await profilesKey(SEED)).address, v.profile)
-  for (const name of ['profileEntry', 'label'] as const) {
+  for (const name of ['profileEntry', 'label', 'stamp'] as const) {
     const { entry, id } = decodeEntry(v[name].wire)
     assert.equal(id, v[name].id)
     assert.equal(createHash('sha256').update(hex.decode(v[name].signingInputHex)).digest('hex'), id)
@@ -115,4 +116,12 @@ test("the Profiles folder is keys/'s pinned Profiles folder key's: its profile e
   assert.equal(label.path, `label/${keyed(KEYS.profilesKey.secret, 'tutoring/seller')}`)
   assert.deepEqual(await openLocked(label.body!, KEYS.profilesKey.opening.identity), LABEL)
   await assert.rejects(openLocked(label.body!, seller.opening.identity))
+  // The stamp, kept as text: its path keyed by that text, the stamp its verifier signed, and the
+  // fraction the verifier added, which no entry's body could spell, there whole.
+  const stamp = decodeEntry(v.stamp.wire).entry
+  assert.equal(stamp.path, `stamp/${keyed(KEYS.profilesKey.secret, v.stamp.text)}`)
+  assert.deepEqual(await openLocked(stamp.body!, KEYS.profilesKey.opening.identity), { stamp: v.stamp.text })
+  const signed = stampFromJson(JSON.parse(v.stamp.text))
+  assert.equal(stampSigned(signed), true)
+  assert.equal(signed.score, 0.97)
 })

@@ -13,7 +13,6 @@
 import { hmac } from '@noble/hashes/hmac.js'
 import { sha256 } from '@noble/hashes/sha2.js'
 import { hex, utf8 } from './bytes.ts'
-import { type Json, canonical } from './canonical.ts'
 
 /** A keyed id: the first 32 hex characters of HMAC-SHA256, keyed by the folder's secret, of the text. */
 export function keyedId(secret: Uint8Array, text: string): string {
@@ -31,7 +30,10 @@ export function labelPath(secret: Uint8Array, label: string): string {
   return `label/${keyedId(secret, label)}`
 }
 
-/** Where the Profiles folder keeps one stamp: `stamp/<id>`, keyed by the stamp's canonical text. */
-export function stampPath(secret: Uint8Array, stamp: { [key: string]: Json }): string {
-  return `stamp/${keyedId(secret, canonical(stamp))}`
+/**
+ * Where the Profiles folder keeps one stamp: `stamp/<id>`, keyed by the stamp's JSON as text, the
+ * text its entry holds, `{ stamp: <text> }`.
+ */
+export function stampPath(secret: Uint8Array, stamp: string): string {
+  return `stamp/${keyedId(secret, stamp)}`
 }

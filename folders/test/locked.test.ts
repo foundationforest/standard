@@ -151,12 +151,17 @@ describe('keyed paths', () => {
     assert.equal(profiles.address, KEYS.profilesKey.address)
     const host = await startHost({ now: () => T0 })
     try {
-      const stamp = stampToJson(stampFromJson({ stampNumber: '7', facts: '9', verifier: KEYS.serviceKey.address, signature: { r8: ['1', '2'], s: '3' } }))
+      // A stamp whose verifier added fields an entry's narrowed JSON cannot spell, a fraction and a
+      // key with `_`: kept as text, it fits whole.
+      const added = { stampNumber: '7', facts: '9', verifier: KEYS.serviceKey.address, signature: { r8: ['1', '2'], s: '3' }, score: 0.97, checked_at: '2026-10-01' }
+      assert.throws(() => canonical(added), /whole|key/, 'not as JSON in a body')
+      const text = JSON.stringify(stampToJson(stampFromJson(added)))
+      const stamp = { stamp: text }
       const label = { label: 'tutoring/seller', time: T0 }
       await write([host.url], [
         entry(profiles, 'profile', { hosts: [host.url] }, T0),
         entry(profiles, labelPath(profiles.secret, label.label), await lock(label, [profiles.openKey]), T0),
-        entry(profiles, stampPath(profiles.secret, stamp), await lock(stamp, [profiles.openKey]), T0),
+        entry(profiles, stampPath(profiles.secret, text), await lock(stamp, [profiles.openKey]), T0),
       ])
       // A new device: the seed gives the Profiles folder key, its folder gives every label, and
       // each label its folder.
@@ -165,9 +170,11 @@ describe('keyed paths', () => {
       assert.deepEqual(folder.hosts, [host.url])
       assert.equal(folder.current.get('profile')!.entry.body!.openKey, undefined, 'no openKey: it takes no inbox entries')
       const opened = await Promise.all([...folder.current].filter(([path]) => path !== 'profile').map(async ([path, c]) => [path, await openLocked(c.entry.body!, again.identity)] as const))
-      assert.deepEqual(Object.fromEntries(opened), { [labelPath(again.secret, 'tutoring/seller')]: label, [stampPath(again.secret, stamp)]: stamp })
+      assert.deepEqual(Object.fromEntries(opened), { [labelPath(again.secret, 'tutoring/seller')]: label, [stampPath(again.secret, text)]: stamp })
+      const back = stampFromJson(JSON.parse(opened.find(([path]) => path.startsWith('stamp/'))![1].stamp as string))
+      assert.deepEqual([back.score, back.checked_at], [0.97, '2026-10-01'], 'what the verifier added comes back as it wrote it')
       assert.equal(labelPath(profiles.secret, 'tutoring/seller'), `label/${byHand(profiles.secret, 'tutoring/seller')}`)
-      assert.equal(stampPath(profiles.secret, stamp), `stamp/${byHand(profiles.secret, canonical(stamp))}`)
+      assert.equal(stampPath(profiles.secret, text), `stamp/${byHand(profiles.secret, text)}`)
       // Nothing in it names a label: not the paths, not what the host holds.
       assert.ok(!host.dump().join('\n').includes('tutoring'))
     } finally {

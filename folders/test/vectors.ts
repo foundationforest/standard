@@ -7,13 +7,14 @@
 
 import { readFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
-import { profilesKey } from '@foundationforest/keys'
+import { fieldHash, profilesKey, seedScalar } from '@foundationforest/keys'
+import { signStamp, stampNumberOf, stampToJson } from '@foundationforest/verification'
 import { sha256 } from '@noble/hashes/sha2.js'
 import { hex } from '../src/bytes.ts'
 import { canonical } from '../src/canonical.ts'
 import { type SignedEntry, entryId, signingInput, unsignedOf } from '../src/entry.ts'
 import { type InboxEntry, type SignedDelete, type SignedMessage, deleteSigningInput, inboxDelete, inboxId, messageSigningInput, signMessage } from '../src/inbox.ts'
-import { labelPath, notePath } from '../src/paths.ts'
+import { labelPath, notePath, stampPath } from '../src/paths.ts'
 import { entry } from '../src/write.ts'
 import { KEYS, SEED, access, alice, aliceBuyer, aliceOpening } from './fixtures.ts'
 
@@ -61,6 +62,18 @@ export const NOTE = { holder: 'my tutoring AI', since: TIME }
 /** The Profiles folder's entry for tutoring/seller, locked to its own opening half. */
 export const LABEL = { label: 'tutoring/seller', time: TIME }
 
+/**
+ * The Profiles folder's stamp, as text: the example verifier's stamp for the test seed (its key from
+ * the text scripts/example-profile.ts makes it from), with a field the verifier added that an
+ * entry's narrowed JSON cannot spell, a fraction. Its entry holds `{ stamp: <this text> }`.
+ */
+export async function stampText(): Promise<string> {
+  const verifier = 'issuer-a.example'
+  const key = sha256(new TextEncoder().encode(`forest example issuer: ${verifier}`))
+  const stampNumber = stampNumberOf(await seedScalar(SEED), verifier)
+  return JSON.stringify(stampToJson(signStamp(key, { stampNumber, facts: fieldHash('forest example attributes', verifier), score: 0.97 })))
+}
+
 export async function vectors() {
   const profiles = await profilesKey(SEED)
   // An offer's fields are its market's, and the standard names none (README.md, Folders): `about`
@@ -69,8 +82,9 @@ export async function vectors() {
   const letters = { sha256: hex.encode(sha256(LETTERS)), type: 'text/plain', size: LETTERS.length }
   const message = signMessage(aliceBuyer, alice.address, MESSAGE, TIME + 180_000, 'https://host-b.example')
   const inbox: InboxEntry = { v: 1, to: alice.address, time: TIME + 180_000, body: { private: ENVELOPES.inbox } }
+  const stamp = await stampText()
   return {
-    about: "Forest folders vectors. The folder is keys/'s tutoring/seller profile's, from its test seed: its profile entry's openKey is that profile's main key's opening half, its pay field its pay addresses and its paySig field their signatures, and its keys field lists keys/'s access key, from 32 bytes of 0x2b, able to read-inbox and write, all pinned in keys/test/vectors.json. Every signature is EdDSA-Poseidon on Baby Jubjub over SHA-256 of the signed bytes, shifted right one byte, by the main key or the access key named. offerByKey is the access key's; photo is an entry whose body is its file, the 26 letters a to z as text/plain. The inbox entry holds a message from keys/'s tutoring/buyer profile, from the same seed, locked to tutoring/seller's open key and the access key's, its signature naming the folder; inboxDelete is the access key deleting it. note is the main key's note about the access key, at its keyed path, locked to the main key alone. profilesFolder is the seed's Profiles folder: its profile entry, hosts alone, and its entry for tutoring/seller at its keyed path, locked to its own opening half. Locked bodies are made once and pinned as made, in envelopes.json, since age's encryption is random.",
+    about: "Forest folders vectors. The folder is keys/'s tutoring/seller profile's, from its test seed: its profile entry's openKey is that profile's main key's opening half, its pay field its pay addresses and its paySig field their signatures, and its keys field lists keys/'s access key, from 32 bytes of 0x2b, able to read-inbox and write, all pinned in keys/test/vectors.json. Every signature is EdDSA-Poseidon on Baby Jubjub over SHA-256 of the signed bytes, shifted right one byte, by the main key or the access key named. offerByKey is the access key's; photo is an entry whose body is its file, the 26 letters a to z as text/plain. The inbox entry holds a message from keys/'s tutoring/buyer profile, from the same seed, locked to tutoring/seller's open key and the access key's, its signature naming the folder; inboxDelete is the access key deleting it. note is the main key's note about the access key, at its keyed path, locked to the main key alone. profilesFolder is the seed's Profiles folder: its profile entry, hosts alone; its entry for tutoring/seller; and its entry for one stamp, the example verifier's, holding the stamp's JSON as text (a field the verifier added, a fraction, among it), each at its keyed path and locked to its own opening half. Locked bodies are made once and pinned as made, in envelopes.json, since age's encryption is random.",
     profile: alice.address,
     accessKey: access.address,
     profileEntry: describe(entry(alice, 'profile', profileBody(), TIME)),
@@ -85,6 +99,7 @@ export async function vectors() {
       profile: profiles.address,
       profileEntry: describe(entry(profiles, 'profile', { hosts: ['https://host-a.example'] }, TIME)),
       label: describe(entry(profiles, labelPath(profiles.secret, LABEL.label), { private: ENVELOPES.label }, TIME + 300_000)),
+      stamp: { text: stamp, ...describe(entry(profiles, stampPath(profiles.secret, stamp), { private: ENVELOPES.stamp }, TIME + 360_000)) },
     },
   }
 }
