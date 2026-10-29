@@ -28,14 +28,14 @@ Merkle pieces Semaphore, a zero-knowledge identity library, uses.
 
 ### The tree an index publishes
 
-An index reads profiles' records from hosts and scores profiles as it chooses
-([records](../../records/README.md)); it publishes its scores as a tree. The tree is a standard: any
+An index reads profiles' entries from hosts and scores profiles as it chooses
+([folders](../../folders/README.md)); it publishes its scores as a tree. The tree is a standard: any
 index may publish one, and a proof names the root it used, the one number the whole tree hashes down
 to. The circuit proves a plain average over any tree of `(key, score)` leaves an index signs; a
 proof means only what that index says that root holds.
 
 - **A leaf** is `Poseidon(x, y, score)`, circomlib's Poseidon with three inputs:
-  - `x`, `y`: the profile's key, the point its address names, the key its records are signed with
+  - `x`, `y`: the profile's key, the point its address names, the key its entries are signed with
     ([keys](../../keys/README.md#main-keys)).
   - `score`: a whole number below 2^32, meaning what the index says. The circuit outputs the plain
     average of the scores counted; any other aggregate is a new circuit.
@@ -44,12 +44,12 @@ proof means only what that index says that root holds.
   in the index's order: it hashes the leaves in pairs, level by level, up to one number, the root,
   so a short path shows that a leaf is in it. The circuit fixes its depth at 20, so a tree holds at
   most 1,048,576 leaves.
-- **The index signs the root with a time,** as a record is signed: EdDSA-Poseidon on Baby Jubjub
+- **The index signs the root with a time,** as an entry is signed: EdDSA-Poseidon on Baby Jubjub
   by the index's key, over SHA-256 of `0xff ‖ "forest/v1/reputation\n" ‖ root ‖ time`, shifted
   right one byte ([keys](../../keys/README.md#signatures)). The root is 32 big-endian bytes and
   the time 8 big-endian bytes of milliseconds since 1970. The bytes start with their own text, so
-  the signature is never a record's, a message's or a pull's. The index's key is an address, and
-  the signature 64 bytes, R8 packed then S.
+  the signature is never an entry's, a message's or an inbox delete's. The index's key is an
+  address, and the signature 64 bytes, R8 packed then S.
 - **How it publishes them is its own:** every leaf's key and score, in order, with the root, the
   time and the signature, in whatever format the index chooses.
 
@@ -116,7 +116,7 @@ The scope and the profile's key come from `keys/`, unchanged.
 | `signedBytes(root, time)` | The bytes an index signs |
 | `proveReputation({ seedScalar, labels, leaves, profileLabel, artifacts })` | The proof, on the device: one to eight of the person's profiles, by label, each found in the leaves by its key, shown on the profile with `profileLabel` |
 | `checkReputation({ proof, root, score, profile, index, time, signature })` | Whether the index (its address or key) signed the root with that time (its 64-byte signature), and the proof holds for that score and `profile`, the address or key of the profile that shows it |
-| `proofBytes(proof)`, `proofFromBytes(bytes)` | The proof as the 256 bytes a profile record carries ([records](../../records/README.md)), and back; `checkReputation` takes either |
+| `proofBytes(proof)`, `proofFromBytes(bytes)` | The proof as the 256 bytes a profile entry carries ([folders](../../folders/README.md)), and back; `checkReputation` takes either |
 | `circuitInput({...})` | The circuit's input, for a caller that drives snarkjs itself |
 
 ```ts

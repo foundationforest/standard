@@ -1,6 +1,6 @@
 // Keys on Baby Jubjub: a profile's public key, its address, and EdDSA-Poseidon
 // signatures made from the scalar itself. The circuits check the same curve and the same
-// signature equation, circomlib's, so what signs a record is what a proof can derive.
+// signature equation, circomlib's, so what signs an entry is what a proof can derive.
 //
 // A key's scalar is below 2^250. Baby Jubjub's subgroup order l is above 2^250, so every such
 // number is already a scalar, with no reduction, and a circuit takes its 250 bits as they are.
@@ -176,8 +176,8 @@ export function checkWithPublicKey(publicKey: Point | string, message: bigint, s
 
 /**
  * The number a signature over bytes signs: SHA-256 of the bytes, read big-endian, shifted right one
- * byte so it is a field element. Records, messages, pulls and an index's roots are signed this way,
- * each over its own signed bytes.
+ * byte so it is a field element. Entries, messages, inbox deletes and an index's roots are signed
+ * this way, each over its own signed bytes.
  */
 export function bytesMessage(bytes: Uint8Array): bigint {
   return sha256(bytes).reduce((v, b) => (v << 8n) | BigInt(b), 0n) >> 8n

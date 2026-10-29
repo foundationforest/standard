@@ -3,22 +3,26 @@
 // key can be turned into any other key. Changing any of them gives other keys:
 // it is a new version, never an edit to this one.
 
-/** HKDF info strings: what the seed (or a profile's secret) is mixed with. */
+/** HKDF info strings: what the seed (or a key's secret) is mixed with. */
 export const INFO = {
   /** The seed scalar, the number the circuits take, mixed from the seed. */
   seed: 'forest/v1/seed',
-  /** A profile's secret, which its inbox key is mixed from. The label is used exactly as given. */
+  /** A profile's secret, which its main key's opening half is mixed from. The label is used exactly as given. */
   profile: (label: string) => `forest/v1/profile/${label}`,
-  /** An inbox key, mixed from a profile's secret. */
-  inbox: 'forest/v1/inbox',
+  /**
+   * An opening half, mixed from a key's secret: a main key's, the Profiles folder key's or an
+   * access key's. The text keeps its bytes, the word inbox among them, from before every key had
+   * an opening half: every opening half is made with it.
+   */
+  opening: 'forest/v1/inbox',
+  /** The Profiles folder key's secret, mixed from the seed alone: no label, no market. */
+  profiles: 'forest/v1/profiles',
   /**
    * A profile's pay key for one address type, mixed from the seed. The label is used exactly as
    * given. For solana this is, byte for byte, the string the standard mixed its one pay key
    * with before evm was added, so every Solana address stays as it was.
    */
   pay: (type: 'solana' | 'evm', label: string) => `forest/v1/pay/${type}/${label}`,
-  /** A profile's permission key, mixed from its secret: it names the paths of the profile's permissions (signers/README.md, Permissions). */
-  permission: 'forest/v1/permission',
 } as const
 
 /** The seed is 32 bytes. */

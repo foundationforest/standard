@@ -22,7 +22,7 @@ shows this without showing the stamp, the seed or who the person is.
 
 The proof derives the profile's key from the seed inside it, so one seed gives one valid key per
 label: a second key for the same label has no proof. No chain is touched: a profile shows its
-proofs in its own records, and whoever reads them checks them.
+proofs in its own profile entry, and whoever reads them checks them.
 
 - `circuit/`: the circuit, its setup and its tests.
 - `client/`: the stamp a verifier signs, the verification and its check. It talks to no network.
@@ -32,7 +32,7 @@ proofs in its own records, and whoever reads them checks them.
 ```
 device ── its stamp number for the verifier ──▶ verifier
 verifier ── a stamp signed for that stamp number ──▶ device
-device ── the verification, for one profile ──▶ the profile's records, for anyone to check
+device ── the verification, for one profile ──▶ the profile's entry, for anyone to check
 ```
 
 ### The stamp and the verification
@@ -74,8 +74,8 @@ profile's key is the one it gives for this label.*
   Baby Jubjub's `Base8` ([keys](../../keys/README.md#main-keys)). The verifier secret behind the
   stamp and the profile's key come from the same seed scalar, so a stamp counts only for profiles of
   the seed it was signed for.
-- A profile shows the verification in its profile record
-  ([records](../../records/README.md#proofs)), with the verifier's key and name.
+- A profile shows the verification in its profile entry
+  ([folders](../../folders/README.md#proofs)), with the verifier's key and name.
 
 ### The circuit and its setup
 
@@ -125,7 +125,7 @@ the setup's files. The scope, the name hash and the profile's key come from `key
 | `stampToJson(stamp)`, `stampFromJson(json)` | The stamp as JSON, as the person's device keeps it, and back; `stampFromJson` refuses the stamp's own fields in any other shape, a verifier key that is not an address among them, passes the verifier's added fields through unchanged, and leaves the signature to `stampSigned` |
 | `proveVerification({ seedScalar, verifierName, stamp, label, artifacts })` | The verification, on the device, for the profile the seed gives for `label`. Refuses a stamp for another seed or verifier name, or one its verifier did not sign |
 | `checkVerification({ proof, verifier, verifierName, label, profile })` | Whether the proof holds for that verifier's key (its address or its point) and name, label, and profile (its address or its key) |
-| `proofBytes(proof)`, `proofFromBytes(bytes)` | The proof as the 256 bytes a profile record carries, and back; `checkVerification` takes either |
+| `proofBytes(proof)`, `proofFromBytes(bytes)` | The proof as the 256 bytes a profile entry carries, and back; `checkVerification` takes either |
 | `verificationInput({...})` | The circuit's input, for a caller that drives snarkjs itself |
 
 ```ts
@@ -201,12 +201,12 @@ Measured in Node 22 on a 4-core machine:
 
 ## Limits
 
-- **A name on a profile record is a claim; the key is the fact.** Anyone can write any verifier's
+- **A name on a profile entry is a claim; the key is the fact.** Anyone can write any verifier's
   name beside a proof; the proof holds for the verifier's key, and a reader trusts keys.
 - **`facts` is a number the verifier fills, and nothing in the standard reads it.** The proof
   keeps it private.
 - **A leaked verifier key signs for anyone.** Whoever holds it signs stamps for any stamp number,
-  and a proof carries no date. An index can record when it first saw each proof, and a reader may
+  and a proof carries no date. An index can note when it first saw each proof, and a reader may
   then stop counting proofs under that key first seen after the leak.
 - **Not audited.**
 

@@ -48,7 +48,7 @@ const strangerPrivate = new Uint8Array(32).fill(3)
 const verifier = verifierKeyOf(verifierPrivate)
 const otherVerifier = verifierKeyOf(otherPrivate)
 
-// Made from the same text as the example's facts (records/scripts/example-profile.ts), whose bytes stay.
+// Made from the same text as the example's facts (folders/scripts/example-profile.ts), whose bytes stay.
 const FACTS = fieldHash('forest example attributes', 'issuer-a')
 const stampFor = (stampNumber: bigint, key = verifierPrivate): SignedStamp => signStamp(key, { stampNumber, facts: FACTS })
 const stamp = stampFor(stampNumberOf(mine, NAME))

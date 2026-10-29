@@ -1,29 +1,32 @@
-This repo is `standard`: the standards every Forest app shares (keys, proofs, records, signers,
-escrows).
+This repo is `standard`: the standards every Forest app shares (keys, proofs, folders, escrows).
 Read `README.md` and the README of the directory you work in before any task.
 
 ## Words
 
-Use these words: seed, seed scalar, main key, profile, profile record, address, label, scope,
-prefix, verifier, verified, stamp, stamp number, facts, verification, reputation proof, check,
-record, folder, host, plug, host check, service key, signer, ask, answer, connection, connector,
-permission, private, envelope, encrypted (an envelope), message, inbox key, inbox, pull, blob, pay
-address, pay key, escrow, receipt, deal, index, fee payer, app, market, role. Plain words, no
-em-dashes.
+Use these words: seed, seed scalar, main key, signing half, opening half, open key, access key,
+profile, Profiles folder, profile entry, entry, folder, address, label, scope, prefix, verifier,
+verified, stamp, stamp number, facts, verification, reputation proof, check, host, plug, host
+check, service key, connector, private, locked (an entry, to a key), envelope, message, inbox,
+inbox entry, file, keyed path, pay address, pay key, escrow, receipt, deal, index, fee payer, app,
+market, role. Plain words, no em-dashes.
 
+- Never "record" for what a folder holds (it is an entry), "signer" (a chain's transaction signer
+  keeps the chain's word, in escrows/), "permission", "inbox key" (it is the main key's opening
+  half), "hosts record" (hosts are the profile entry's), "tag", "stamp proof" (it is a
+  verification), "pull", "blob" or "letter".
 - Check, never verify: a reader checks a proof or a signature. The tooling keeps its own names
   (snarkjs's verifier, `verification-key.json`), and prose calls that part the proof check.
 - Never "account" for a person: a person has a seed and profiles.
 - A string baked into a recipe or a circuit keeps its bytes even when its words are old
-  (`forest/v1/issuer`, `forest/v1/note`): rename the code around it, never the string, and say why
-  in a comment beside it.
+  (`forest/v1/issuer`, `forest/v1/note`, `forest/v1/inbox`): rename the code around it, never the
+  string, and say why in a comment beside it.
 
 The test for what goes in this repo: the standard holds formats (what bytes mean), recipes (how a
 number is derived) and checks (what a reader runs); meanings and choices live outside it.
 Use cases are phrased "anyone can; the main way is X", never "X is one option" and never "X is
 the rule".
 
-What an app that holds keys should know: `signers/README.md`. Never copy it here.
+What an app that holds keys should know: `keys/README.md`. Never copy it here.
 
 ## How to work in this repo
 
@@ -32,10 +35,10 @@ What an app that holds keys should know: `signers/README.md`. Never copy it here
   effect of a task.
 - Content shapes are never defined in this repo: what an offer, a review or a market holds is
   `foundationforest/markets`'s.
-- The repo is `keys/`, `proofs/` (`verification/`, `reputation/`), `records/`, `signers/`,
-  `escrows/` (`solana/`), `README.md` and `LICENSE`, with `.github/`, `.claude/CLAUDE.md`, and the
-  npm workspace's `package.json`, `package-lock.json`, `tsconfig.base.json` and
-  `proofs/snarkjs.d.ts`. The README is the standard.
+- The repo is `keys/`, `proofs/` (`verification/`, `reputation/`), `folders/`, `escrows/`
+  (`solana/`), `README.md` and `LICENSE`, with `.github/`, `.claude/CLAUDE.md`, and the npm
+  workspace's `package.json`, `package-lock.json`, `tsconfig.base.json` and `proofs/snarkjs.d.ts`.
+  The README is the standard.
 - Keep the docs true in the same pull request: a change that makes a README wrong fixes it. A README
   says only what the code does. Devnet is named only inside escrows/, and only where something is
   configured for it.
@@ -56,8 +59,8 @@ What an app that holds keys should know: `signers/README.md`. Never copy it here
 - Run what `.github/workflows/checks.yml` runs before you push (Node 22.18 or later; Solana CLI
   4.2.2; circom 2.2.3); the commands are there. A test that skips fails CI: the summary must say
   `# skipped 0`. `npm ci` at the root installs every package, and `npm run build` there builds keys,
-  proofs/verification/client, proofs/reputation/client, records, signers and escrows/solana/client
-  to their `dist/`, in that order, so each is built before a package that imports it. Then, in each package,
+  proofs/verification/client, proofs/reputation/client, folders and escrows/solana/client to their
+  `dist/`, in that order, so each is built before a package that imports it. Then, in each package,
   `npm run check` and `npm test`; in each circuit, `npm run fetch` and `npm run compile` first.
 
 The slower check, the escrow's fuzzer, runs nightly in CI; `escrows/solana/README.md` says how to

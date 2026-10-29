@@ -1,7 +1,8 @@
-// A service key: the signing key of an index or a verifier, never a person's. It is 32 random bytes
-// the service makes for itself, from no seed, and its signing key is the one zk-kit's
-// EdDSA-Poseidon makes of 32 private bytes (`deriveSecretScalar`), as a verifier's stamp key is. It
-// signs as a main key does, and its address is spelled as one is.
+// A service key: the signing key of an index or a verifier. It is 32 random bytes the service makes
+// for itself, from no seed, and its signing key is the one zk-kit's EdDSA-Poseidon makes of 32
+// private bytes (`deriveSecretScalar`), as a verifier's stamp key is. It signs as a main key does,
+// and its address is spelled as one is. The signing half of the Profiles folder key and of an
+// access key is made the same way (pair.ts).
 
 import { deriveSecretScalar } from '@zk-kit/eddsa-poseidon'
 import { type Point, addressOf, publicKeyOf } from './curve.ts'

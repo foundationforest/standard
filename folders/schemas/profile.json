@@ -1,0 +1,395 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "profile",
+  "description": "A profile's profile entry, at the path `profile` in its folder: one per folder, written by its main key only. A market profile lives in one market, in one role; its label is <market>/<role>, and its profile entry carries both. The Profiles folder's carries only hosts. The fields below are the standard's; any other field is the market's (foundationforest/markets).",
+  "type": "object",
+  "required": [
+    "hosts"
+  ],
+  "dependentRequired": {
+    "market": [
+      "role"
+    ],
+    "role": [
+      "market"
+    ],
+    "pay": [
+      "paySig"
+    ]
+  },
+  "allOf": [
+    {
+      "if": {
+        "type": "object",
+        "required": [
+          "pay"
+        ],
+        "properties": {
+          "pay": {
+            "type": "object",
+            "required": [
+              "solana"
+            ],
+            "properties": {
+              "solana": true
+            }
+          }
+        }
+      },
+      "then": {
+        "type": "object",
+        "properties": {
+          "paySig": {
+            "type": "object",
+            "required": [
+              "solana"
+            ],
+            "properties": {
+              "solana": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "required": [
+          "pay"
+        ],
+        "properties": {
+          "pay": {
+            "type": "object",
+            "required": [
+              "evm"
+            ],
+            "properties": {
+              "evm": true
+            }
+          }
+        }
+      },
+      "then": {
+        "type": "object",
+        "properties": {
+          "paySig": {
+            "type": "object",
+            "required": [
+              "evm"
+            ],
+            "properties": {
+              "evm": true
+            }
+          }
+        }
+      }
+    }
+  ],
+  "properties": {
+    "market": {
+      "type": "string",
+      "description": "The market this profile lives in, as the markets directory spells it: the first half of its label. With role.",
+      "maxLength": 64
+    },
+    "role": {
+      "type": "string",
+      "description": "Its role in that market, the second half of its label: any text. Which roles exist, and which count, is the market's and each index's. With market.",
+      "maxLength": 64
+    },
+    "hosts": {
+      "type": "array",
+      "description": "Where the folder lives: 1 to 8 distinct origins, https://host[:port], lower case, no path (http only on loopback, for tests). Each host it names holds the whole folder.",
+      "minItems": 1,
+      "maxItems": 8,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^(https://[a-z0-9.-]+(:[0-9]{1,5})?|http://(127\\.0\\.0\\.1|localhost|\\[::1\\])(:[0-9]{1,5})?)$"
+      }
+    },
+    "openKey": {
+      "type": "string",
+      "description": "Optional. The main key's opening half, as its open key: an age post-quantum hybrid key (age1pq1…, mlkem768x25519, 1,959 characters). Locked entries and inbox entries are locked to it. A folder whose profile entry has one takes inbox entries; without it, nobody can lock anything to this profile.",
+      "pattern": "^age1pq1[02-9ac-hj-np-z]{1952}$"
+    },
+    "pay": {
+      "type": "object",
+      "description": "Optional. The profile's pay addresses: any of the address types, each the one keys/'s payAddresses(seed, label) gives for it. Where payments to this profile go. A reader ignores a type it does not know, and counts an address only when its signature in paySig holds. With pay, paySig is required, with a signature for each type pay lists.",
+      "properties": {
+        "solana": {
+          "type": "string",
+          "description": "Its address on Solana: base58 of an ed25519 public key.",
+          "minLength": 32,
+          "maxLength": 44,
+          "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$"
+        },
+        "evm": {
+          "type": "string",
+          "description": "Its address on EVM chains: 20 bytes in hex after 0x, in EIP-55's mixed-case checksum, its one spelling (keys/'s isEvmAddress checks it).",
+          "pattern": "^0x[0-9a-fA-F]{40}$"
+        }
+      }
+    },
+    "paySig": {
+      "type": "object",
+      "description": "With pay: for each address type pay lists, its pay key's signature over 0xff || UTF-8(\"forest/v1/pay\\n\") || UTF-8(this profile's address), in base64url without padding (keys/'s signPay). A reader checks each (keys/'s checkPaySig, folders' checkPay), so a profile cannot list an address that is not its own.",
+      "properties": {
+        "solana": {
+          "type": "string",
+          "description": "An Ed25519 signature (RFC 8032) by the solana pay key: 64 bytes.",
+          "pattern": "^[A-Za-z0-9_-]{86}$"
+        },
+        "evm": {
+          "type": "string",
+          "description": "A secp256k1 signature by the evm pay key over keccak256 of the bytes: 65 bytes, r || s || the recovery id (0 to 3).",
+          "pattern": "^[A-Za-z0-9_-]{87}$"
+        }
+      }
+    },
+    "proofs": {
+      "type": "array",
+      "description": "Optional. Proofs the profile shows, each one data anyone checks with its circuit's proof check (proofs/), for this profile's key.",
+      "items": {
+        "$ref": "#/$defs/proof"
+      },
+      "maxItems": 4
+    },
+    "keys": {
+      "type": "array",
+      "description": "Optional. The access keys this profile hands out, each with what it can do. An entry by a key listed with write counts for hosts and readers; a message by a key listed with message counts for the recipient's app. A key removed from the list stops counting, and its entries with it. A listed key with a field nobody defined counts for nothing; a can value nobody defined grants nothing.",
+      "items": {
+        "$ref": "#/$defs/key"
+      }
+    },
+    "files": {
+      "$ref": "#/$defs/files"
+    }
+  },
+  "$defs": {
+    "key": {
+      "type": "object",
+      "description": "One access key: its address, its open key when it can read, and what it can do. Each key is listed once.",
+      "required": [
+        "key",
+        "can"
+      ],
+      "properties": {
+        "key": {
+          "type": "string",
+          "description": "The access key's signing half: its address, a packed point on Baby Jubjub in base58.",
+          "minLength": 32,
+          "maxLength": 44,
+          "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$"
+        },
+        "open": {
+          "type": "string",
+          "description": "The access key's opening half, as its open key: required when it can read or read-inbox, since locked entries and inbox entries are locked to it.",
+          "pattern": "^age1pq1[02-9ac-hj-np-z]{1952}$"
+        },
+        "can": {
+          "type": "array",
+          "description": "What it can do: read (open the folder's locked entries), read-inbox (open its inbox entries and delete them), write (write any entry but profile) and message (sign messages as this profile).",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "type": "object",
+            "required": [
+              "can"
+            ],
+            "properties": {
+              "can": {
+                "type": "array",
+                "contains": {
+                  "enum": [
+                    "read",
+                    "read-inbox"
+                  ]
+                }
+              }
+            }
+          },
+          "then": {
+            "type": "object",
+            "required": [
+              "open"
+            ],
+            "properties": {
+              "open": true
+            }
+          }
+        }
+      ]
+    },
+    "files": {
+      "type": "array",
+      "description": "Optional, in any entry's body: files the entry names, whose bytes its folder's hosts keep while it is current. Anyone fetches them by hash and checks it.",
+      "items": {
+        "type": "object",
+        "required": [
+          "sha256",
+          "type",
+          "size"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "sha256": {
+            "type": "string",
+            "description": "SHA-256 of the bytes, lowercase hex.",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "type": {
+            "type": "string",
+            "description": "The bytes' media type, type/subtype in lower case, at most 255 characters.",
+            "maxLength": 255,
+            "pattern": "^[a-z0-9][a-z0-9!#$&^_.+-]*/[a-z0-9][a-z0-9!#$&^_.+-]*$"
+          },
+          "size": {
+            "type": "integer",
+            "description": "How many bytes.",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        }
+      }
+    },
+    "proof": {
+      "type": "object",
+      "description": "One proof, named by its circuit. A reader ignores a proof whose circuit it does not know, so a profile carrying a newer kind stays valid for an older app. A verification and a reputation proof have the shapes below; another circuit's fields are its own.",
+      "required": [
+        "circuit"
+      ],
+      "properties": {
+        "circuit": {
+          "type": "string",
+          "description": "The circuit that checks it: verification (proofs/verification/) and reputation (proofs/reputation/) have the shapes below.",
+          "pattern": "^[a-z][a-z0-9-]{0,31}$"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "circuit": {
+                "const": "reputation"
+              }
+            }
+          },
+          "then": {
+            "$ref": "#/$defs/reputation"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "circuit": {
+                "const": "verification"
+              }
+            }
+          },
+          "then": {
+            "$ref": "#/$defs/verification"
+          }
+        }
+      ]
+    },
+    "verification": {
+      "type": "object",
+      "description": "A verification (proofs/verification/): the verifier with this key and this name signed a stamp for the person whose seed gives this profile's key for this label. Everything checkVerification takes but the profile's key, which is the profile's own address.",
+      "required": [
+        "circuit",
+        "verifier",
+        "verifierName",
+        "label",
+        "proof"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "circuit": {
+          "const": "verification"
+        },
+        "verifier": {
+          "type": "string",
+          "description": "The verifier's key: its address, a packed point on Baby Jubjub in base58.",
+          "minLength": 32,
+          "maxLength": 44,
+          "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$"
+        },
+        "verifierName": {
+          "type": "string",
+          "description": "The name the verifier publishes as its own, exactly as keys/'s recipe takes it: the proof's name hash is made from it.",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "label": {
+          "type": "string",
+          "description": "The profile's label, exactly as the seed's mix took it: the proof's scope is made from it.",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "proof": {
+          "type": "string",
+          "description": "The proof's three points, uncompressed: 256 bytes in base64url without padding, in the reputation proof's order.",
+          "pattern": "^[A-Za-z0-9_-]{342}$"
+        }
+      }
+    },
+    "reputation": {
+      "type": "object",
+      "description": "A reputation proof (proofs/reputation/): the plain average of the scores of profiles in an index's tree that come from the same seed as this one, which profiles hidden. It holds only for this profile's key, which the proof derives from that seed. What the score means is what the index says its root holds. Everything checkReputation takes but the profile's key, which is the profile's own address.",
+      "required": [
+        "circuit",
+        "index",
+        "root",
+        "time",
+        "signature",
+        "score",
+        "proof"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "circuit": {
+          "const": "reputation"
+        },
+        "index": {
+          "type": "string",
+          "description": "The index's signing key: its address, a packed point on Baby Jubjub in base58.",
+          "minLength": 32,
+          "maxLength": 44,
+          "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$"
+        },
+        "root": {
+          "type": "string",
+          "description": "The root of the index's tree the proof was made against: the 32 big-endian bytes the index signed, lowercase hex.",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "time": {
+          "type": "integer",
+          "description": "The time the index signed with the root, ms since 1970.",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "signature": {
+          "type": "string",
+          "description": "The index's signature over the root and the time, as proofs/reputation/ defines its signed bytes: EdDSA-Poseidon on Baby Jubjub, 64 bytes (R8 packed, then S) in base64url without padding.",
+          "pattern": "^[A-Za-z0-9_-]{86}$"
+        },
+        "score": {
+          "type": "integer",
+          "description": "The score the proof shows: the plain average of the scores of the profiles counted, rounded down.",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "proof": {
+          "type": "string",
+          "description": "The proof's three points, uncompressed: 256 bytes in base64url without padding. Eight numbers of 32 bytes big-endian, in snarkjs's names pi_a[0], pi_a[1], pi_b[0][1], pi_b[0][0], pi_b[1][1], pi_b[1][0], pi_c[0], pi_c[1]: the order Ethereum's and Solana's BN254 precompiles read.",
+          "pattern": "^[A-Za-z0-9_-]{342}$"
+        }
+      }
+    }
+  }
+}

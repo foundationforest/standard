@@ -8,12 +8,11 @@
     "proofs/verification/circuit",
     "proofs/reputation/client",
     "proofs/reputation/circuit",
-    "records",
-    "signers",
+    "folders",
     "escrows/solana/client"
   ],
   "scripts": {
-    "build": "npm run build -w keys && npm run build -w proofs/verification/client && npm run build -w proofs/reputation/client && npm run build -w records && npm run build -w signers && npm run build -w escrows/solana/client",
+    "build": "npm run build -w keys && npm run build -w proofs/verification/client && npm run build -w proofs/reputation/client && npm run build -w folders && npm run build -w escrows/solana/client",
     "check": "npm run check --workspaces"
   },
   "devDependencies": {

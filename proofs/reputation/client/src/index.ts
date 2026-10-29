@@ -3,7 +3,7 @@
 // published leaves, root, time and signature.
 //
 // The scope and the profile's key come from keys/ unchanged, so a leaf names a profile by the key
-// its records are signed with, and a proof names the key of the profile it is shown on.
+// its entries are signed with, and a proof names the key of the profile it is shown on.
 
 import { Group } from '@semaphore-protocol/group'
 import { poseidon3 } from 'poseidon-lite/poseidon3'
@@ -107,7 +107,7 @@ export function buildTree(leaves: Leaf[]): Tree {
 
 /**
  * What an index signs: 0xff, its text, the root as 32 big-endian bytes, the time as 8 (ms). It
- * signs them as a record is signed: EdDSA-Poseidon on Baby Jubjub, by keys/'s signBytes.
+ * signs them as an entry is signed: EdDSA-Poseidon on Baby Jubjub, by keys/'s signBytes.
  */
 export function signedBytes(root: bigint, time: bigint | number): Uint8Array {
   const ms = BigInt(time)
@@ -194,8 +194,8 @@ export async function proveReputation(input: Parameters<typeof circuitInput>[0] 
   return { score, root, profile, address: addressOf(profile), proof, publicSignals }
 }
 
-// The proof as a profile record stores it, 256 bytes, and back: the verification client's, which a
-// verification uses too (records/README.md, Proofs).
+// The proof as a profile entry stores it, 256 bytes, and back: the verification client's, which a
+// verification uses too (folders/README.md, Proofs).
 export { proofBytes, proofFromBytes } from '@foundationforest/verification'
 
 /**
