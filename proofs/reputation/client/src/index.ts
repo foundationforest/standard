@@ -2,11 +2,11 @@
 // device, and the check any reader makes. It talks to no network: the caller passes in the index's
 // published leaves, root, time and signature.
 //
-// The tag, the scope and the profile's key come from keys/ unchanged, so a leaf names a profile
-// exactly as its stamp proof does, and a proof names the key of the profile it is shown on.
+// The scope and the profile's key come from keys/ unchanged, so a leaf names a profile by the key
+// its records are signed with, and a proof names the key of the profile it is shown on.
 
 import { Group } from '@semaphore-protocol/group'
-import { poseidon4 } from 'poseidon-lite/poseidon4'
+import { poseidon3 } from 'poseidon-lite/poseidon3'
 import { groth16 } from 'snarkjs'
 
 import {
@@ -14,41 +14,31 @@ import {
   addressOf,
   checkBytes,
   isFieldElement,
-  nameHashOf,
   pointOf,
   profileScalarOf,
   publicKeyOf,
   scopeOf,
-  tagOf,
   unpackSignature,
-  verifierScalarOf,
 } from '@foundationforest/keys'
-import { type SnarkjsProof, proofFromBytes, toBytes32 } from '@foundationforest/stamp'
+import { type SnarkjsProof, proofFromBytes, toBytes32 } from '@foundationforest/verification'
 import { REPUTATION_KEY } from './reputation-key.ts'
 
 /** The circuit's slots: a proof counts up to this many profiles. */
 export const SLOTS = 8
 /** The circuit's depth: a tree holds at most 2^DEPTH leaves. */
 export const DEPTH = 20
-/** Every score and count is below this. */
+/** Every score is below this. */
 export const BOUND = 2n ** 32n
 /** What an index's signed bytes start with, after 0xff: its own text, so the signature is never anything else's. */
 export const SIGNED_PREFIX = 'forest/v1/reputation\n'
 
 /** One profile in an index's tree. */
 export type Leaf = {
-  /** The profile's tag at the verifier its stamp proof names. */
-  tag: bigint
-  /** The scope of the profile's label (`scopeOf`). */
-  scope: bigint
-  /** The leaf's score: a whole number below 2^32 whose meaning is the index's. */
+  /** The profile's key, the point its address names (`keys/`'s `pointOf`). */
+  profile: Point
+  /** The profile's score: a whole number below 2^32 whose meaning is the index's. */
   score: bigint
-  /** The leaf's count, which weighs its score: a whole number below 2^32 whose meaning is the index's. */
-  count: bigint
 }
-
-/** One of the person's profiles to count: its label, and the verifier whose tag the index's leaf carries. */
-export type Source = { label: string; verifierName: string }
 
 /** Where a leaf sits: Semaphore's Merkle proof, as the circuit reads it. */
 export type Path = { length: number; index: number; siblings: bigint[] }
@@ -56,8 +46,8 @@ export type Path = { length: number; index: number; siblings: bigint[] }
 export type Tree = {
   /** What the index signs, with a time. */
   root: bigint
-  /** The path to the leaf with this tag, if the tree has one. */
-  pathOf(tag: bigint): Path | undefined
+  /** The path to the leaf with this key, if the tree has one. */
+  pathOf(profile: Point): Path | undefined
 }
 
 /** The pinned setup files. Paths on Node, or the bytes themselves in a browser. */
@@ -67,46 +57,47 @@ export type Artifacts = {
 }
 
 export type ReputationProof = {
-  /** The count-weighted average of the scores of the profiles counted, rounded down. */
+  /** The plain average of the scores of the profiles counted, rounded down. */
   score: bigint
   root: bigint
   /** The key of the profile the proof is shown on. */
   profile: Point
   /** Its address. */
   address: string
-  /** The scope shown, or 0. */
-  scope: bigint
   /** The proof as snarkjs wrote it. */
   proof: SnarkjsProof
   publicSignals: string[]
 }
 
-/** A leaf's hash: Poseidon(tag, scope, score, count). */
+/** A leaf's hash: Poseidon(key x, key y, score). */
 export function leafHash(leaf: Leaf): bigint {
-  return poseidon4([leaf.tag, leaf.scope, leaf.score, leaf.count])
+  return poseidon3([leaf.profile[0], leaf.profile[1], leaf.score])
 }
+
+const keyOf = (profile: Point) => `${profile[0]},${profile[1]}`
 
 /**
  * The tree an index publishes: Semaphore's, over the leaves' hashes in the index's order. Refuses
- * an empty tree, one deeper than the circuit, a field out of range, and two leaves for one tag.
+ * an empty tree, one deeper than the circuit, a field out of range, and two leaves for one key.
  */
 export function buildTree(leaves: Leaf[]): Tree {
   if (leaves.length === 0) throw new RangeError('a tree has at least one leaf')
   if (leaves.length > 2 ** DEPTH) throw new RangeError(`a tree has at most 2^${DEPTH} leaves`)
-  const at = new Map<bigint, number>()
+  const at = new Map<string, number>()
   leaves.forEach((leaf, i) => {
-    if (!isFieldElement(leaf.tag) || !isFieldElement(leaf.scope)) throw new RangeError(`leaf ${i}: not a field element`)
-    if (leaf.score < 0n || leaf.score >= BOUND || leaf.count < 0n || leaf.count >= BOUND) {
-      throw new RangeError(`leaf ${i}: a score and a count are each from 0 to 2^32 - 1`)
-    }
-    if (at.has(leaf.tag)) throw new Error(`leaf ${i}: a second leaf for one tag`)
-    at.set(leaf.tag, i)
+    // A key is not checked to be a point of the curve: no seed gives one that is not, so such a leaf
+    // can never be counted, and holding it harms no proof.
+    if (!isFieldElement(leaf.profile[0]) || !isFieldElement(leaf.profile[1])) throw new RangeError(`leaf ${i}: not a field element`)
+    if (leaf.score < 0n || leaf.score >= BOUND) throw new RangeError(`leaf ${i}: a score is from 0 to 2^32 - 1`)
+    const key = keyOf(leaf.profile)
+    if (at.has(key)) throw new Error(`leaf ${i}: a second leaf for one key`)
+    at.set(key, i)
   })
   const group = new Group(leaves.map(leafHash))
   return {
     root: group.root,
-    pathOf(tag) {
-      const i = at.get(tag)
+    pathOf(profile) {
+      const i = at.get(keyOf(profile))
       if (i === undefined) return undefined
       const proof = group.generateMerkleProof(i)
       return { length: proof.siblings.length, index: proof.index, siblings: proof.siblings }
@@ -138,53 +129,41 @@ export function signedBytes(root: bigint, time: bigint | number): Uint8Array {
 export function circuitInput(input: {
   /** The seed scalar: `keys/`'s `seedScalar(seed)`. */
   seedScalar: bigint
-  /** The person's profiles to count, one to eight, each with the verifier its leaf's tag is at. */
-  sources: Source[]
+  /** The labels of the person's profiles to count, one to eight. */
+  labels: string[]
   /** The index's published leaves, in its order. */
   leaves: Leaf[]
   /** The label of the profile the proof is shown on, one of the person's. The proof names its key. */
   profileLabel: string
-  /** Show the label. Only with one profile. */
-  show?: boolean
 }): { input: Record<string, unknown>; publicSignals: bigint[] } {
-  const { sources, seedScalar } = input
+  const { labels, seedScalar } = input
   if (!isFieldElement(seedScalar)) throw new RangeError('a seed scalar is a field element')
-  if (sources.length < 1 || sources.length > SLOTS) throw new RangeError(`one to ${SLOTS} profiles`)
-  if (new Set(sources.map((s) => s.label)).size !== sources.length) throw new Error('a label twice')
-  if (input.show && sources.length !== 1) throw new Error('a label is shown only when it is the only one')
+  if (labels.length < 1 || labels.length > SLOTS) throw new RangeError(`one to ${SLOTS} profiles`)
+  if (new Set(labels).size !== labels.length) throw new Error('a label twice')
 
   const tree = buildTree(input.leaves)
-  const byTag = new Map(input.leaves.map((leaf) => [leaf.tag, leaf]))
+  const byKey = new Map(input.leaves.map((leaf) => [keyOf(leaf.profile), leaf]))
 
-  const slots = sources.map(({ label, verifierName }) => {
-    const tag = tagOf(verifierScalarOf(seedScalar, verifierName), label)
-    const leaf = byTag.get(tag)
-    const path = tree.pathOf(tag)
-    if (leaf === undefined || path === undefined) throw new Error(`the tree has no leaf for ${label} at ${verifierName}`)
-    return { leaf, path, nameHash: nameHashOf(verifierName) }
+  const slots = labels.map((label) => {
+    const key = publicKeyOf(profileScalarOf(seedScalar, label))
+    const leaf = byKey.get(keyOf(key))
+    const path = tree.pathOf(key)
+    if (leaf === undefined || path === undefined) throw new Error(`the tree has no leaf for ${label}`)
+    return { scope: scopeOf(label), score: leaf.score, path }
   })
 
-  const countSum = slots.reduce((n, s) => n + s.leaf.count, 0n)
-  if (countSum === 0n) throw new Error('no reviews to count')
-  const score = slots.reduce((n, s) => n + s.leaf.score * s.leaf.count, 0n) / countSum
+  const score = slots.reduce((n, s) => n + s.score, 0n) / BigInt(slots.length)
 
-  const blank = { leaf: { tag: 0n, scope: 0n, score: 0n, count: 0n }, path: { length: 0, index: 0, siblings: [] as bigint[] }, nameHash: 0n }
+  const blank = { scope: 0n, score: 0n, path: { length: 0, index: 0, siblings: [] as bigint[] } }
   const all = [...slots, ...Array(SLOTS - slots.length).fill(blank)] as typeof slots
-  const scope = input.show ? scopeOf(sources[0]!.label) : 0n
   const profile = publicKeyOf(profileScalarOf(seedScalar, input.profileLabel))
 
   return {
     input: {
       seedScalar,
-      // Each slot's verifier's name hash, under the circuit's name for it: reputation.circom keeps
-      // its bytes.
-      issuerNameHashes: all.map((s) => s.nameHash),
       used: all.map((_, i) => (i < slots.length ? 1 : 0)),
-      // The circuit's signal for the leaves' tags is named stamps: reputation.circom keeps its bytes.
-      stamps: all.map((s) => s.leaf.tag),
-      scopes: all.map((s) => s.leaf.scope),
-      scores: all.map((s) => s.leaf.score),
-      counts: all.map((s) => s.leaf.count),
+      scopes: all.map((s) => s.scope),
+      scores: all.map((s) => s.score),
       pathLengths: all.map((s) => s.path.length),
       pathIndices: all.map((s) => s.path.index),
       // The circuit walks `pathLengths` levels; the rest is padding it never reads.
@@ -193,9 +172,8 @@ export function circuitInput(input: {
       root: tree.root,
       profileX: profile[0],
       profileY: profile[1],
-      scope,
     },
-    publicSignals: [score, tree.root, profile[0], profile[1], scope],
+    publicSignals: [score, tree.root, profile[0], profile[1]],
   }
 }
 
@@ -206,28 +184,27 @@ export async function proveReputation(input: Parameters<typeof circuitInput>[0] 
     proof: SnarkjsProof
     publicSignals: string[]
   }
-  // The circuit's order: score, root, profile x, profile y, scope. Checked so a change in the
-  // circuit or the setup files shows up here, and not as a proof every reader refuses.
-  if (publicSignals.length !== 5 || publicSignals.some((s, i) => BigInt(s) !== want[i])) {
+  // The circuit's order: score, root, profile x, profile y. Checked so a change in the circuit or
+  // the setup files shows up here, and not as a proof every reader refuses.
+  if (publicSignals.length !== 4 || publicSignals.some((s, i) => BigInt(s) !== want[i])) {
     throw new Error('the proof carries other public signals than the ones asked for')
   }
-  const [score, root, x, y, scope] = want as [bigint, bigint, bigint, bigint, bigint]
+  const [score, root, x, y] = want as [bigint, bigint, bigint, bigint]
   const profile: Point = [x, y]
-  return { score, root, profile, address: addressOf(profile), scope, proof, publicSignals }
+  return { score, root, profile, address: addressOf(profile), proof, publicSignals }
 }
 
-// The proof as a profile record stores it, 256 bytes, and back: the stamp client's, which a stamp
-// proof uses too (records/README.md, Proofs).
-export { proofBytes, proofFromBytes } from '@foundationforest/stamp'
+// The proof as a profile record stores it, 256 bytes, and back: the verification client's, which a
+// verification uses too (records/README.md, Proofs).
+export { proofBytes, proofFromBytes } from '@foundationforest/verification'
 
 /**
  * Does this proof hold, under a root this index signed with this time, on this profile? Checks the
  * index's signature (keys/'s checkBytes over signedBytes), that every public value is in range,
- * and the proof with the committed verification key for this profile's key and, if one is given,
- * this shown label. The key is derived inside the proof from the same seed as every counted
- * profile, so a proof holds only on a profile of the prover's own. How old a time to accept, and
- * which indexes to trust, is the reader's choice. Anything that is not a good proof for these
- * inputs is false.
+ * and the proof with the committed verification key for this profile's key. The key is derived
+ * inside the proof from the same seed as every counted profile, so a proof holds only on a profile
+ * of the prover's own. How old a time to accept, and which indexes to trust, is the reader's
+ * choice. Anything that is not a good proof for these inputs is false.
  */
 export async function checkReputation(input: {
   /** The proof as snarkjs writes it, `proveReputation`'s `proof`, or its 256 bytes (`proofBytes`). */
@@ -236,8 +213,6 @@ export async function checkReputation(input: {
   score: bigint
   /** The profile that shows the proof: its address, or its key. */
   profile: string | Point
-  /** The label shown, if the proof shows one. */
-  label?: string
   /** The index's key: its address, or its point on Baby Jubjub. */
   index: string | Point
   /** The time the index signed with the root, in ms. */
@@ -250,8 +225,7 @@ export async function checkReputation(input: {
     if (signature === null || !checkBytes(input.index, signedBytes(input.root, input.time), signature)) return false
     if (input.score < 0n || input.score >= BOUND) return false
     const profile = typeof input.profile === 'string' ? pointOf(input.profile) : pointOf(addressOf(input.profile))
-    const scope = input.label === undefined ? 0n : scopeOf(input.label)
-    const publicSignals = [input.score, input.root, profile[0], profile[1], scope].map(String)
+    const publicSignals = [input.score, input.root, profile[0], profile[1]].map(String)
     const proof = input.proof instanceof Uint8Array ? proofFromBytes(input.proof) : input.proof
     return await groth16.verify(REPUTATION_KEY, publicSignals, proof)
   } catch {

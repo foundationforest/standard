@@ -10,7 +10,7 @@ export type SnarkjsProof = {
 }
 
 /**
- * The proof as a profile record stores it (records/README.md, Proofs), a stamp proof or a
+ * The proof as a profile record stores it (records/README.md, Proofs), a verification or a
  * reputation proof: its three points whole, 256 bytes, eight 32-byte big-endian numbers in the order
  * Ethereum's and Solana's BN254 precompiles read, each G2 pair's imaginary part first.
  */

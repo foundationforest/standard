@@ -208,23 +208,22 @@ The profile record's optional `proofs` field carries up to four proofs, each nam
 `circuit` and checked by that circuit's proof check ([schemas/profile.json](schemas/profile.json)).
 A proof counts for one main key: a reader checks it against the address of the profile that
 carries it, so a proof copied to another profile fails. A reader ignores a proof whose circuit it
-does not know, so a newer kind never makes a profile invalid for an older app. `stamp` and
+does not know, so a newer kind never makes a profile invalid for an older app. `verification` and
 `reputation`, below, are ours: the field takes any circuit's name, and anyone can add one. An app
 puts a proof in the profile record only when the person chooses to show it there:
 [proofs/reputation/](../proofs/reputation/README.md#limits) says what one can reveal. Records
-checks no proof itself: `stampCheck` and `reputationCheck` turn a proof on a profile record into
-what its proof check takes, for the profile that carries it.
+checks no proof itself: `verificationCheck` and `reputationCheck` turn a proof on a profile record
+into what its proof check takes, for the profile that carries it.
 
-- **`stamp`** shows that a verifier signed a stamp to the seed that gives this profile's key for its
-  label ([proofs/stamp/](../proofs/stamp/README.md)). It carries the verifier's key, as its address,
-  and its name, the label, the profile's tag at that verifier (the number an index's tree knows it
-  by, [keys](../keys/README.md#tags)), and the proof's 256 bytes, in the reputation proof's order. A
-  reader checks it with proofs/stamp/client's `checkStamp`, which works the name hash and the scope,
-  the numbers the proof takes for the name and the label, out of them itself. Each reader decides
-  which verifiers it trusts.
-- **`reputation`** shows the score of profiles the person holds in an index's tree, without
-  saying which. It carries the index's key, the root and time the index signed and its signature,
-  the score, the label when the proof shows one market, and the proof's 256 bytes. A reader checks
+- **`verification`** shows that a verifier signed a stamp to the seed that gives this profile's key
+  for its label ([proofs/verification/](../proofs/verification/README.md)). It carries the
+  verifier's key, as its address, and its name, the label, and the proof's 256 bytes, in the
+  reputation proof's order. A reader checks it with proofs/verification/client's
+  `checkVerification`, which works the name hash and the scope, the numbers the proof takes for the
+  name and the label, out of them itself. Each reader decides which verifiers it trusts.
+- **`reputation`** shows the average score of profiles the person holds in an index's tree,
+  without saying which. It carries the index's key, the root and time the index signed and its
+  signature, the score, and the proof's 256 bytes. A reader checks
   it with proofs/reputation/client's `checkReputation`: the proof derives this profile's key from
   the same seed as the profiles it counts, so nobody can lend their score to someone else. Each
   reader decides which indexes it trusts and how old a time it accepts. How it is made is
@@ -376,9 +375,9 @@ Nothing here is the standard's: each host chooses, and says its numbers where it
   writing (`ownerRecord`, `hostsRecord`, `nextTime`); messages and pulls (`signMessage`,
   `decodeMessage`, `messageId`, `pullRequest`, `checkPull`, `inboxOf`, `inboxKeyOf`); blob requests
   (`blobNameOf`, `blobRequest`, `checkBlobRequest`); a profile record's proofs as their proof checks
-  take them (`proofsOf`, `stampCheck`, `reputationCheck`), and its pay addresses whose signature
-  holds (`checkPay`); talking to hosts (`publish`, `readPage`, `readAll`, `readProfile`, `deliver`,
-  `pull`, `putBlob`, `getBlob`, `deleteBlob`). A host that fails does not stop `readProfile`: it
+  take them (`proofsOf`, `verificationCheck`, `reputationCheck`), and its pay addresses whose
+  signature holds (`checkPay`); talking to hosts (`publish`, `readPage`, `readAll`, `readProfile`,
+  `deliver`, `pull`, `putBlob`, `getBlob`, `deleteBlob`). A host that fails does not stop `readProfile`: it
   reads the others and lists that host, with the error, in `failed`. A read ends with an error on a
   cursor that is not a whole number or does not move forward, and its `timeout` bounds the whole
   read. A publish reads each answer's HTTP status before its body, and sends a batch again in
@@ -446,8 +445,7 @@ npm run check          # type-check
 npm test               # everything, on loopback
 npm run check-host -- https://host.example   # the host check, against a host
 node test/vectors.ts   # print the test vectors
-node scripts/example-profile.ts   # make the example profile record's proofs again, after
-                                  # npm run fetch in proofs/reputation/circuit
+node scripts/example-profile.ts   # make the example profile record's proofs again
 ```
 
 Node 22.18 or later. Built from existing pieces, unchanged: `@noble/curves`, `@noble/hashes`,
@@ -474,8 +472,8 @@ is `9bpPbLYCPwNWq9BZqnJr3EqRNqymFZ4g58Zk9K86azDC`; every signing input begins
 `ff 66 6f 72 65 73 74 2f` (`0xff`, then `forest/`).
 
 The example profile record, [schemas/examples/profile.json](schemas/examples/profile.json), is that
-profile's, with its pay addresses each signed by its pay key, a stamp proof from an example verifier
-and a reputation proof from an example index's tree, made with the circuits' setups by
+profile's, with its pay addresses each signed by its pay key, a verification from an example
+verifier and a reputation proof from an example index's tree, made with the circuits' setups by
 `scripts/example-profile.ts`; `test/schemas.test.ts` checks both proofs with their proof checks and
 the pay signatures with `checkPay`.
 
@@ -526,7 +524,7 @@ the pay signatures with `checkPay`.
   days, and any retention rule for blobs; the largest record, message and blob it takes; batch and
   page sizes; which blob types it takes; spam limits and rate limits; logging; storage.
 - **An app, with the person:** the copies it keeps; which hosts; filtering messages, by the sender's
-  stamp proofs or anything else; whether to forward a message to email or a notification; dropping
+  verifications or anything else; whether to forward a message to email or a notification; dropping
   a message that arrives twice; what it finds too big to read; and what asks for the person's
   device unlock. The profile can
   change or delete anything it wrote, at will. What others wrote about it, and payments, stay.
@@ -562,9 +560,9 @@ Your app pulls each inbox from its hosts (`pull`); nothing in the standard pushe
 **Why does an inbox not say who may write to it?**
 A rule for senders had each host that holds the inbox read the sender's records from the sender's
 host, which told that host where the sender wrote, and check the sender's proofs; each new kind, a
-stamp or a deposit, was more for every host to run. So anyone may write to an inbox: limiting spam
-is each host's choice, and filtering messages, by the sender's stamp proofs or anything else, is
-the recipient's app's, once it opens them. A host refuses an `inbox` field it does not know, so a
+verification or a deposit, was more for every host to run. So anyone may write to an inbox: limiting
+spam is each host's choice, and filtering messages, by the sender's verifications or anything else,
+is the recipient's app's, once it opens them. A host refuses an `inbox` field it does not know, so a
 rule for senders can come back as a new field without an old host taking what it should refuse.
 
 **Why is a proof's `proof` 256 bytes, and not snarkjs's JSON?**

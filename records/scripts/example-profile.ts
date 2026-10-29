@@ -1,18 +1,18 @@
 // The example profile record (schemas/examples/profile.json): its pay addresses, each signed by its
-// pay key, and a stamp proof and a reputation proof for keys/'s test person, tutoring/seller, made
+// pay key, and a verification and a reputation proof for keys/'s test person, tutoring/seller, made
 // with the circuits' setups. A proof is made with fresh randomness, so running this again gives
 // other proofs for the same statements; the example keeps the ones made once, and
 // test/schemas.test.ts checks them with both proof checks, and the pay signatures with checkPay.
 //
 //   node scripts/example-profile.ts
 //
-// It needs proofs/stamp/circuit/setup/ (committed) and proofs/reputation/circuit/setup/'s proving
-// files (npm run fetch there).
+// It needs the setup files committed in proofs/verification/circuit/setup/ and
+// proofs/reputation/circuit/setup/.
 
 import { readFileSync, writeFileSync } from 'node:fs'
 import { sha256 } from '@noble/hashes/sha2.js'
-import { PAY_TYPES, fieldHash, inboxKey, mainKey, packSignature, payAddresses, payKey, scopeOf, seedScalar, serviceKey, signBytes, signPay, tagOf, verifierSecret } from '@foundationforest/keys'
-import { proofBytes, proveStamp, signStamp, stampNumberOf, toBytes32 } from '@foundationforest/stamp'
+import { PAY_TYPES, fieldHash, inboxKey, keyScalar, mainKey, packSignature, payAddresses, payKey, publicKeyOf, seedScalar, serviceKey, signBytes, signPay } from '@foundationforest/keys'
+import { proofBytes, proveVerification, signStamp, stampNumberOf, toBytes32 } from '@foundationforest/verification'
 import { type Leaf, proveReputation, signedBytes } from '@foundationforest/reputation'
 import { b64u, hex } from '../src/bytes.ts'
 
@@ -25,7 +25,7 @@ const setup = (proof: string, file: string) => new URL(`../../proofs/${proof}/ci
 const S = await seedScalar(seed)
 const me = await mainKey(seed, LABEL)
 
-// The stamp proof: an example verifier signed the person a stamp, with example facts. The two texts
+// The verification: an example verifier signed the person a stamp, with example facts. The two texts
 // below keep the bytes they had when the example was made, old words and all: the example
 // verifier's key and the facts come from them.
 const verifierPrivate = sha256(new TextEncoder().encode(`forest example issuer: ${VERIFIER}`))
@@ -33,22 +33,21 @@ const stamp = signStamp(verifierPrivate, {
   stampNumber: stampNumberOf(S, VERIFIER),
   facts: fieldHash('forest example attributes', VERIFIER),
 })
-const stampProof = await proveStamp({ seedScalar: S, verifierName: VERIFIER, stamp, label: LABEL, artifacts: { wasm: setup('stamp', 'note.wasm'), zkey: setup('stamp', 'note.zkey') } })
+const verification = await proveVerification({ seedScalar: S, verifierName: VERIFIER, stamp, label: LABEL, artifacts: { wasm: setup('verification', 'verification.wasm'), zkey: setup('verification', 'verification.zkey') } })
 
 // The reputation proof: the person's tutoring/buyer and cleaning/seller profiles in an example
 // index's tree, among made-up leaves, shown on tutoring/seller.
-const at = (await verifierSecret(seed, VERIFIER)).scalar
 const mine: Leaf[] = [
-  { tag: tagOf(at, 'tutoring/buyer'), scope: scopeOf('tutoring/buyer'), score: 90n, count: 7n },
-  { tag: tagOf(at, 'cleaning/seller'), scope: scopeOf('cleaning/seller'), score: 80n, count: 3n },
+  { profile: (await mainKey(seed, 'tutoring/buyer')).publicKey, score: 90n },
+  { profile: (await mainKey(seed, 'cleaning/seller')).publicKey, score: 80n },
 ]
-const madeUp: Leaf[] = Array.from({ length: 30 }, (_, i) => ({ tag: fieldHash('forest example leaf', String(i)), scope: scopeOf(`made-up/${i}`), score: BigInt((i * 7) % 51), count: BigInt(i % 9) }))
+const madeUp: Leaf[] = Array.from({ length: 30 }, (_, i) => ({ profile: publicKeyOf(keyScalar(fieldHash('forest example leaf', String(i)))), score: BigInt((i * 7) % 51) }))
 const leaves = [...madeUp.slice(0, 11), mine[0]!, ...madeUp.slice(11, 23), mine[1]!, ...madeUp.slice(23)]
 const index = serviceKey(new Uint8Array(32).fill(0x2c)) // the example index's key: 32 bytes of 0x2c
 const time = 1_790_812_800_000
 const reputation = await proveReputation({
   seedScalar: S,
-  sources: [{ label: 'tutoring/buyer', verifierName: VERIFIER }, { label: 'cleaning/seller', verifierName: VERIFIER }],
+  labels: ['tutoring/buyer', 'cleaning/seller'],
   leaves,
   profileLabel: LABEL,
   artifacts: { wasm: setup('reputation', 'reputation.wasm'), zkey: setup('reputation', 'reputation.zkey') },
@@ -72,15 +71,14 @@ const profile = {
       proof: b64u.encode(proofBytes(reputation.proof)),
     },
     {
-      circuit: 'stamp',
-      verifier: stampProof.verifier,
+      circuit: 'verification',
+      verifier: verification.verifier,
       verifierName: VERIFIER,
       label: LABEL,
-      tag: hex.encode(toBytes32(stampProof.tag)),
-      proof: b64u.encode(proofBytes(stampProof.proof)),
+      proof: b64u.encode(proofBytes(verification.proof)),
     },
   ],
 }
 writeFileSync(new URL('../schemas/examples/profile.json', import.meta.url), JSON.stringify(profile, null, 2) + '\n')
-console.log(`the example profile record for ${me.address}: a reputation score of ${reputation.score}, and a stamp proof from ${VERIFIER}`)
+console.log(`the example profile record for ${me.address}: a reputation score of ${reputation.score}, and a verification from ${VERIFIER}`)
 process.exit(0)

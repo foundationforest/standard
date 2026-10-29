@@ -1,15 +1,15 @@
 // The proofs a profile record carries (README.md, Proofs), as their proof checks take them. Records
-// checks no proof itself: a stamp proof's check is proofs/stamp/client's checkStamp, a reputation
-// proof's proofs/reputation/client's checkReputation. These turn a profile record's proof into what
+// checks no proof itself: a verification's check is proofs/verification/client's checkVerification,
+// a reputation proof's proofs/reputation/client's checkReputation. These turn a profile record's proof into what
 // each one takes, for the profile that carries it, or null when the proof is not that shape. A
 // reader calls the proof check itself.
 
-import { b64u, hex } from './bytes.ts'
+import { b64u } from './bytes.ts'
 import { publicKeyFromAddress } from './keys.ts'
 import type { Body } from './record.ts'
 
-/** What checkStamp takes, for one stamp proof on a profile record. */
-export type StampCheck = {
+/** What checkVerification takes, for one verification on a profile record. */
+export type VerificationCheck = {
   proof: Uint8Array
   /** The verifier's key: its address. */
   verifier: string
@@ -17,7 +17,6 @@ export type StampCheck = {
   label: string
   /** The profile that carries the proof: its address. */
   profile: string
-  tag: Uint8Array
 }
 
 /** What checkReputation takes, for one reputation proof on a profile record. */
@@ -27,7 +26,6 @@ export type ReputationCheck = {
   score: bigint
   /** The profile that carries the proof: its address. */
   profile: string
-  label?: string
   /** The index's key: its address. */
   index: string
   time: number
@@ -46,35 +44,32 @@ export function proofsOf(body: Body | null | undefined): Array<{ [key: string]: 
   return (proofs as unknown[]).filter((p): p is { [key: string]: unknown; circuit: string } => isObject(p) && typeof p.circuit === 'string')
 }
 
-/** A stamp proof on a profile record as checkStamp takes it, for the profile `profile`; null if it is not one. */
-export function stampCheck(proof: unknown, profile: string): StampCheck | null {
-  if (!isObject(proof) || proof.circuit !== 'stamp') return null
-  const { verifier, verifierName, label, tag } = proof
+/** A verification on a profile record as checkVerification takes it, for the profile `profile`; null if it is not one. */
+export function verificationCheck(proof: unknown, profile: string): VerificationCheck | null {
+  if (!isObject(proof) || proof.circuit !== 'verification') return null
+  const { verifier, verifierName, label } = proof
   if (!publicKeyFromAddress(verifier) || typeof verifierName !== 'string' || typeof label !== 'string') return null
-  if (typeof tag !== 'string' || !HEX64.test(tag) || typeof proof.proof !== 'string' || !PROOF.test(proof.proof)) return null
+  if (typeof proof.proof !== 'string' || !PROOF.test(proof.proof)) return null
   return {
     proof: b64u.decode(proof.proof),
     verifier: verifier as string,
     verifierName,
     label,
     profile,
-    tag: hex.decode(tag),
   }
 }
 
 /** A reputation proof on a profile record as checkReputation takes it, for the profile `profile`; null if it is not one. */
 export function reputationCheck(proof: unknown, profile: string): ReputationCheck | null {
   if (!isObject(proof) || proof.circuit !== 'reputation') return null
-  const { root, score, label, index, time, signature } = proof
+  const { root, score, index, time, signature } = proof
   if (typeof root !== 'string' || !HEX64.test(root) || !Number.isSafeInteger(score) || !Number.isSafeInteger(time)) return null
   if (typeof index !== 'string' || typeof signature !== 'string' || !SIGNATURE.test(signature) || typeof proof.proof !== 'string' || !PROOF.test(proof.proof)) return null
-  if ('label' in proof && typeof label !== 'string') return null
   return {
     proof: b64u.decode(proof.proof),
     root: BigInt('0x' + root),
     score: BigInt(score as number),
     profile,
-    ...(typeof label === 'string' && { label }),
     index,
     time: time as number,
     signature: b64u.decode(signature),

@@ -33,8 +33,6 @@ The recipe uses words from the rest of the standard:
 - **profile:** one of the person's identities, one for each label, a free text saying what the
   profile is for;
 - **stamp:** what a verifier, anyone who signs stamps, signs to a person's seed;
-- **tag:** the number an index, a service that scores profiles, knows a profile by in its tree,
-  one for each verifier that signed the person a stamp;
 - **permission:** a private record in a profile's folder, the signed records kept under its main
   key, saying who may ask the person's signers to act as that profile, and for what
   ([signers](../signers/README.md#permissions)).
@@ -53,8 +51,8 @@ namespace then a label, is joined with nothing between the parts, no separator a
 hashed once: text as UTF-8, bytes as they are. A label's number is its **scope**,
 `keccak256("forest/v1/label/" ‖ label) >> 8`; a verifier's name's is its **name hash**,
 `keccak256("forest/v1/issuer/" ‖ name) >> 8`; the two prefixes are `keccak256` of `forest/v1/issuer`
-and `forest/v1/profile`, `>> 8`. The stamp's own prefix, which a verifier signs under, is
-proofs/stamp's ([stamp](../proofs/stamp/README.md#the-stamp-and-the-stamp-proof)).
+and `forest/v1/profile`, `>> 8`. The stamp's own prefix, which a verifier signs under, is in
+[proofs/verification](../proofs/verification/README.md#the-stamp-and-the-verification).
 
 | From | Mixed with | Gives |
 |---|---|---|
@@ -64,7 +62,7 @@ proofs/stamp's ([stamp](../proofs/stamp/README.md#the-stamp-and-the-stamp-proof)
 | a profile's secret | HKDF, `forest/v1/inbox` | that profile's inbox key, which opens what is encrypted to it |
 | a profile's secret | HKDF, `forest/v1/permission` | that profile's permission key, which names the paths of its permissions ([signers](../signers/README.md#permissions)) |
 | the seed | HKDF, `forest/v1/pay/<type>/<label>` | that profile's pay key for one address type, `solana` or `evm`, and its address |
-| the seed scalar | Poseidon, the verifier prefix and the verifier's name hash | the person's secret for one verifier, which their stamp number (what they give the verifier) and tags come from |
+| the seed scalar | Poseidon, the verifier prefix and the verifier's name hash | the person's secret for one verifier, which their stamp number (what they give the verifier) comes from |
 
 The texts and prefixes are part of every key, so they never change: a new one would give everyone
 new keys. That is why two of them still say issuer, a verifier's old name.
@@ -101,9 +99,9 @@ and its address is the profile's name.
   `<market>/<role>`, such as `tutoring/seller`
   ([foundationforest/markets](https://github.com/foundationforest/markets)).
 - Its scalar is the lowest 250 bits of `Poseidon(profile prefix, seed scalar, scope)`. Baby Jubjub's
-  subgroup order `l` is above 2^250, so every 250-bit number is already a scalar, and the stamp
-  proof derives the same key from the same seed scalar with nothing to reduce
-  ([proofs/stamp](../proofs/stamp/README.md)).
+  subgroup order `l` is above 2^250, so every 250-bit number is already a scalar, and both proofs
+  derive the same key from the same seed scalar with nothing to reduce
+  ([proofs](../proofs/README.md)).
 - Its public key is the scalar times Baby Jubjub's `Base8`, the point circomlib and zk-kit use.
 - Its address is the public key packed into 32 bytes (y little-endian, with x's sign in the top bit,
   as circomlib and zk-kit pack it), in base58 (the Bitcoin alphabet): almost always 43 or 44
@@ -181,12 +179,12 @@ key of each type.
 ### The verifier secret
 
 A verifier is anyone who signs stamps to people's seeds
-([proofs/stamp](../proofs/stamp/README.md#the-stamp-and-the-stamp-proof)). For each verifier, a
-person has one secret: `Poseidon(verifier prefix, seed scalar, name hash)`.
+([proofs/verification](../proofs/verification/README.md#the-stamp-and-the-verification)). For each
+verifier, a person has one secret: `Poseidon(verifier prefix, seed scalar, name hash)`.
 
 - The name is the text the verifier publishes as its own, such as a domain, used exactly as given,
   as UTF-8. The secret comes from the name, not the verifier's key, so a verifier that changes its
-  key changes no one's tags.
+  key changes no one's stamp number.
 - Nothing is stored: the app mixes the secret again from the seed whenever it needs it.
 
 ### The stamp number
@@ -194,16 +192,6 @@ person has one secret: `Poseidon(verifier prefix, seed scalar, name hash)`.
 The stamp number is what a person gives a verifier: `Poseidon(verifier secret)`. The device sends it
 to the verifier once, and the verifier signs it in the person's stamp. The verifier never learns the
 secret, nor the seed scalar behind it.
-
-### Tags
-
-A tag is the number an index's tree knows one profile by, at one verifier:
-`Poseidon(scope, verifier secret)`. The stamp proof shows it, and the reputation proof counts the
-profiles whose tags are the person's ([proofs](../proofs/README.md)).
-
-- The same person, verifier and label always give the same tag, and nobody without the secret can
-  work it out.
-- Tags for two labels, or for two verifiers, cannot be matched to each other.
 
 ### Service keys
 
@@ -214,7 +202,8 @@ itself, from no seed. No person's key is ever one.
   `deriveSecretScalar`), as zk-kit makes an EdDSA-Poseidon key of 32 private bytes. It signs as a
   main key does, and its address is spelled as one is.
 - An index signs its roots with one ([proofs/reputation](../proofs/reputation/README.md)), and a
-  verifier's stamp key is made the same way ([proofs/stamp](../proofs/stamp/README.md)).
+  verifier's stamp key is made the same way
+  ([proofs/verification](../proofs/verification/README.md)).
 
 ### Use it
 
@@ -233,7 +222,7 @@ mixes from the seed scalar is not.
 | `evmAddressOf(publicKey)`, `isEvmAddress(text)` | A secp256k1 key's EVM address, in EIP-55; and whether text is one, in that spelling |
 | `signPay(payKey, profileAddress)`, `checkPaySig(type, payAddress, profileAddress, sig)` | A pay key's signature over its profile's address, for `paySig`; and whether one holds |
 | `verifierSecret(seed, name)` | The verifier's `name`, its `nameHash`, the person's `scalar` for it, and the `stampNumber` |
-| `verifierScalarOf(seedScalar, name)`, `tagOf(verifierScalar, label)` | The verifier secret from the seed scalar, and a tag |
+| `verifierScalarOf(seedScalar, name)` | The verifier secret from the seed scalar |
 | `serviceKey(secret)` | A service key from its 32 random bytes: `secret`, `scalar`, `publicKey`, `address` |
 | `signWithScalar(scalar, message)`, `checkWithPublicKey(key or address, message, signature)` | A signature `{ R8, S }` on a field element, and its check |
 | `signBytes(scalar, bytes)`, `checkBytes(key or address, bytes, signature)`, `bytesMessage(bytes)` | A signature over bytes, its check, and the field element it signs |
@@ -258,17 +247,17 @@ Node 22.18 or later runs the TypeScript directly.
 the main keys for `tutoring/seller` and `tutoring/buyer`, each with its secret, its permission key
 and its inbox key, and their pay keys of both types, each with its signature over its profile's
 address; for two verifiers, `issuer-a.example` and `issuer-b.example`, the name hash, the person's
-secret, the stamp number and a tag for each label; one signature by the `tutoring/seller` main
-key; and a service key, from 32 bytes of `0x2a`. `npm test` checks each value and, but for the words,
-recomputes it without the library: HKDF and keccak from `@noble/hashes`, the seed scalar step by
-step without zk-kit's `deriveSecretScalar`, Baby Jubjub's points and signatures from zk-kit
-(`@zk-kit/baby-jubjub`, `@zk-kit/eddsa-poseidon`), the address packed by hand, the signature's
-equation, its nonce byte by byte with Node's own SHA-512, `fieldHash` byte by byte, ed25519 from
-`@noble/curves` and each Solana pay signature with Node's own crypto, secp256k1 from Node's own
-crypto with keccak256 and EIP-55 by hand and each EVM pay signature's key recovered by hand, the
-hybrid key others encrypt to from `@noble/post-quantum`, age's bech32 from `@scure/base`, and an
-envelope encrypted and opened through age. The stamp proof's tests check the circuit derives the
-same main key and tag ([proofs/stamp](../proofs/stamp/README.md)).
+secret and the stamp number; one signature by the `tutoring/seller` main key; and a service key,
+from 32 bytes of `0x2a`. `npm test` checks each value and, but for the words, recomputes it without
+the library: HKDF and keccak from `@noble/hashes`, the seed scalar step by step without zk-kit's
+`deriveSecretScalar`, Baby Jubjub's points and signatures from zk-kit (`@zk-kit/baby-jubjub`,
+`@zk-kit/eddsa-poseidon`), the address packed by hand, the signature's equation, its nonce byte by
+byte with Node's own SHA-512, `fieldHash` byte by byte, ed25519 from `@noble/curves` and each Solana
+pay signature with Node's own crypto, secp256k1 from Node's own crypto with keccak256 and EIP-55 by
+hand and each EVM pay signature's key recovered by hand, the hybrid key others encrypt to from
+`@noble/post-quantum`, age's bech32 from `@scure/base`, and an envelope encrypted and opened through
+age. The verification's tests check the circuit derives the same main key
+([proofs/verification](../proofs/verification/README.md)).
 
 ## Promises
 
@@ -292,8 +281,8 @@ same main key and tag ([proofs/stamp](../proofs/stamp/README.md)).
   `@scure/base` 2.4.0 (base58, bech32), `@scure/bip39` 2.4.0, `age-encryption` 0.3.1 (whose hybrid
   runs on `@noble/post-quantum`), `@zk-kit/eddsa-poseidon` 1.0.4 (`deriveSecretScalar`) and
   `poseidon-lite` 0.3.0.
-- **No recovery.** Lose the seed, and every profile and every tag is gone. Nobody can reset
-  them, because nobody else has them.
+- **No recovery.** Lose the seed, and every profile is gone. Nobody can reset them, because nobody
+  else has them.
 - **No rotation.** A profile's name is its key, so a leaked main key loses that profile for good
   (see the FAQ).
 - **One profile per label per seed.** The same seed and label always give the same key.
@@ -315,14 +304,14 @@ Then that app has everything the seed opens, and nothing takes it back:
 - every profile: a main key is mixed from the seed and a label, and labels are public, so it can
   mix the main key of every profile and sign as it, and every pay key and move its money;
 - every inbox key, so it can open the person's private records and messages;
-- the seed scalar, so it can make stamp proofs for the person's profiles with their stamps, and
+- the seed scalar, so it can make verifications for the person's profiles with their stamps, and
   reputation proofs from their scores.
 
 There is no rotation, so the only way out is a new seed and new profiles, moving the money first if
 there is still time. An app that holds the seed is trusted with all of that.
 
 **Why is a main key on Baby Jubjub, with pay keys beside it?**
-So a proof can derive it. The stamp proof shows that a profile's key comes from the same seed as
+So a proof can derive it. The verification shows that a profile's key comes from the same seed as
 a stamp a verifier signed, and the reputation proof that a profile's key comes from the same seed as
 the profiles it counts: both work the key out from the seed scalar inside the proof. Baby Jubjub
 is the curve a proof does that on cheaply; ed25519 inside a proof costs far more. Solana's accounts
@@ -339,7 +328,7 @@ record's signature, so nothing asks for Poseidon there.
 **Why two mixers, HKDF and Poseidon?** They work in different places. HKDF-SHA256 mixes on the
 device, from the seed: it is a standard, built into every browser's Web Crypto, and well studied.
 Inside a zero-knowledge proof, SHA-256 costs far more than Poseidon. So what a proof must work out
-(the verifier secret, the stamp number, a tag, a main key) is Poseidon of the seed scalar, and what
+(the verifier secret, the stamp number, a main key) is Poseidon of the seed scalar, and what
 no proof needs (the profiles' secrets, the pay keys, the permission keys) is HKDF of the seed or of a
 profile's secret.
 Neither is ours; both are used unchanged.

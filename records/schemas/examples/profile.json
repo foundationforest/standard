@@ -17,19 +17,18 @@
     {
       "circuit": "reputation",
       "index": "4jNvddwkWLrr4UC9Y3sggwmoEuEVxsqcBQSTRQvW6xVP",
-      "root": "243f9a664251e1ea8fea5cf10ea7d9390c0ebad2a3d86c318933bef10bcaf1f7",
+      "root": "1a580dbc2f22053844bfdef02abedf5a6322ae2321e3e49babc07c3d81e750d4",
       "time": 1790812800000,
-      "signature": "Cbel_ds35I1uu3zbZpV77pCO9pYi3QAsxGu62efMVxTnFId_mwvZvbVMaWk5M5Xd0lBGSw8Ohs97OZpo4NGzAw",
-      "score": 87,
-      "proof": "Ik0iRiDd0wkjhmOIzOOe9vkPIrD3HKH05GUYH-tnpIAimTYn9Mdxel5G8YAYnXDOWxefTzodiTqQKQdPbNvbzhO0WY_DucBUtnJXrNBNbnd67m1pVg6jPMnNcSId_vONBOvwFPc1PgrlXwxELGUEdSD3xBKpt9uzJO6XsAwksLMcvv7Plxs5TIC9o4VdUhA0yvAyG1QApEI5uWGtjb7iIxmtH2oLQuRoLarB8rcWX6sMDmDjEKDa9BF1rkem-Qt_JrG-mjJlncbZbnCXPqeGZGpR07hc7255tA8Z3LZEtIAD_umLV-NBhSigJcqcuS5tJtwAhIiRFaBoyyiy0tXAFA"
+      "signature": "8iTeigwwZhXgtTq6wqAJ-C8GpMd_TMbtveneEV2vXIOD3O9pbXVXvD04dXrTx9NjEAEvN5-E-p95YRz3slNKAA",
+      "score": 85,
+      "proof": "AIhI0C1Ytm3EoBmzzM7nWtM03gLujp0DL2l-DDN3S6UOPfXbu8B-7cd7fnBGFRnqIe23bYJC686Il-CH7u1JTiVcbzDHr743CV0jFwy9V_fcUfDjI_IToOMf7zNsa3VaC7Xw-vFkQUOYx3lqV4JjnFq7tSQ9wlqGkQ-YLgo0TY4lIYfePK671PwtUs0YCO6cN2Glb07UHj4y9bgXW36pYC_2coCOmjNUs9fEHYrNk-SA-uoIQH-Cl9TSYYSo0ZddGoUIh-ObJclYDk7aUfZiQ1345j2Yp-cn5VSdIYHRLm4ccG7X1Gz9WRdjl3ddXFaPk3VMifKiFpoltDYLhFkZtw"
     },
     {
-      "circuit": "stamp",
+      "circuit": "verification",
       "verifier": "9PNXwbxrL3HBZVo4DyrQYSUCuHuBUnuGcmaNJzokkDRG",
       "verifierName": "issuer-a.example",
       "label": "tutoring/seller",
-      "tag": "052591ea34e8e3c3529d466fb2a270142febc5d51c8f890729b9c8b110eb2a71",
-      "proof": "JdgbJ_PxLBKGgTfWFP8UC-1A3g-_TBZKQciEdNXFDUsYpZnCVuylhjoBYsp_kavGVhc-GPbLCLe141j8kbwNKBydJ86_-AY1G_N6TLiQqHP2_BX1qAd9R37EcqmyVk1ULyVdtRkAwmkwTdbymXHx6fEiDejiIwdkVoF_ziht1iQOIsRg3XZ8S3z2V7v8Mdczrob_iyE6E1uHOvvn6uXL3wOw_XBVGOr9Q5RSt0MlZdlE8JP-l8ds0XZwZIW69YZ9J-adPHUUlkP8DGWdW9thW96mLyouvPOq2G9WSHHROtgS3ScQdUhlYJ2n-RgU_dnTQPEW9luxtwDjVT8wKvubaA"
+      "proof": "B1MY0HEBTV3jLWPWhatUU2wqC-kzNARPgQxkx9r3KqMoLXv2OAZq64pJ0u5isyzP4fB2bcDcv4kY2RhXg7MqfAjCK6RmZwSw8fJSJ6wwjozqFUqTve8345gqqMBkKp96Jb-Rp6vkph-dJw7LMpvRkbdTUNqqBqXY-t2nUgbsx0cLQ1UFRkiWcnU6aqa_ccirjJx_B297agJeuloG7XW6CScvbEIpnGPAyQ5FVhpCV84_9cN9MOZKdFXi476fAzFoHPUFuvrkd56gBmjRa_51GaFdi2W_DePvfuC_Bv1AllUBhASC-KRC8v6saiT48PBSyj5j_cJLlIkXAvbIiGrZAg"
     }
   ]
 }

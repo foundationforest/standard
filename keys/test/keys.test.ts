@@ -14,7 +14,6 @@ import { Decrypter, Encrypter } from 'age-encryption'
 import { Base8, addPoint, inCurve, mulPointEscalar, packPoint as zkPack, subOrder } from '@zk-kit/baby-jubjub'
 import { derivePublicKey, packSignature as zkPackSignature, signMessage as zkSign, verifySignature } from '@zk-kit/eddsa-poseidon'
 import { poseidon1 } from 'poseidon-lite/poseidon1'
-import { poseidon2 } from 'poseidon-lite/poseidon2'
 import { poseidon3 } from 'poseidon-lite/poseidon3'
 import { poseidon5 } from 'poseidon-lite/poseidon5'
 import {
@@ -51,7 +50,6 @@ import {
   serviceKey,
   signPay,
   signWithScalar,
-  tagOf,
   unpackPoint,
   unpackSignature,
   checkBytes,
@@ -182,6 +180,7 @@ test('the main key, recomputed without the library: keccak, Poseidon, the low 25
   for (const expected of vectors.mainKeys) {
     const scope = field('forest/v1/label/' + expected.label)
     assert.equal(scope.toString(), expected.scope)
+    assert.equal(scopeOf(expected.label), scope)
     const raw = poseidon3([PREFIX.profile, S, scope])
     assert.equal(raw.toString(), expected.raw)
     const scalar = raw % 2n ** 250n
@@ -521,9 +520,9 @@ test('a pay signature holds for its own address, type and profile only, in its o
   assert.equal(checkPaySig('evm', evm.address, addressOfLabel(evm.label), Buffer.from(twin).toString('base64url')), true)
 })
 
-// Verifier secrets, stamp numbers and tags
+// Verifier secrets and stamp numbers
 
-test('each verifier gives the pinned name hash, secret, stamp number and tags, and gives them again', async () => {
+test('each verifier gives the pinned name hash, secret and stamp number, and gives them again', async () => {
   for (const expected of vectors.verifiers) {
     for (let round = 0; round < 2; round++) {
       const { name, nameHash, scalar, stampNumber } = await verifierSecret(seed, expected.name)
@@ -531,12 +530,11 @@ test('each verifier gives the pinned name hash, secret, stamp number and tags, a
       assert.equal(nameHash.toString(), expected.nameHash)
       assert.equal(scalar.toString(), expected.scalar)
       assert.equal(stampNumber.toString(), expected.stampNumber)
-      for (const [label, tag] of Object.entries(expected.tags)) assert.equal(tagOf(scalar, label).toString(), tag)
     }
   }
 })
 
-test('the verifier secret, the stamp number and a tag, recomputed without the library', () => {
+test('the verifier secret and the stamp number, recomputed without the library', () => {
   for (const expected of vectors.verifiers) {
     const nameHash = field('forest/v1/issuer/' + expected.name)
     assert.equal(nameHash.toString(), expected.nameHash)
@@ -545,18 +543,13 @@ test('the verifier secret, the stamp number and a tag, recomputed without the li
     assert.equal(scalar.toString(), expected.scalar)
     assert.equal(verifierScalarOf(S, expected.name), scalar)
     assert.equal(poseidon1([scalar]).toString(), expected.stampNumber)
-    for (const [label, tag] of Object.entries(expected.tags)) {
-      assert.equal(poseidon2([field('forest/v1/label/' + label), scalar]).toString(), tag)
-      assert.equal(scopeOf(label), field('forest/v1/label/' + label))
-    }
   }
 })
 
-test('two verifiers, two unrelated stamp numbers and tags; and none of it is a key', async () => {
+test('two verifiers, two unrelated stamp numbers; and none of it is a key', async () => {
   const a = await verifierSecret(seed, verifierA.name)
   const b = await verifierSecret(seed, verifierB.name)
   assert.notEqual(a.stampNumber, b.stampNumber)
-  assert.notEqual(tagOf(a.scalar, 'tutoring/seller'), tagOf(b.scalar, 'tutoring/seller'))
   const all = [verifierA.scalar, verifierB.scalar, seller.scalar, buyer.scalar, vectors.seedScalar.scalar, seller.raw, buyer.raw]
   assert.equal(new Set(all).size, all.length)
 })
@@ -571,7 +564,6 @@ test('the name is used exactly, and must be text; the seed is 32 bytes', async (
     await assert.rejects(verifierSecret(seed, name as string), /verifier name must be text/, String(name))
   }
   await assert.rejects(verifierSecret(seed.subarray(1), verifierA.name), /seed must be 32 bytes/)
-  assert.throws(() => tagOf(BN254_R, 'tutoring/seller'), /field element/)
   assert.throws(() => verifierScalarOf(-1n, verifierA.name), /field element/)
 })
 

@@ -7,11 +7,11 @@
 #
 # Phase 1 is public: PSE's Perpetual Powers of Tau, pinned below by SHA-256. Phase 2 is one
 # contribution: 64 random bytes drawn inside Node, never on a command line, to which snarkjs adds
-# 64 more of its own. The script writes here reputation.zkey and reputation.wasm (not committed:
-# they go in the GitHub release named in setup.json), verification-key.json, and setup.json, which
-# pins every file by SHA-256. Running it again makes new keys, the proving key and the verification
-# key, so their hashes and the contribution's change in setup.json; the compiled circuit's, the r1cs
-# and the wasm, stay the same, since circom gives the same bytes every time.
+# 64 more of its own. The script writes here reputation.zkey, reputation.wasm and
+# verification-key.json, all committed, and setup.json, which pins every file by SHA-256. Running it
+# again makes new keys, the proving key and the verification key, so their hashes and the
+# contribution's change in setup.json; the compiled circuit's, the r1cs and the wasm, stay the same,
+# since circom gives the same bytes every time.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -19,7 +19,6 @@ PTAU=setup/ppot_0080_16.ptau
 PTAU_URL=https://pse-trusted-setup-ppot.s3.eu-central-1.amazonaws.com/pot28_0080/ppot_0080_16.ptau
 PTAU_SHA256=ed3622a7c79b0b49aadd134ebbc5b77df8c8c59bccebdfd0d9bf2c1a51561cf9
 CIRCOM_LINUX_SHA256=85342c7ff332d948df7c0c50ecf201e6129349aef550ce873f3c811b79fe53a3
-TAG=reputation
 
 node scripts/compile.ts --new
 
@@ -43,7 +42,7 @@ npx snarkjs zkey export verificationkey setup/reputation.zkey setup/verification
 cp build/reputation_js/reputation.wasm setup/reputation.wasm
 
 CONTRIBUTION="$CONTRIBUTION" PTAU="$PTAU" PTAU_URL="$PTAU_URL" PTAU_SHA256="$PTAU_SHA256" \
-CIRCOM_LINUX_SHA256="$CIRCOM_LINUX_SHA256" TAG="$TAG" node --input-type=module <<'EOF'
+CIRCOM_LINUX_SHA256="$CIRCOM_LINUX_SHA256" node --input-type=module <<'EOF'
 import { createHash } from 'node:crypto'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { r1cs } from 'snarkjs'
@@ -65,9 +64,11 @@ const record = {
   phase1: { what: "PSE's Perpetual Powers of Tau, up to 2^16 constraints", url: e.PTAU_URL, sha256: e.PTAU_SHA256 },
   phase2: { contributions: 1, contributionHash: e.CONTRIBUTION },
   r1cs: pin('build/reputation.r1cs'),
-  release: { tag: e.TAG, baseUrl: `https://github.com/foundationforest/standard/releases/download/${e.TAG}/` },
-  files: { 'reputation.zkey': pin('setup/reputation.zkey'), 'reputation.wasm': pin('setup/reputation.wasm') },
-  committed: { 'verification-key.json': pin('setup/verification-key.json') },
+  files: {
+    'reputation.zkey': pin('setup/reputation.zkey'),
+    'reputation.wasm': pin('setup/reputation.wasm'),
+    'verification-key.json': pin('setup/verification-key.json'),
+  },
 }
 writeFileSync('setup/setup.json', JSON.stringify(record, null, 2) + '\n')
 console.log(JSON.stringify(record, null, 2))

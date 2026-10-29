@@ -24,12 +24,12 @@ Four things stay outside: what a stamp means is the reader's; what a record says
 
 ## The directories
 
-A **label** is any text; markets set the convention, `<market>/<role>`, such as `plumbing/seller`, and each market defines its roles, its content paths (where its kinds of record, such as offers, sit in a folder) and their bodies in [markets](https://github.com/foundationforest/markets). A **tag** is a number made from a person's seed for one label at one verifier, so the tree of scores an index publishes can count the profile without linking it to others. Every profile has one **folder** kept on one or more hosts.
+A **label** is any text; markets set the convention, `<market>/<role>`, such as `plumbing/seller`, and each market defines its roles, its content paths (where its kinds of record, such as offers, sit in a folder) and their bodies in [markets](https://github.com/foundationforest/markets). Every profile has one **folder** kept on one or more hosts.
 
 | Directory | What it is | What runs | Where |
 |---|---|---|---|
 | [`keys/`](keys/README.md) | The recipe that mixes every key from the person's seed: each profile's main key, its pay addresses (where it is paid), its inbox key (which opens what others encrypt to it), and the person's secret for each verifier | a library | on the person's device |
-| [`proofs/`](proofs/README.md) | The zero-knowledge proofs a device makes and anyone can check: [`stamp/`](proofs/stamp/README.md) (proving a profile's key and tag come from a seed a verifier signed a stamp to) and [`reputation/`](proofs/reputation/README.md) (carrying trust from the person's other profiles, scored in an index's tree, without saying which) | circuits and client libraries | made on the device; checked by anyone in milliseconds |
+| [`proofs/`](proofs/README.md) | The zero-knowledge proofs a device makes and anyone can check: [`verification/`](proofs/verification/README.md) (what a profile shows to prove its key comes from a seed a verifier signed a stamp to) and [`reputation/`](proofs/reputation/README.md) (carrying trust from the person's other profiles, scored in an index's tree, without saying which) | circuits and client libraries | made on the device; checked by anyone in milliseconds |
 | [`records/`](records/README.md) | How a profile speaks: the records in its folder, each signed by its main key and replaced by its next version (`profile`, `hosts`, the market's content paths, and private records, which only the readers chosen open), the encrypted `inbox`, the blobs a folder holds (photos and videos its main key puts and deletes), the plug every host fits, and the host check that shows a host fits it | a library | wherever an app, AI, host or index runs |
 | [`signers/`](signers/README.md) | How anyone asks a person's app to act for them: the asks (read, write, pay) and their answers, how an AI app connects through a connector, and permissions, private records in each profile's folder saying who may ask for what | a library | on the person's device, and wherever a connector runs |
 | [`escrows/`](escrows/README.md) | On-chain lockboxes that release money when a side gives it to the other, both sides agree, a chosen arbiter decides, or the schedule set at the start says so (one directory per chain; only [`solana/`](escrows/solana/README.md) has one) | an on-chain program and client library | on chain when a deal uses escrow |
@@ -48,7 +48,7 @@ Once people use Forest, what exists never changes: a recipe's strings, a circuit
 
 ## For builders
 
-- **Check a profile.** Read its profile record, the record at `profile` that shows it, from its folder on any host. It holds the profile's `market`, `role`, `inboxKey` (what others encrypt to), any of its seed-derived `pay` addresses (`solana`, `evm`) with `paySig`, each address signed by its own pay key, the key that holds that address's money, so a profile cannot list an address that is not its own, and its `proofs` array. The array takes any circuit's proofs, and a reader skips the ones it does not know: `stamp` and `reputation` are ours, and anyone can add one. Check each `stamp` proof against the verifier's key to see which verifiers signed a stamp to the seed behind the profile.
+- **Check a profile.** Read its profile record, the record at `profile` that shows it, from its folder on any host. It holds the profile's `market`, `role`, `inboxKey` (what others encrypt to), any of its seed-derived `pay` addresses (`solana`, `evm`) with `paySig`, each address signed by its own pay key, the key that holds that address's money, so a profile cannot list an address that is not its own, and its `proofs` array. The array takes any circuit's proofs, and a reader skips the ones it does not know: `verification` and `reputation` are ours, and anyone can add one. Check each `verification` against the verifier's key to see which verifiers signed a stamp to the seed behind the profile.
 - **Find a profile's folder.** A profile's address is the public half of its main key, a key on Baby Jubjub, the curve the proofs work on. Ask any host you know for its records, and check its signed `hosts` record to see every host that mirrors the folder.
 - **Act for a person.** Ask one of their signers, the person's app on a device that holds their seed: an AI app through its connection, which the person's app makes for it and a connector carries; a person or a business by a message signed by its own profile's main key. The signer acts by the profile's permissions, private records saying who may ask it to act and for what, and signs with the profile's main key; no key is ever handed out ([signers/](signers/README.md)).
 - **Write offers and reviews.** Their paths and bodies are defined by the market the profile lives in ([markets](https://github.com/foundationforest/markets)); the standard names none of them. A photo or a video is a blob the folder holds, put and deleted by its keys; where a record points at one is the market's.
@@ -57,7 +57,7 @@ Once people use Forest, what exists never changes: a recipe's strings, a circuit
 
 What Forest does:
 - Nothing in a person's keys ties their profiles together. Each main key and each default pay address is mixed separately from the seed and label (`keys/`).
-- A stamp proof shows which verifier signed the person a stamp, never who the person is, what the stamp holds, or which other profiles they hold (`proofs/stamp/`).
+- A verification shows which verifier signed the person a stamp, never who the person is, what the stamp holds, or which other profiles they hold (`proofs/verification/`).
 - Private records and inbox messages are encrypted with `age`, a widely used encryption format, in its post-quantum kind (`records/`).
 - No blockchain is touched to create a seed, get a stamp, open a profile, post an offer, send a message or write a review. Only payments and escrows touch a chain.
 
@@ -70,7 +70,7 @@ What others can still see:
 ## Promises
 
 - **Nothing in the standard needs the seed or a main key to leave the device.** `keys/` mixes every key from the seed on the device; everything else takes only what it mixes. What an app does with the seed is the app's (`signers/`, What an app that holds keys should know).
-- **One seed, one profile per label.** The stamp circuit derives the main key inside the proof, making a second main key for the same seed and label mathematically invalid, though a person with two seeds has a profile under the label for each (`proofs/stamp/`).
+- **One seed, one profile per label.** The verification circuit derives the main key inside the proof, making a second main key for the same seed and label mathematically invalid, though a person with two seeds has a profile under the label for each (`proofs/verification/`).
 - **Updates and deletes are just writes.** Every path holds its newest signed record; a record with a null body deletes the path, though what was read before stays with whoever read it (`records/`).
 - **Nothing in the standard charges a fee.** There is no coin and no cut on deals.
 - **Escrows have no admin key.** Once the program holds real money and can no longer change, nothing moves the money but a side giving, both agreeing, the arbiter, or the schedule (`escrows/`).
