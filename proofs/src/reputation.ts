@@ -21,7 +21,7 @@ import {
   unpackSignature,
 } from '@foundationforest/keys'
 import { type SnarkjsProof, proofFromBytes } from './bytes.ts'
-import { toBytes32 } from './field.ts'
+import { seedNumber } from './field.ts'
 import type { Artifacts } from './verification.ts'
 import { REPUTATION_KEY } from './reputation-key.ts'
 
@@ -31,8 +31,6 @@ export const SLOTS = 8
 export const DEPTH = 20
 /** Every score is below this. */
 export const BOUND = 2n ** 32n
-/** What an index's signed bytes start with, after 0xff: its own text, so the signature is never anything else's. */
-export const SIGNED_PREFIX = 'forest/v1/reputation\n'
 
 /** One profile in an index's tree. */
 export type Leaf = {
@@ -102,20 +100,17 @@ export function buildTree(leaves: Leaf[]): Tree {
 }
 
 /**
- * What an index signs: 0xff, its text, the root as 32 big-endian bytes, the time as 8 (ms). It
- * signs them as an entry is signed: EdDSA-Poseidon on Baby Jubjub, by keys/'s signBytes.
+ * What an index signs: the canonical JSON of `{ root, time }`, the root in decimal text and the time
+ * in whole ms since 1970, in UTF-8. It signs it as an entry is signed: EdDSA-Poseidon on Baby
+ * Jubjub, by keys/'s signBytes. Its fields say what it is, so the signature is never an entry's or
+ * a message's.
  */
 export function signedBytes(root: bigint, time: bigint | number): Uint8Array {
-  const ms = BigInt(time)
   if (!isFieldElement(root)) throw new RangeError('a root is a field element')
-  if (ms < 0n || ms >= 2n ** 64n) throw new RangeError('a time is 0 to 2^64 - 1 ms')
-  const text = new TextEncoder().encode(SIGNED_PREFIX)
-  const out = new Uint8Array(1 + text.length + 32 + 8)
-  out[0] = 0xff
-  out.set(text, 1)
-  out.set(toBytes32(root), 1 + text.length)
-  new DataView(out.buffer).setBigUint64(1 + text.length + 32, ms)
-  return out
+  const ms = typeof time === 'bigint' ? Number(time) : time
+  if (!Number.isSafeInteger(ms) || ms < 0 || (typeof time === 'bigint' && BigInt(ms) !== time)) throw new RangeError('a time is whole ms, 0 to 2^53 - 1')
+  // RFC 8785 for this one shape: its two keys in order, the root's digits, the time's.
+  return new TextEncoder().encode(JSON.stringify({ root: root.toString(), time: ms }))
 }
 
 /**
@@ -123,8 +118,8 @@ export function signedBytes(root: bigint, time: bigint | number): Uint8Array {
  * proves it; it is exported for a caller that drives snarkjs itself.
  */
 export function reputationInput(input: {
-  /** The seed scalar: `keys/`'s `seedScalar(seed)`. */
-  seedScalar: bigint
+  /** The person's seed, its 32 bytes. It goes in as its number, and stays on the device. */
+  seed: Uint8Array
   /** The labels of the person's profiles to count, one to eight. */
   labels: string[]
   /** The index's published leaves, in its order. */
@@ -132,8 +127,8 @@ export function reputationInput(input: {
   /** The label of the profile the proof is shown on, one of the person's. The proof names its key. */
   profileLabel: string
 }): { input: Record<string, unknown>; publicSignals: bigint[] } {
-  const { labels, seedScalar } = input
-  if (!isFieldElement(seedScalar)) throw new RangeError('a seed scalar is a field element')
+  const { labels } = input
+  const seed = seedNumber(input.seed)
   if (labels.length < 1 || labels.length > SLOTS) throw new RangeError(`one to ${SLOTS} profiles`)
   if (new Set(labels).size !== labels.length) throw new Error('a label twice')
 
@@ -141,7 +136,7 @@ export function reputationInput(input: {
   const byKey = new Map(input.leaves.map((leaf) => [keyOf(leaf.profile), leaf]))
 
   const slots = labels.map((label) => {
-    const key = publicKeyOf(profileScalarOf(seedScalar, label))
+    const key = publicKeyOf(profileScalarOf(seed, label))
     const leaf = byKey.get(keyOf(key))
     const path = tree.pathOf(key)
     if (leaf === undefined || path === undefined) throw new Error(`the tree has no leaf for ${label}`)
@@ -152,11 +147,11 @@ export function reputationInput(input: {
 
   const blank = { scope: 0n, score: 0n, path: { length: 0, index: 0, siblings: [] as bigint[] } }
   const all = [...slots, ...Array(SLOTS - slots.length).fill(blank)] as typeof slots
-  const profile = publicKeyOf(profileScalarOf(seedScalar, input.profileLabel))
+  const profile = publicKeyOf(profileScalarOf(seed, input.profileLabel))
 
   return {
     input: {
-      seedScalar,
+      seed,
       used: all.map((_, i) => (i < slots.length ? 1 : 0)),
       scopes: all.map((s) => s.scope),
       scores: all.map((s) => s.score),

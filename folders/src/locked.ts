@@ -13,8 +13,8 @@
 // whatever it already opened. No forward secrecy: a key that leaks later opens every envelope ever
 // locked to it.
 //
-// An inbox entry's body is one of these envelopes, holding one signed message, locked to the open
-// keys the folder's profile entry gives for its inbox (inboxLockKeysOf). inboxEntry() signs and
+// An inbox entry's `private` is one of these envelopes, holding one signed message, locked to the
+// open keys the folder's profile entry gives for its inbox (inboxLockKeysOf). inboxEntry() signs and
 // locks one; openInbox() opens one and checks its message.
 
 import { Decrypter, Encrypter } from 'age-encryption'
@@ -65,19 +65,21 @@ export function lockCount(body: { private: string }): number {
  */
 export async function inboxEntry(writer: Writer, to: string, body: Body, time: number, toProfile: Body | null | undefined, host?: string): Promise<InboxEntry> {
   const message = signMessage(writer, to, body, time, host)
-  return { v: 1, to, time, body: await lock(message, inboxLockKeysOf(toProfile)) }
+  return { v: 1, to, ...(await lock(message, inboxLockKeysOf(toProfile))) }
 }
 
 /**
  * An inbox entry, as wire text or as it is, opened with the identity of one of the keys it was
- * locked to, and its message checked: its shape, and its signature, by its key or its sender's main
- * key, for this folder. Throws FolderError `signature` when it does not hold. Whether the sender's
- * profile entry lists the key that signed is senderCounts's.
+ * locked to, and its message checked: its shape, that it is to this folder, and its signature, by
+ * its key or its sender's main key. Throws FolderError `to` when the message is to another folder,
+ * and `signature` when its signature does not hold. Whether the sender's profile entry lists the key
+ * that signed is senderCounts's.
  */
-export async function openInbox(entry: InboxEntry | string, identity: string): Promise<{ id: string; to: string; time: number; message: SignedMessage }> {
+export async function openInbox(entry: InboxEntry | string, identity: string): Promise<{ id: string; to: string; message: SignedMessage }> {
   const { entry: e, id } = decodeInbox(typeof entry === 'string' ? entry : encodeInbox(entry))
-  const message = await openLocked(e.body, identity)
+  const message = await openLocked({ private: e.private }, identity)
   checkMessageShape(message)
-  if (!checkMessage(message, e.to)) throw new FolderError('signature', 'the message’s signature does not hold for this folder')
-  return { id, to: e.to, time: e.time, message }
+  if (message.to !== e.to) throw new FolderError('to', 'the message is to another folder')
+  if (!checkMessage(message)) throw new FolderError('signature', 'the message’s signature does not hold')
+  return { id, to: e.to, message }
 }

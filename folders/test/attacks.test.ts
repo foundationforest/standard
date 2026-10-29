@@ -13,8 +13,8 @@ import { BN254_R, SUBGROUP_ORDER, bytesMessage, checkWithPublicKey, packSignatur
 import { b64u, base58, concat, hex, utf8 } from '../src/bytes.ts'
 import { canonical } from '../src/canonical.ts'
 import { readAll, readFolder, write } from '../src/client.ts'
-import { SIGN_PREFIX, checkEntry, checkSignature, encodeEntry, signAs, signingInput, unsignedOf } from '../src/entry.ts'
-import { DELETE_PREFIX, MESSAGE_PREFIX, checkMessage, decodeDelete, deleteSigningInput, messageSigningInput } from '../src/inbox.ts'
+import { checkEntry, checkSignature, encodeEntry, signAs, signingInput, unsignedOf } from '../src/entry.ts'
+import { checkMessage, checkMessageShape, messageSigningInput, signMessage } from '../src/inbox.ts'
 import { viewFolder } from '../src/view.ts'
 import { entry } from '../src/write.ts'
 import { MINUTE, SEED, T0, access, aliceBuyerOpening, aliceOpening, alice, aliceBuyer, asAccess, bob, listed, offerBody, profileBody, stranger } from './fixtures.ts'
@@ -71,11 +71,16 @@ describe('nobody forges; a signature means one thing everywhere', () => {
     assert.equal(checkWithPublicKey(mixed, m, forged), false, 'Forest takes no key outside the subgroup')
   })
 
-  test('the signed bytes of an entry, a message, an inbox delete, a pay signature and an index root each start with their own text', () => {
-    const texts = [SIGN_PREFIX, MESSAGE_PREFIX, DELETE_PREFIX, concat(Uint8Array.of(0xff), utf8('forest/v1/pay\n')), concat(Uint8Array.of(0xff), utf8('forest/v1/reputation\n'))]
-    for (const [i, a] of texts.entries()) {
-      for (const [j, b] of texts.entries()) if (i !== j) assert.notDeepEqual(a.subarray(0, Math.min(a.length, b.length)), b.subarray(0, Math.min(a.length, b.length)), 'no text begins another')
-    }
+  test('an entry, a message and an index root each sign their own canonical text and nothing else, and their fields tell them apart', () => {
+    const text = (bytes: Uint8Array) => new TextDecoder().decode(bytes)
+    assert.equal(text(message), canonical(unsignedOf(offer)), 'an entry: its canonical text, no prefix')
+    const { sig: _sig, ...sent } = signMessage(alice, bob.address, { text: 'hi' }, T0)
+    assert.equal(text(messageSigningInput(sent)), canonical(sent), 'a message: its canonical text, to among its fields')
+    const root = utf8(JSON.stringify({ root: '1', time: T0 }))
+    const fields = (bytes: Uint8Array) => Object.keys(JSON.parse(text(bytes))).sort()
+    assert.deepEqual([fields(message), fields(messageSigningInput(sent)), fields(root)], [['body', 'path', 'profile', 'time', 'v'], ['body', 'from', 'time', 'to'], ['root', 'time']])
+    // An entry's signature, offered as a message with the entry's fields: no message has them.
+    assert.throws(() => checkMessageShape({ ...unsignedOf(offer), sig: offer.sig }), /unknown message field/)
   })
 
   test('replaying an entry into another folder, path or time fails; the same entry twice is one entry', () => {
@@ -93,14 +98,13 @@ describe('nobody forges; a signature means one thing everywhere', () => {
 describe('a key that is not the main key, nor the key named', () => {
   const posing = <T extends object>(unsigned: T, input: (u: T) => Uint8Array) => ({ ...unsigned, sig: signAs(stranger, stranger.address, input(unsigned)) })
 
-  test('signs nothing for the profile: its entry, message and inbox delete are each refused [signature]', () => {
+  test('signs nothing for the profile: its entry and its message are each refused [signature]', () => {
     const signature = (run: () => unknown) => assert.throws(run, (err: { code?: string }) => err.code === 'signature')
     signature(() => checkEntry(posing({ v: 1 as const, profile: alice.address, path: 'offer/x', time: T0, body: offerBody('1') }, signingInput)))
     signature(() => checkEntry(posing({ v: 1 as const, profile: alice.address, path: 'offer/x', time: T0, body: offerBody('1'), key: access.address }, signingInput)))
-    const sent = { from: alice.address, time: T0, body: { text: 'hi' } }
-    assert.equal(checkMessage({ ...sent, sig: signAs(stranger, stranger.address, messageSigningInput(sent, bob.address)) }, bob.address), false)
-    signature(() => decodeDelete(canonical(posing({ v: 1 as const, to: alice.address, id: '0'.repeat(64) }, deleteSigningInput))))
-    signature(() => decodeDelete(canonical(posing({ v: 1 as const, to: alice.address, id: '0'.repeat(64), key: access.address }, deleteSigningInput))))
+    const sent = { from: alice.address, to: bob.address, time: T0, body: { text: 'hi' } }
+    assert.equal(checkMessage({ ...sent, sig: signAs(stranger, stranger.address, messageSigningInput(sent)) }), false)
+    assert.equal(checkMessage({ ...sent, key: access.address, sig: signAs(stranger, stranger.address, messageSigningInput({ ...sent, key: access.address })) }), false)
   })
 
   test('an access key never writes the profile entry, so it can never list itself, add a host, or raise what it can do', () => {

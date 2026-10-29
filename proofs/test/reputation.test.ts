@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url'
 
 import { groth16 } from 'snarkjs'
 
-import { BN254_R, keyScalar, mainKey, packSignature, publicKeyOf, scopeOf, seedScalar, serviceKey, signBytes } from '@foundationforest/keys'
+import { BN254_R, keyScalar, mainKey, packSignature, publicKeyOf, scopeOf, seedNumber, serviceKey, signBytes } from '@foundationforest/keys'
 import { BN254_P, fromBytes32, toBytes32 } from '../src/index.ts'
 import {
   buildTree,
@@ -32,11 +32,10 @@ const here = dirname(fileURLToPath(import.meta.url))
 const artifacts = { wasm: join(here, '../reputation/setup/reputation.wasm'), zkey: join(here, '../reputation/setup/reputation.zkey') }
 const keysVectors = JSON.parse(readFileSync(join(here, '../../keys/test/vectors.json'), 'utf8'))
 const seed = Uint8Array.from(Buffer.from(keysVectors.seed, 'hex'))
-const S = await seedScalar(seed)
+const S = seedNumber(seed)
 
 // Someone else, with their own seed, and a profile under the same label as one of the person's.
 const otherSeed = randomBytes(32)
-const strangerScalar = await seedScalar(otherSeed)
 
 // The person's three profiles as an index scores them, the stranger's cleaning/buyer profile, and
 // made-up profiles.
@@ -66,14 +65,14 @@ const stranger = await mainKey(otherSeed, profileLabel)
 const shownOf = (r: Awaited<ReturnType<typeof proveReputation>>) => ({ proof: r.proof, root: r.root, score: r.score, profile: profile.address, index, time, signature })
 
 test("one profile: its score exactly, on the prover's own profile", async () => {
-  const r = await proveReputation({ seedScalar: S, labels: [labels[0]!], leaves, profileLabel, artifacts })
+  const r = await proveReputation({ seed, labels: [labels[0]!], leaves, profileLabel, artifacts })
   assert.equal(r.score, 47n)
   assert.equal(r.address, profile.address, 'the key of the profile it is shown on')
   assert.equal(await checkReputation(shownOf(r)), true)
 })
 
 test('three profiles: the plain average of their scores, rounded down', async () => {
-  const r = await proveReputation({ seedScalar: S, labels, leaves, profileLabel, artifacts })
+  const r = await proveReputation({ seed, labels, leaves, profileLabel, artifacts })
   assert.equal(r.score, (47n + 39n + 50n) / 3n)
   const shown = shownOf(r)
   assert.equal(await checkReputation(shown), true)
@@ -98,26 +97,26 @@ test('three profiles: the plain average of their scores, rounded down', async ()
 })
 
 test("a proof lands only on the prover's own profile: it cannot be lent", async () => {
-  const r = await proveReputation({ seedScalar: S, labels, leaves, profileLabel, artifacts })
+  const r = await proveReputation({ seed, labels, leaves, profileLabel, artifacts })
   const shown = shownOf(r)
   // Copied, or lent, to someone else's profile, or to another profile of mine: not this proof.
   assert.equal(await checkReputation({ ...shown, profile: stranger.address }), false, "someone else's profile")
   assert.equal(await checkReputation({ ...shown, profile: (await mainKey(seed, labels[0]!)).address }), false, 'my other profile')
   // Straight to the circuit: my leaves with the stranger's key, or the stranger's seed with my
   // leaves: no witness. Only a seed that gives both the leaves' keys and the profile's key does.
-  const lent = reputationInput({ seedScalar: S, labels, leaves, profileLabel }).input as Record<string, any>
+  const lent = reputationInput({ seed, labels, leaves, profileLabel }).input as Record<string, any>
   lent.profileX = stranger.publicKey[0]
   lent.profileY = stranger.publicKey[1]
   await refused(lent)
-  const borrowed = reputationInput({ seedScalar: S, labels, leaves, profileLabel }).input as Record<string, any>
-  borrowed.seedScalar = strangerScalar
+  const borrowed = reputationInput({ seed, labels, leaves, profileLabel }).input as Record<string, any>
+  borrowed.seed = seedNumber(otherSeed)
   borrowed.profileX = stranger.publicKey[0]
   borrowed.profileY = stranger.publicKey[1]
   await refused(borrowed)
 })
 
 test('the 256 bytes a profile entry stores: the same proof back, and it checks from them', async () => {
-  const r = await proveReputation({ seedScalar: S, labels, leaves, profileLabel, artifacts })
+  const r = await proveReputation({ seed, labels, leaves, profileLabel, artifacts })
   const { pi_a, pi_b, pi_c } = r.proof
   const bytes = proofBytes(r.proof)
   const order = [pi_a[0], pi_a[1], pi_b[0][1], pi_b[0][0], pi_b[1][1], pi_b[1][0], pi_c[0], pi_c[1]]
@@ -141,13 +140,13 @@ test('the 256 bytes a profile entry stores: the same proof back, and it checks f
 
 // The circuit itself refuses: each case starts from a good input and breaks one thing, past the
 // client's own checks.
-const good = () => reputationInput({ seedScalar: S, labels: labels.slice(0, 2), leaves, profileLabel }).input as Record<string, any>
+const good = () => reputationInput({ seed, labels: labels.slice(0, 2), leaves, profileLabel }).input as Record<string, any>
 /** What circom's witness generator says when a constraint does not hold: there is nothing to prove. */
 const refused = (input: Record<string, unknown>) => assert.rejects(groth16.fullProve(input, artifacts.wasm, artifacts.zkey), /Assert Failed/)
 
-test('the circuit refuses a wrong seed scalar', async () => {
+test("the circuit refuses another seed's number", async () => {
   const input = good()
-  input.seedScalar = S + 1n
+  input.seed = S + 1n
   await refused(input)
 })
 

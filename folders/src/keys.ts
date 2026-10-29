@@ -2,10 +2,10 @@
 //
 // Folders mixes no key: keys/ does (keys/README.md), and an app takes its keys from there. A
 // profile's main key comes from the person's seed and signs its profile entry and any other entry
-// in its folder, its messages and its inbox deletes. An access key the profile entry lists signs
-// for the profile too, only what its listing lets it: entries but `profile` (write), messages
-// (message) and inbox deletes (read-inbox). Every key signs with EdDSA-Poseidon on Baby Jubjub, by
-// keys/'s signBytes, and every address is a packed point in base58.
+// in its folder, and its messages. An access key the profile entry lists signs for the profile too,
+// only what its listing lets it: entries but `profile` (write) and messages (message). Every key
+// signs with EdDSA-Poseidon on Baby Jubjub, by keys/'s signBytes, and every address is a packed
+// point in base58.
 
 // keys/'s curve alone, not all of keys/, whose opening halves load age: the core holds no
 // encryption library (README.md, Use it).

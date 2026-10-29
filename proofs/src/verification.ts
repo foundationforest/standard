@@ -1,17 +1,17 @@
 // The verification (../README.md, The stamp and the verification): what a profile shows, the proof
 // that its seed holds a stamp from a verifier.
 //
-// The person proves on the device, from the seed scalar and the stamp: "this verifier signed a
-// stamp for the stamp number my seed gives at it, and this profile's key is the one my seed gives
-// for this label". Public: the profile's key, the verifier's key, the label's scope and the
-// verifier's name hash.
+// The person proves on the device, from the seed and the stamp: "this verifier signed a stamp for
+// the stamp number my seed gives at it, and this profile's key is the one my seed gives for this
+// label". Public: the profile's key, the verifier's key, the label's scope and the verifier's name
+// hash. The seed goes in as its number, keys/'s seedNumber.
 
 import { groth16 } from 'snarkjs'
 
 import { type Point, addressOf, pointOf, profileScalarOf, publicKeyOf } from '@foundationforest/keys'
 import { type SnarkjsProof, proofFromBytes } from './bytes.ts'
-import { isFieldElement, nameHashOf, scopeOf } from './field.ts'
-import { type SignedStamp, type VerifierKey, stampNumberOf, stampSigned } from './stamp.ts'
+import { isFieldElement, nameHashOf, scopeOf, seedNumber, stampNumberOf } from './field.ts'
+import { type SignedStamp, type VerifierKey, stampSigned } from './stamp.ts'
 import { VERIFICATION_KEY } from './verification-key.ts'
 
 /** The setup's proving files (each circuit's `setup/`): paths on Node, or the bytes in a browser. */
@@ -40,24 +40,23 @@ export type Verification = {
  * exported for a caller that drives snarkjs itself.
  */
 export function verificationInput(input: {
-  /** The seed scalar: `keys/`'s `seedScalar(seed)`. */
-  seedScalar: bigint
-  /** The name the verifier publishes as its own, as `keys/`'s `verifierSecret` took it. */
-  verifierName: string
+  /** The person's seed, its 32 bytes. It goes in as its number, and stays on the device. */
+  seed: Uint8Array
+  /** The stamp, which names its verifier. */
   stamp: SignedStamp
   /** The profile's label. The proof is for the key the seed gives for it, and for no other. */
   label: string
 }): { input: Record<string, unknown>; publicSignals: bigint[] } {
-  const { stamp, seedScalar } = input
-  if (!isFieldElement(seedScalar)) throw new RangeError('a seed scalar is a field element')
+  const { stamp } = input
+  const seed = seedNumber(input.seed)
   if (!isFieldElement(stamp.facts)) throw new RangeError('facts are a field element')
   const [verifierX, verifierY] = pointOf(stamp.verifier)
-  const nameHash = nameHashOf(input.verifierName)
+  const nameHash = nameHashOf(stamp.verifierName)
   const scope = scopeOf(input.label)
-  const profile = publicKeyOf(profileScalarOf(seedScalar, input.label))
+  const profile = publicKeyOf(profileScalarOf(seed, input.label))
   return {
     input: {
-      seedScalar,
+      seed,
       facts: stamp.facts,
       R8x: stamp.signature.R8[0],
       R8y: stamp.signature.R8[1],
@@ -78,7 +77,7 @@ export function verificationInput(input: {
  * its verifier did not sign, before proving anything.
  */
 export async function proveVerification(input: Parameters<typeof verificationInput>[0] & { artifacts: Artifacts }): Promise<Verification> {
-  if (input.stamp.stampNumber !== stampNumberOf(input.seedScalar, input.verifierName)) throw new Error('this stamp is not for this seed at this verifier')
+  if (input.stamp.stampNumber !== stampNumberOf(seedNumber(input.seed), input.stamp.verifierName)) throw new Error('this stamp is not for this seed at this verifier')
   if (!stampSigned(input.stamp)) throw new Error("the verifier's signature is not on this stamp")
   const { input: signals, publicSignals: want } = verificationInput(input)
   const { proof, publicSignals } = (await groth16.fullProve(signals, input.artifacts.wasm, input.artifacts.zkey)) as {
@@ -97,7 +96,7 @@ export async function proveVerification(input: Parameters<typeof verificationInp
     profile,
     address: addressOf(profile),
     verifier: addressOf([vx, vy]),
-    verifierName: input.verifierName,
+    verifierName: input.stamp.verifierName,
     nameHash,
     scope,
     proof,

@@ -13,23 +13,23 @@ const buffer = globalThis.Buffer
 Object.defineProperty(globalThis, 'Buffer', { configurable: true, get: () => (/\(node:|at node:|\/node_modules\//.test(new Error().stack?.split('\n')[2] ?? '') ? buffer : undefined) })
 const { hexToBytes } = await import('@noble/hashes/utils.js')
 const { sha256 } = await import('@noble/hashes/sha2.js')
-const { mainKey, seedScalar } = await import('@foundationforest/keys')
+const { mainKey, seedNumber } = await import('@foundationforest/keys')
 const { checkVerification, fieldHash, proofBytes, proveVerification, signStamp, stampNumberOf } = await import('../src/index.ts')
 
 const here = dirname(fileURLToPath(import.meta.url))
 const artifacts = { wasm: join(here, '../verification/setup/verification.wasm'), zkey: join(here, '../verification/setup/verification.zkey') }
 const seed = hexToBytes('000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f')
-const NAME = 'issuer-a.example'
+const NAME = 'verifier-a.example'
 const LABEL = 'tutoring/seller'
 
 test('with no Buffer: a verifier signs a stamp, the device proves, a reader checks', async () => {
   assert.equal(typeof Buffer, 'undefined')
-  const S = await seedScalar(seed)
-  const stamp = signStamp(sha256(new TextEncoder().encode('forest note fixture: issuer A')), {
-    stampNumber: stampNumberOf(S, NAME),
-    facts: fieldHash('forest example attributes', 'issuer-a'),
+  const stamp = signStamp(sha256(new TextEncoder().encode('forest stamp fixture: verifier A')), {
+    stampNumber: stampNumberOf(seedNumber(seed), NAME),
+    facts: fieldHash('forest example facts', 'verifier-a'),
+    verifierName: NAME,
   })
-  const r = await proveVerification({ seedScalar: S, verifierName: NAME, stamp, label: LABEL, artifacts })
+  const r = await proveVerification({ seed, stamp, label: LABEL, artifacts })
   const main = await mainKey(seed, LABEL)
   assert.equal(r.address, main.address)
   const shown = { verifier: r.verifier, verifierName: NAME, label: LABEL, profile: main.address }

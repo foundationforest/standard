@@ -75,7 +75,7 @@ describe('canonical text', () => {
 
 const code = (c: string) => (err: FolderError) => err.code === c
 /** A second access key, from 32 bytes of 0x2c. */
-const other = await accessKey(new Uint8Array(32).fill(0x2c))
+const other = await accessKey(new Uint8Array(64).fill(0x2c))
 
 describe('entries', () => {
   const offer = entry(alice, 'offer/maths', offerBody('30'), T0)

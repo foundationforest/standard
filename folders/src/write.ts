@@ -6,7 +6,7 @@ import type { View } from './view.ts'
 
 /**
  * Who writes for a profile: its main key, or an access key the profile's entry lists, with the
- * profile's address. The same goes for a message and an inbox delete.
+ * profile's address. The same goes for a message.
  */
 export type Writer = Key | { profile: string; key: Key }
 

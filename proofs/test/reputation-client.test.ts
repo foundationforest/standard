@@ -13,14 +13,13 @@ import { fileURLToPath } from 'node:url'
 import { Group } from '@semaphore-protocol/group'
 import { poseidon3 } from 'poseidon-lite/poseidon3'
 
-import { BN254_R, PREFIX, checkBytes, keyScalar, mainKey, packSignature, publicKeyOf, scopeOf, seedScalar, serviceKey, signBytes } from '@foundationforest/keys'
-import { BOUND, DEPTH, SIGNED_PREFIX, buildTree, reputationInput, leafHash, signedBytes, type Leaf } from '../src/index.ts'
+import { BN254_R, checkBytes, keyScalar, mainKey, packSignature, publicKeyOf, scopeOf, serviceKey, signBytes } from '@foundationforest/keys'
+import { BOUND, DEPTH, buildTree, reputationInput, leafHash, signedBytes, type Leaf } from '../src/index.ts'
 import { REPUTATION_KEY } from '../src/reputation-key.ts'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const keysVectors = JSON.parse(readFileSync(join(here, '../../keys/test/vectors.json'), 'utf8'))
 const seed = Uint8Array.from(Buffer.from(keysVectors.seed, 'hex'))
-const S = await seedScalar(seed)
 
 // The person's three profiles, as an index scores them, among made-up profiles.
 const labels = ['tutoring/seller', 'tutoring/buyer', 'cleaning/seller']
@@ -57,43 +56,41 @@ test('buildTree refuses an empty tree, one too deep, a field out of range, and t
   assert.throws(() => buildTree([mine[0]!, { ...mine[0]!, score: 50n }]), /second leaf/)
 })
 
-test('an index signs 0xff, its text, the root as 32 bytes and the time as 8, both big-endian', () => {
+test('an index signs the canonical JSON of { root, time }, the root in decimal text, and nothing else', () => {
   const bytes = signedBytes(tree.root, time)
-  const text = Buffer.from(SIGNED_PREFIX)
-  assert.equal(bytes.length, 1 + text.length + 32 + 8)
-  assert.equal(bytes[0], 0xff)
-  assert.deepEqual(Buffer.from(bytes.subarray(1, 1 + text.length)), text)
-  assert.equal(BigInt('0x' + Buffer.from(bytes.subarray(1 + text.length, -8)).toString('hex')), tree.root)
-  assert.equal(Buffer.from(bytes.subarray(-8)).readBigUInt64BE(), time)
+  assert.equal(Buffer.from(bytes).toString('utf8'), `{"root":"${tree.root}","time":${time}}`)
+  assert.deepEqual(signedBytes(tree.root, Number(time)), bytes, 'the time as a number or a bigint')
   const signature = signBytes(indexKey.scalar, bytes)
   assert.ok(checkBytes(indexKey.address, bytes, signature), 'signed as an entry is: keys/\'s signBytes')
   assert.equal(packSignature(signature).length, 64)
+  assert.throws(() => signedBytes(BN254_R, time), /field element/)
+  for (const bad of [-1, 1.5, 2 ** 53, 2n ** 53n]) assert.throws(() => signedBytes(tree.root, bad), /whole ms/, String(bad))
 })
 
 test('the client refuses what the circuit would', () => {
-  assert.throws(() => reputationInput({ seedScalar: S, labels: ['tutoring/other'], leaves, profileLabel }), /no leaf/, 'a profile the tree does not hold')
-  assert.throws(() => reputationInput({ seedScalar: S + 1n, labels: [labels[0]!], leaves, profileLabel }), /no leaf/, 'another seed')
-  assert.throws(() => reputationInput({ seedScalar: S, labels: [labels[0]!, labels[0]!], leaves, profileLabel }), /twice/)
-  assert.throws(() => reputationInput({ seedScalar: S, labels: [], leaves, profileLabel }), /one to 8/)
-  assert.throws(() => reputationInput({ seedScalar: S, labels: Array.from({ length: 9 }, (_, i) => `x/${i}`), leaves, profileLabel }), /one to 8/)
-  assert.throws(() => reputationInput({ seedScalar: BN254_R, labels: [labels[0]!], leaves, profileLabel }), /field element/)
+  assert.throws(() => reputationInput({ seed, labels: ['tutoring/other'], leaves, profileLabel }), /no leaf/, 'a profile the tree does not hold')
+  assert.throws(() => reputationInput({ seed: randomBytes(32), labels: [labels[0]!], leaves, profileLabel }), /no leaf/, 'another seed')
+  assert.throws(() => reputationInput({ seed, labels: [labels[0]!, labels[0]!], leaves, profileLabel }), /twice/)
+  assert.throws(() => reputationInput({ seed, labels: [], leaves, profileLabel }), /one to 8/)
+  assert.throws(() => reputationInput({ seed, labels: Array.from({ length: 9 }, (_, i) => `x/${i}`), leaves, profileLabel }), /one to 8/)
+  assert.throws(() => reputationInput({ seed: seed.subarray(1), labels: [labels[0]!], leaves, profileLabel }), /32 bytes/)
 })
 
 test("the proof names the key of the profile it is shown on, keys/'s main key, and the plain average", async () => {
-  const { input, publicSignals } = reputationInput({ seedScalar: S, labels, leaves, profileLabel })
+  const { input, publicSignals } = reputationInput({ seed, labels, leaves, profileLabel })
   const profile = await mainKey(seed, profileLabel)
   assert.deepEqual(publicSignals, [(47n + 39n + 50n) / 3n, tree.root, ...profile.publicKey], 'score, root, profile x, profile y')
   assert.equal(input.profileScope, scopeOf(profileLabel))
   assert.deepEqual(input.scopes, [...labels.map(scopeOf), 0n, 0n, 0n, 0n, 0n])
   assert.deepEqual(input.used, [1, 1, 1, 0, 0, 0, 0, 0])
-  assert.equal(reputationInput({ seedScalar: S, labels: [labels[2]!], leaves, profileLabel }).publicSignals[0], 50n, 'one profile: its score')
+  assert.equal(reputationInput({ seed, labels: [labels[2]!], leaves, profileLabel }).publicSignals[0], 50n, 'one profile: its score')
 })
 
-test("the circuit's constants are keys/'s: the profile prefix, and Base8", () => {
+test("the circuit's one constant is keys/'s Base8; it mixes no prefix", () => {
   const circuit = readFileSync(join(here, '../reputation/reputation.circom'), 'utf8')
-  assert.ok(circuit.includes(`var PROFILE_PREFIX = ${PREFIX.profile};`))
   const [x, y] = publicKeyOf(1n)
   assert.ok(circuit.includes(`${x},\n        ${y}\n    ];`))
+  assert.ok(!/PREFIX|forest\//.test(circuit), 'no prefix and no text: the scope carries its text')
 })
 
 test("the verification key is the circuit setup's, value for value", () => {

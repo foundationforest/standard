@@ -1,8 +1,7 @@
 // The host check: a test any host runs against its own address, to show it fits the plug
 // (README.md, Hosts). It writes to the host from two profiles of one seed, under the labels in
 // CHECK_LABELS, and an access key it makes, and checks each answer against the plug: taking an
-// entry in, access keys, reading, taking an inbox entry in, listing and deleting it, and taking a
-// file in.
+// entry in, access keys, reading, taking an inbox entry in and listing it, and taking a file in.
 //
 // A refusal the plug lets a host make by its own choice is no failure: the first profile entry of a
 // folder it does not hold yet, an entry, an inbox entry or a file it does not take, a size it does
@@ -16,7 +15,7 @@ import { canonical } from './canonical.ts'
 import { type Result, readAll, readInbox, readPage, upload } from './client.ts'
 import { type Body, MAX_FUTURE_MS, type SignedEntry, encodeEntry, entryId, signAs, signingInput, unsignedOf } from './entry.ts'
 import { fileOf } from './files.ts'
-import { type InboxEntry, encodeDelete, encodeInbox, inboxDelete, inboxId } from './inbox.ts'
+import { type InboxEntry, encodeInbox, inboxId } from './inbox.ts'
 import { inboxEntry } from './locked.ts'
 import { normalizeOrigin } from './profile.ts'
 import { entry } from './write.ts'
@@ -203,26 +202,28 @@ export async function checkHost(url: string, options: CheckOptions = {}): Promis
   await run('takes an inbox entry for a folder whose profile entry has openKey, and refuses each check in the plug’s order', async () => {
     needsFolders()
     const one = await fromB('one')
-    const later = await fromB('later', Date.now() + MAX_FUTURE_MS + MINUTE)
     await refuses('/v1/inbox', [
       ['not json', 'canonical', 'an inbox entry that is not JSON'],
       [canonical({ ...one, from: b!.address }), 'shape', 'an inbox entry with a field outside its envelope'],
+      [canonical({ ...one, v: 2 }), 'version', 'an inbox entry of v 2'],
       [canonical({ ...one, to: 'x' }), 'key', 'an inbox entry to no address'],
-      [encodeInbox({ ...one, body: { ...one.body, text: 'x' } } as never), 'body', 'an inbox entry whose body holds more than its envelope'],
-      [encodeInbox(later), 'future', 'an inbox entry dated eleven minutes ahead'],
+      [canonical({ ...one, private: one.private + '!' }), 'shape', 'an inbox entry whose envelope is not base64url'],
     ])
     await takeInbox(one, 'an inbox entry')
     await refuses('/v1/inbox', [[encodeInbox(one), 'duplicate', 'the same inbox entry again']])
     await takeEntry(entry(b!, 'profile', bProfile(false), time()), 'a profile entry with no openKey')
     const nobody = serviceKey(crypto.getRandomValues(new Uint8Array(32))).address
+    // Inbox entries for other folders: each another envelope, so neither is a duplicate.
+    const toB = await fromB('to b')
+    const toNobody = await fromB('to nobody')
     await refuses('/v1/inbox', [
-      [encodeInbox({ ...one, to: b!.address, time: time() }), 'no_inbox', 'an inbox entry for a folder whose profile entry has no openKey'],
-      [encodeInbox({ ...one, to: nobody, time: time() }), 'no_inbox', 'an inbox entry for a folder it does not hold'],
+      [encodeInbox({ ...toB, to: b!.address }), 'no_inbox', 'an inbox entry for a folder whose profile entry has no openKey'],
+      [encodeInbox({ ...toNobody, to: nobody }), 'no_inbox', 'an inbox entry for a folder it does not hold'],
     ])
     await takeEntry(entry(b!, 'profile', bProfile(), time()), 'a profile entry')
   })
 
-  await run('lists a folder’s inbox to anyone, after a cursor, in arrival order, and deletes an entry only for its main key or a key with read-inbox', async () => {
+  await run('lists a folder’s inbox to anyone, after a cursor, in arrival order', async () => {
     needsFolders()
     const first = await fromB('first')
     const second = await fromB('second')
@@ -252,20 +253,6 @@ export async function checkHost(url: string, options: CheckOptions = {}): Promis
     const since = await readInbox(host, a!.address, { after: cursor })
     expect(JSON.stringify(since.entries.map((e) => e.id)) === JSON.stringify([inboxId(third)]), 'a listing after the cursor did not serve the one inbox entry since')
     expect(!(await readInbox(host, b!.address)).entries.some((e) => all.includes(e.id)), 'another folder’s inbox listed this folder’s entries')
-
-    const stranger = serviceKey(crypto.getRandomValues(new Uint8Array(32)))
-    const forged = { ...inboxDelete(a!, inboxId(first)), id: inboxId(second) }
-    await refuses('/v1/inbox/delete', [
-      [canonical({ ...inboxDelete(a!, inboxId(first)), more: 1 }), 'shape', 'a delete with a field the standard does not name'],
-      [encodeDelete(forged), 'signature', 'a delete changed after it was signed'],
-      [encodeDelete(inboxDelete({ profile: a!.address, key: stranger }, inboxId(first))), 'unlisted', 'a delete by a key the profile entry does not list'],
-    ])
-    await take('/v1/inbox/delete', encodeDelete(inboxDelete(a!, inboxId(first))), 'a delete by the main key')
-    await take('/v1/inbox/delete', encodeDelete(inboxDelete(asAccess, inboxId(second))), 'a delete by a key listed with read-inbox')
-    const left = (await listed()).ids
-    expect(!left.includes(inboxId(first)) && !left.includes(inboxId(second)) && left.includes(inboxId(third)), 'the deleted inbox entries were still listed, or another went')
-    const gone = await send('/v1/inbox/delete', encodeDelete(inboxDelete(a!, inboxId(first))))
-    expect(gone.ok && gone.message === 'not here', `a delete of an entry no longer here: answered ${gone.error ?? gone.message}`)
   })
 
   await run('takes a file’s bytes only while a current entry names them, serves them with their type, and refuses bytes that do not match', async () => {

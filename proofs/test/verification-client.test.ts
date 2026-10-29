@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url'
 
 import { keccak_256 } from '@noble/hashes/sha3.js'
 
-import { PREFIX, mainKey, pointOf, publicKeyOf, seedScalar } from '@foundationforest/keys'
+import { mainKey, pointOf, publicKeyOf } from '@foundationforest/keys'
 import {
   BN254_P,
   BN254_R,
@@ -22,6 +22,7 @@ import {
   proofBytes,
   proofFromBytes,
   scopeOf,
+  seedNumber,
   signStamp,
   stampNumberOf,
   toBytes32,
@@ -36,7 +37,7 @@ const hash = (text: string) => fromBytes32(keccak_256(new TextEncoder().encode(t
 const keysVectors = JSON.parse(readFileSync(join(here, '../../keys/test/vectors.json'), 'utf8'))
 const seed = Uint8Array.from(Buffer.from(keysVectors.seed, 'hex'))
 const [verifierA] = keysVectors.verifiers
-const S = await seedScalar(seed)
+const S = seedNumber(seed)
 
 test("the verification key is the circuit's committed one, value for value", () => {
   const committed = JSON.parse(readFileSync(join(here, '../verification/setup/verification-key.json'), 'utf8'))
@@ -44,25 +45,22 @@ test("the verification key is the circuit's committed one, value for value", () 
   assert.equal(VERIFICATION_KEY.nPublic, 6)
 })
 
-test("the circuit's constants are keys/'s: the verifier and profile prefixes, and Base8", () => {
-  assert.ok(circuit.includes(`var VERIFIER_PREFIX = ${PREFIX.verifier};`), 'the verifier prefix')
-  assert.ok(circuit.includes(`var PROFILE_PREFIX = ${PREFIX.profile};`), 'the profile prefix')
+test("the circuit's one constant is keys/'s Base8; it mixes no prefix", () => {
   const [x, y] = publicKeyOf(1n)
   assert.ok(circuit.includes(`${x},\n        ${y}\n    ];`), 'Base8, the point a scalar of 1 gives')
-  assert.equal(PREFIX.verifier, hash('forest/v1/issuer'))
-  assert.equal(PREFIX.profile, hash('forest/v1/profile'))
+  assert.ok(!/PREFIX|forest\//.test(circuit), 'no prefix and no text: the scope and the name hash carry their texts')
 })
 
 test('a label gives a scope and a name a name hash, each a field element, and the namespaces never collide', () => {
   for (const text of ['tutoring/seller', '', 'ünïcødé/ラベル', 'x'.repeat(1000)]) {
     const scope = scopeOf(text)
     const name = nameHashOf(text)
-    assert.equal(scope, hash('forest/v1/label/' + text))
-    assert.equal(name, hash('forest/v1/issuer/' + text))
+    assert.equal(scope, hash('forest/profile/' + text))
+    assert.equal(name, hash('forest/verifier/' + text))
     assert.notEqual(scope, name)
     for (const n of [scope, name]) assert.ok(n >= 0n && n < BN254_R && n < 2n ** 248n)
   }
-  assert.equal(fieldHash('', 'forest/v1/note'), hash('forest/v1/note'))
+  assert.equal(fieldHash('', 'forest/profile/x'), hash('forest/profile/x'))
   assert.throws(() => scopeOf('a\ud800'), /label must be text/)
   assert.throws(() => nameHashOf(7 as unknown as string), /verifier name must be text/)
 })
@@ -92,14 +90,14 @@ test('the 256 bytes of a proof: eight coordinates, each G2 pair imaginary part f
 
 test("the circuit's input: keys/'s main key, and the public signals in order", async () => {
   const label = 'tutoring/seller'
-  const signed = signStamp(new Uint8Array(32).fill(1), { stampNumber: stampNumberOf(S, verifierA.name), facts: fieldHash('forest example attributes', 'issuer-a') })
-  const { input, publicSignals } = verificationInput({ seedScalar: S, verifierName: verifierA.name, stamp: signed, label })
+  const signed = signStamp(new Uint8Array(32).fill(1), { stampNumber: stampNumberOf(S, verifierA.name), facts: fieldHash('forest example facts', 'verifier-a'), verifierName: verifierA.name })
+  const { input, publicSignals } = verificationInput({ seed, stamp: signed, label })
   const main = await mainKey(seed, label)
   assert.deepEqual(publicSignals, [main.publicKey[0], main.publicKey[1], ...pointOf(signed.verifier), scopeOf(label), nameHashOf(verifierA.name)])
-  assert.equal(input.seedScalar, BigInt(keysVectors.seedScalar.scalar))
+  assert.equal(input.seed, BigInt(keysVectors.seedNumber), "the seed goes in as its number")
   assert.equal(input.facts, signed.facts, 'the facts go in as the verifier signed them')
-  const other = verificationInput({ seedScalar: S, verifierName: verifierA.name, stamp: signed, label: 'tutoring/buyer' }).publicSignals
+  const other = verificationInput({ seed, stamp: signed, label: 'tutoring/buyer' }).publicSignals
   assert.notEqual(other[0], publicSignals[0], 'another label, another key')
-  assert.throws(() => verificationInput({ seedScalar: BN254_R, verifierName: verifierA.name, stamp: signed, label }), /field element/)
-  assert.throws(() => verificationInput({ seedScalar: S, verifierName: verifierA.name, stamp: { ...signed, facts: BN254_R }, label }), /field element/)
+  assert.throws(() => verificationInput({ seed: seed.subarray(1), stamp: signed, label }), /32 bytes/)
+  assert.throws(() => verificationInput({ seed, stamp: { ...signed, facts: BN254_R }, label }), /field element/)
 })

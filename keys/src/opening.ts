@@ -1,10 +1,10 @@
-// The opening half of a key: what envelopes are locked to. Every key has one, made by one recipe
-// from the key's 32-byte secret: HKDF with forest/v1/inbox, its 32 bytes used unchanged as age's
-// post-quantum hybrid identity. See README.md, "Opening halves".
+// The opening half of a key: what envelopes are locked to. Every key's is 32 secret bytes, used
+// unchanged as age's post-quantum hybrid identity: a main key's is mixed from the seed with its
+// profile's text, an access key's is its second 32 random bytes. See README.md, "Opening halves".
 
 import { bech32 } from '@scure/base'
 import { identityToRecipient } from 'age-encryption'
-import { INFO, assertBytes, hkdf } from './hkdf.ts'
+import { assertBytes } from './hkdf.ts'
 
 /**
  * The opening half of a key: age's post-quantum hybrid identity, ML-KEM-768 with X25519
@@ -18,13 +18,12 @@ export type OpeningHalf = {
 }
 
 /**
- * The opening half, from a key's 32-byte secret. The 32 mixed bytes are used unchanged as age's
- * hybrid identity (its seed, which age expands into the ML-KEM-768 and X25519 keys); age's own
- * library computes the open key (identityToRecipient).
+ * The opening half, from its 32 secret bytes, used unchanged as age's hybrid identity (its seed,
+ * which age expands into the ML-KEM-768 and X25519 keys); age's own library computes the open key
+ * (identityToRecipient).
  */
 export async function openingHalf(secret: Uint8Array): Promise<OpeningHalf> {
   assertBytes('secret', secret, 32)
-  const bytes = await hkdf(secret, INFO.opening)
-  const identity = bech32.encodeFromBytes('AGE-SECRET-KEY-PQ-', bytes).toUpperCase()
+  const identity = bech32.encodeFromBytes('AGE-SECRET-KEY-PQ-', secret).toUpperCase()
   return { identity, openKey: await identityToRecipient(identity) }
 }

@@ -5,11 +5,11 @@ pragma circom 2.1.5;
 //
 // A slot is one profile: its label's scope, its score in an index's tree, and the Merkle path from
 // its leaf, Poseidon(key x, key y, score), to the root. The person fills up to K slots and leaves
-// the rest blank. One seed scalar, keys/'s, sits behind every slot: each slot's key is the lowest
-// 250 bits of Poseidon(profile prefix, seed scalar, its scope), times Base8, the way keys/ mixes a
-// main key and the verification works it out. The profile the proof is shown on comes from the
-// same seed scalar in the same way. So only the person whose seed is behind the counted profiles
-// can make the proof, and only for a profile of their own: it cannot be lent.
+// the rest blank. One seed sits behind every slot, as the number keys/'s seedNumber gives: each
+// slot's key is the lowest 250 bits of Poseidon(seed, its scope), times Base8, the way keys/ mixes a
+// main key and the verification works it out. The profile the proof is shown on comes from the same
+// seed in the same way. So only the person whose seed is behind the counted profiles can make the
+// proof, and only for a profile of their own: it cannot be lent.
 //
 // Poseidon, the bits and Baby Jubjub's fixed-base multiplication are circomlib's, and the Merkle
 // path is zk-kit's binary-merkle-root 2.0.0: the pieces Semaphore 4.13 uses, unchanged. 2.0.0 takes
@@ -22,24 +22,21 @@ include "bitify.circom";
 include "binary-merkle-root.circom";
 include "escalarmulfix.circom";
 
-// A profile's key from the seed scalar and its label's scope: the lowest 250 bits of
-// Poseidon(profile prefix, seed scalar, scope), times Base8. Num2Bits_strict, not Num2Bits(254), so
-// the number has one spelling in bits and the scope one key.
+// A profile's key from the seed's number and its label's scope: the lowest 250 bits of
+// Poseidon(seed, scope), times Base8. Num2Bits_strict, not Num2Bits(254), so the number has one
+// spelling in bits and the scope one key.
 template ProfileKey() {
-    signal input seedScalar;
+    signal input seed;
     signal input scope;
     signal output out[2];
 
-    // keccak256("forest/v1/profile") >> 8, as keys/'s fieldHash gives it. The text keeps its bytes:
-    // everyone's main keys are mixed with it.
-    var PROFILE_PREFIX = 1610155941089780199585344681576242252009136950843720704103853393970298181;
     // Baby Jubjub's generator of the prime-order subgroup, as circomlib's own templates have it.
     var BASE8[2] = [
         5299619240641551281634865583518297030282874472190772894086521144482721001553,
         16950150798460657717958625567821834550301663161624707787222815936182638968203
     ];
 
-    signal raw <== Poseidon(3)([PROFILE_PREFIX, seedScalar, scope]);
+    signal raw <== Poseidon(2)([seed, scope]);
     signal bits[254] <== Num2Bits_strict()(raw);
     component key = EscalarMulFix(250, BASE8);
     for (var i = 0; i < 250; i++) {
@@ -50,9 +47,9 @@ template ProfileKey() {
 
 template Reputation(K, DEPTH) {
     // Private.
-    // The seed scalar keys/'s seedScalar gives. It needs no bound: every slot's key and the
-    // profile's key are Poseidon hashes of it, and only one seed scalar gives those hashes.
-    signal input seedScalar;
+    // The seed's number keys/'s seedNumber gives. It needs no bound: every slot's key and the
+    // profile's key are Poseidon hashes of it, and only one number gives those hashes.
+    signal input seed;
     signal input used[K];
     signal input scopes[K], scores[K];
     signal input pathLengths[K], pathIndices[K], pathSiblings[K][DEPTH];
@@ -82,8 +79,8 @@ template Reputation(K, DEPTH) {
         (1 - used[i]) * scores[i] === 0;
         _ <== Num2Bits(32)(scores[i]);
 
-        // The slot's key, from the seed scalar and its scope, and its leaf is in the tree.
-        keys[i] <== ProfileKey()(seedScalar, scopes[i]);
+        // The slot's key, from the seed and its scope, and its leaf is in the tree.
+        keys[i] <== ProfileKey()(seed, scopes[i]);
         var leaf = Poseidon(3)([keys[i][0], keys[i][1], scores[i]]);
         var slotRoot = BinaryMerkleRoot(DEPTH)(leaf, pathLengths[i], pathIndices[i], pathSiblings[i]);
         used[i] * (slotRoot - root) === 0;
@@ -113,9 +110,8 @@ template Reputation(K, DEPTH) {
     belowCount === 1;
     scoreSum === score * usedCount + remainder;
 
-    // The profile the proof is shown on is the prover's own: its key comes from the same seed
-    // scalar.
-    signal profile[2] <== ProfileKey()(seedScalar, profileScope);
+    // The profile the proof is shown on is the prover's own: its key comes from the same seed.
+    signal profile[2] <== ProfileKey()(seed, profileScope);
     profileX === profile[0];
     profileY === profile[1];
 }
