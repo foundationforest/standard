@@ -7,23 +7,29 @@ Use these words: seed, seed's number, main key, signing half, opening half, open
 profile, Profiles folder, profile entry, entry, folder, address, label, scope, verifier, verified,
 stamp, stamp number, facts, verification, reputation proof, check, host, plug, host check, service
 key, connector, private, locked (an entry, to a key), envelope, message, inbox, inbox entry, file,
-pay address, pay key, escrow, receipt, deal, index, fee payer, app, market, role. Plain words, no
-em-dashes.
+post, review, pay address, pay key, escrow, receipt, deal, index, fee payer, app, market, role.
+Plain words, no em-dashes. The seed is the secret on your device; a stamp is the verifier's
+signature for your seed, kept private; a verification is what a profile shows.
 
+- Locked, never "sealed".
 - Never "record" for what a folder holds (it is an entry), "signer" (a chain's transaction signer
   keeps the chain's word, in escrows/), "permission", "inbox key" (it is the main key's opening
   half), "hosts record" (hosts are the profile entry's), "tag", "stamp proof" (it is a
   verification), "pull", "blob" or "letter".
 - Check, never verify: a reader checks a proof or a signature. The tooling keeps its own names
   (snarkjs's verifier, `verification-key.json`), and prose calls that part the proof check.
-- Never "account" for a person: a person has a seed and profiles.
+- Never "account" for a person: a person has a seed and profiles. The word appears only in
+  escrows/solana, for Solana's own accounts (a token account, the escrow's account).
+- In prose the foundation is the Forest Foundation; its registered name, Open Forest Foundation,
+  stays only in legal text.
+- Timing links stay out: no README says what time can link.
 - A string baked into a recipe or a circuit keeps its bytes even when its words are old: rename the
   code around it, never the string, and say why in a comment beside it.
 
 The test for what goes in this repo: the standard holds formats (what bytes mean), recipes (how a
 number is derived) and checks (what a reader runs); meanings and choices live outside it.
 Use cases are phrased "anyone can; the main way is X", never "X is one option" and never "X is
-the rule".
+the rule"; design is never stated as shipped.
 
 What an app that holds keys should know: `keys/README.md`. Never copy it here.
 
@@ -41,18 +47,24 @@ What an app that holds keys should know: `keys/README.md`. Never copy it here.
 - Keep the docs true in the same pull request: a change that makes a README wrong fixes it. A README
   says only what the code does. Devnet is named only inside escrows/, and only where something is
   configured for it.
-- One README per level: the repo's, and one in each directory; each starts with what it is and how
-  it works.
-- Each piece's README ends Limits and FAQ, and Promises and Who decides what where it has them; a
-  parent README carries a section only when it has content of its own, never a pointer to the
-  directories below; the repo README has Who decides what after the sort.
+- One README per level: the repo's, and one in each directory. Each explains at its own altitude
+  and says a thing once, at the lowest level that explains it; the others link to it.
+- The repo README is The picture, The folders, What's not here, Who decides what, How it changes,
+  For builders and Limits. Who decides what lives only there.
+- Each directory's README, in this order: What it is (one paragraph, in the repo README's words,
+  never why Forest exists); How it works (the substance, tables and short lists over prose); Use it
+  (one short example that runs); Run it (the commands, and one line on what test/ covers, never test
+  by test); Promises (at most five, each one a stranger can check); Limits (only what is real today,
+  one line each); FAQ. Every term is defined once, in plain words. A parent README carries a section
+  only when it has content of its own, never a pointer to the directories below.
 - A question lives at the lowest level whose README explains the thing it is about.
-- A FAQ is only for what the explanation does not answer; when a question shows the explanation is
-  missing something, the explanation changes.
+- A FAQ is only for what a newcomer would ask that the explanation cannot carry. A reason for a rule
+  goes beside the rule, and when a question shows the explanation is missing something, the
+  explanation changes.
 - When the plan is silent, choose the option that adds no rule and no text a person reads. Write
-  its reason down: as a question in the FAQ of the directory it belongs to (the top README's for the
-  whole repo) if it shapes Forest, otherwise in a comment beside the code. Ask only when the choice
-  changes the escrow program or spends money.
+  its reason down: as a question in the FAQ of the lowest directory it concerns if it shapes Forest,
+  otherwise in a comment beside the code. Ask only when the choice changes the escrow program or
+  spends money.
 - The escrow's `escrows/solana/devnet/deploy.sh` holds the key recipe it needs and writes its own
   `devnet.json` beside it. No private key and no phrase ever goes in the repo.
 - Run what `.github/workflows/checks.yml` runs before you push (Node 22.18 or later; Solana CLI
