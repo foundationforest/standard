@@ -1,7 +1,8 @@
 // The host check: a test any host runs against its own address, to show it fits the plug
 // (README.md, Hosts). It writes to the host from two profiles of one seed, under the labels in
 // CHECK_LABELS, and an access key it makes, and checks each answer against the plug: taking an
-// entry in, access keys, reading, taking an inbox entry in and listing it, and taking a file in.
+// entry in, access keys and ending one, reading, taking an inbox entry in and listing it, and
+// taking a file in.
 //
 // A refusal the plug lets a host make by its own choice is no failure: the first profile entry of a
 // folder it does not hold yet, an entry, an inbox entry or a file it does not take, a size it does
@@ -16,8 +17,8 @@ import { type Payment, type Result, readAll, readInbox, readPage, upload } from 
 import { type Body, MAX_FUTURE_MS, type SignedEntry, encodeEntry, entryId, signAs, signingInput, unsignedOf } from './entry.ts'
 import { fileOf } from './files.ts'
 import { type InboxEntry, encodeInbox, inboxId } from './inbox.ts'
-import { inboxEntry } from './locked.ts'
-import { normalizeOrigin } from './profile.ts'
+import { inboxEntry, lock, lockCount } from './locked.ts'
+import { lockKeysOf, normalizeOrigin } from './profile.ts'
 import { entry } from './write.ts'
 
 /** The labels of the check's two profiles: a seed's folders under them are what it writes to. */
@@ -173,11 +174,14 @@ export async function checkHost(url: string, options: CheckOptions = {}): Promis
     }
   })
 
-  await run('takes an entry by an access key the profile entry lists with write, refuses one it does not, and stops counting it once the key is removed', async () => {
+  await run('takes an entry by an access key the profile entry lists with write, refuses one it does not, and once the key has ended, keeps what it wrote and takes nothing more it signs', async () => {
     needsFolders()
-    await takeEntry(entry(a!, 'profile', aProfile(), time()), 'a profile entry')
+    const reading = aProfile([listed(['write', 'read'])])
+    await takeEntry(entry(a!, 'profile', reading, time()), 'a profile entry')
     const byKey = entry(asAccess, 'check/key', { check: 'by the access key' }, time())
     await takeEntry(byKey, 'an entry by a listed access key')
+    const lockedBefore = entry(a!, 'check/locked-before', await lock({ check: 'before' }, lockKeysOf(reading)), time())
+    await takeEntry(lockedBefore, 'a locked entry')
     const stranger = serviceKey(crypto.getRandomValues(new Uint8Array(32)))
     // A profile entry by the access key, signed by hand: entry() itself refuses to make one.
     const unsigned = { v: 1 as const, profile: a!.address, path: 'profile', time: time(), body: aProfile(), key: access.address }
@@ -187,9 +191,23 @@ export async function checkHost(url: string, options: CheckOptions = {}): Promis
     ])
     await takeEntry(entry(a!, 'profile', aProfile([listed(['read-inbox'])]), time()), 'a profile entry')
     await refuses('/v1/entries', [[encodeEntry(entry(asAccess, 'check/key', { check: 'no longer' }, time())), 'unlisted', 'an entry by a key listed without write']])
-    // The key's entry no longer counts: the main key's older entry at its path is current.
-    const older = entry(a!, 'check/key', { check: 'by the main key' }, byKey.time - 1)
-    await takeEntry(older, 'an entry at the path of an entry by a removed key, older than it')
+    // The key ends: listed again with until, the ending profile entry's own time.
+    const end = time()
+    const ended = aProfile([{ ...listed(['write', 'read']), until: end }])
+    await takeEntry(entry(a!, 'profile', ended, end), 'a profile entry that ends the access key')
+    await refuses('/v1/entries', [
+      // What it wrote before still counts: the main key's older entry at its path is not current.
+      [encodeEntry(entry(a!, 'check/key', { check: 'by the main key' }, byKey.time - 1)), 'older', 'an entry older than one an ended key wrote before it ended'],
+      [encodeEntry(entry(asAccess, 'check/ended', { check: 'after the end' }, time())), 'unlisted', 'an entry by an ended key'],
+      [encodeEntry(entry(asAccess, 'check/ended', { check: 'dated before the end' }, byKey.time)), 'unlisted', 'an entry by an ended key, dated before it ended'],
+    ])
+    // Nothing new is locked to it: a locked entry written after is locked to one key fewer.
+    const lockedAfter = entry(a!, 'check/locked-after', await lock({ check: 'after' }, lockKeysOf(ended)), time())
+    await takeEntry(lockedAfter, 'a locked entry')
+    const served = new Map((await readAll(host, { profile: a!.address })).entries.map((c) => [c.id, c.entry.body]))
+    const count = (e: SignedEntry) => lockCount(served.get(idOf(e)) as { private: string })
+    expect(served.has(idOf(lockedBefore)) && served.has(idOf(lockedAfter)), 'the folder’s read did not serve both locked entries')
+    expect(count(lockedAfter) === count(lockedBefore) - 1, `a locked entry written after the key ended is locked to ${count(lockedAfter)} keys, not one fewer than the ${count(lockedBefore)} before`)
     await takeEntry(entry(a!, 'profile', aProfile(), time()), 'a profile entry')
   })
 

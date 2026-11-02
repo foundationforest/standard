@@ -148,8 +148,10 @@ export function checkMessage(message: SignedMessage): boolean {
 
 /**
  * Whether the sender's own profile entry stands behind the message: its main key signed it, or the
- * key that signed is one `senderProfile`, from's current profile entry's body, lists with message.
- * The recipient's app reads that profile entry from the sender's hosts (`host`, among others).
+ * key that signed is one `senderProfile`, from's current profile entry's body, lists with message
+ * and no until. An ended key's message never counts, even one dated before its until: nothing
+ * stands in front of a message to refuse the date its key wrote. The recipient's app reads that
+ * profile entry from the sender's hosts (`host`, among others).
  */
 export function senderCounts(message: SignedMessage, senderProfile: Body | null | undefined): boolean {
   return message.key === undefined || canDo(senderProfile, message.key, 'message')

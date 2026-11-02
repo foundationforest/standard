@@ -1,8 +1,10 @@
 // The example profile entry (schemas/examples/profile.json): its hosts, its open key, its pay
-// addresses, keys/'s access key listed with read and write, and a verification and a reputation
-// proof for keys/'s test person, tutoring/seller, made with the circuits' setups. A proof is made
-// with fresh randomness, so running this again gives other proofs for the same statements; the
-// example keeps the ones made once, and test/schemas.test.ts checks them with both proof checks.
+// addresses, keys/'s access key listed with read and write, a second access key that ended, and a
+// verification and a reputation proof for keys/'s test person, tutoring/seller, made with the
+// circuits' setups. A proof is made with fresh randomness, so running this again gives other proofs
+// for the same statements; the example keeps the ones made once, and test/schemas.test.ts checks
+// them with both proof checks. The ended key was added to the example by hand, beside those proofs,
+// since a key's row is no part of what a proof states.
 //
 //   node scripts/example-profile.ts
 //
@@ -23,6 +25,10 @@ const setup = (proof: string, file: string) => new URL(`../../proofs/${proof}/se
 
 const me = await mainKey(seed, LABEL)
 const access = await accessKey(hex.decode(KEYS.accessKey.secret))
+// An access key that ended, from 64 bytes of 0x2f: listed with until, it needs no open key. Its
+// until is at or before the time the tests sign the example at (test/fixtures.ts's T0).
+const ended = await accessKey(new Uint8Array(64).fill(0x2f))
+const ENDED = 1_790_812_800_000 // 2026-10-01T00:00:00Z
 
 // The verification: an example verifier signed the person a stamp, with example facts, its key and
 // the facts made from the texts below.
@@ -58,7 +64,10 @@ const profile = {
   hosts: ['https://host-a.example'],
   openKey: (await openingHalf(me.secret)).openKey,
   pay: await payAddresses(seed, LABEL),
-  keys: [{ key: access.address, open: access.openKey, can: ['read', 'write'] }],
+  keys: [
+    { key: access.address, open: access.openKey, can: ['read', 'write'] },
+    { key: ended.address, can: ['read', 'write'], until: ENDED },
+  ],
   proofs: [
     {
       circuit: 'reputation',

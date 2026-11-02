@@ -6,7 +6,8 @@
 //   1. Entries dated more than MAX_FUTURE_MS ahead of the reader's clock are held back.
 //   2. The current profile entry is the newest at `profile`; only the main key writes it.
 //   3. An entry counts if the main key signed it, or an access key the current profile entry lists
-//      with write. A key removed from the list stops counting, and its entries with it.
+//      with write, with no until or with the entry's time at or before it: an ended key's entries
+//      dated by then stay. A key removed from the list stops counting, and its entries with it.
 //   4. At each path, the newest entry that counts is current. A host takes an entry by the same
 //      rule.
 //   5. Newest: the later time, then the larger id. A null body is a delete.
@@ -20,7 +21,7 @@ export type View = {
   current: Map<string, Checked>
   /** The hosts the current profile entry names; none if there is none, or it was deleted. */
   hosts: string[]
-  /** The access keys the current profile entry lists that count. */
+  /** The access keys the current profile entry lists that count, ended ones among them. */
   keys: ListedKey[]
   /** Entries present that do not count, by id, with the reason. */
   ignored: Map<string, 'future' | 'older' | 'unlisted'>
@@ -43,11 +44,12 @@ export function viewFolder(profile: string, entries: Iterable<Checked>, now: num
   let top: Checked | undefined
   for (const c of held.values()) if (c.entry.path === PROFILE_PATH && c.entry.key === undefined && (!top || isNewer(c, top))) top = c
   const keys = keysOf(top?.entry.body)
-  const writers = new Set(keys.filter((k) => k.can.includes('write')).map((k) => k.key))
+  // Each key that can write, with its until, if it ended.
+  const writers = new Map(keys.filter((k) => k.can.includes('write')).map((k) => [k.key, k.until]))
   const current = new Map<string, Checked>()
   for (const c of held.values()) {
-    const { key, path } = c.entry
-    if (key !== undefined && (path === PROFILE_PATH || !writers.has(key))) {
+    const { key, path, time } = c.entry
+    if (key !== undefined && (path === PROFILE_PATH || !writers.has(key) || time > (writers.get(key) ?? Infinity))) {
       ignored.set(c.id, 'unlisted')
       continue
     }

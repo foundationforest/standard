@@ -17,6 +17,14 @@
         "read",
         "write"
       ]
+    },
+    {
+      "key": "5VoqhUCaNArvwvY1M66thDceyqLimetLx8eMoRbtwJX5",
+      "can": [
+        "read",
+        "write"
+      ],
+      "until": 1790812800000
     }
   ],
   "proofs": [

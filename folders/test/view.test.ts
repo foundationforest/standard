@@ -1,5 +1,6 @@
 // The view: versions, deletes, and which entries count: the main key's, and an access key's while
-// the current profile entry lists it with write. All pure, no network.
+// the current profile entry lists it with write, up to its until once it has ended. All pure, no
+// network.
 
 import assert from 'node:assert/strict'
 import { randomInt } from 'node:crypto'
@@ -96,7 +97,24 @@ describe('who writes', () => {
     assert.deepEqual(v.keys.map((k) => k.key), [access.address])
   })
 
-  test('a key removed from the list stops counting, and its entries with it: the main key’s older entry at the path is current again', () => {
+  test('an ended key keeps what it wrote at or before its until; what it dated after does not count', () => {
+    const mine = entry(alice, 'offer/x', offerBody('the main key’s'), T0)
+    const byKey = entry(asAccess, 'offer/x', offerBody('by the key'), T0 + 1)
+    const atEnd = entry(asAccess, 'offer/y', offerBody('at its end'), T0 + 2)
+    // Written while it was listed, dated ahead: the ending profile entry's time is its until.
+    const ahead = entry(asAccess, 'offer/z', offerBody('dated ahead'), T0 + 2 + 5 * MINUTE)
+    const ending = entry(alice, 'profile', profileBody('maths', { keys: [{ ...listed(['write']), until: T0 + 2 }] }), T0 + 2)
+    const v = view([profileWith(['write'], T0), ending, mine, byKey, atEnd, ahead], T0 + 10 * MINUTE)
+    assert.equal(v.current.get('offer/x')!.id, idOf(byKey))
+    assert.equal(v.current.get('offer/y')!.id, idOf(atEnd), 'dated at until, it counts')
+    assert.equal(v.current.has('offer/z'), false)
+    assert.equal(v.ignored.get(idOf(ahead)), 'unlisted')
+    assert.deepEqual(v.keys, [{ ...listed(['write']), until: T0 + 2 }], 'the list keeps it, with its until')
+    // Before it ended, the entry dated ahead counted.
+    assert.equal(view([profileWith(['write'], T0), mine, byKey, atEnd, ahead], T0 + 10 * MINUTE).current.get('offer/z')!.id, idOf(ahead))
+  })
+
+  test('removing the row takes every entry it wrote back: the main key’s older entry at the path is current again', () => {
     const mine = entry(alice, 'offer/x', offerBody('the main key’s'), T0)
     const byKey = entry(asAccess, 'offer/x', offerBody('by the key'), T0 + 1)
     assert.equal(view([profileWith(['write'], T0), mine, byKey]).current.get('offer/x')!.id, idOf(byKey))

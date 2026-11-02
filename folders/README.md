@@ -76,8 +76,10 @@ its clock `now` (`viewFolder`):
 
 1. Entries dated after `now + 600,000` are held back.
 2. The current profile entry is the newest at `profile` signed by the main key.
-3. An entry counts when the main key signed it, or a key the current profile entry lists with
-   `write`; any other is ignored as unlisted.
+3. An entry counts when the main key signed it, or an access key the current profile entry lists
+   with `write`, with no `until` or with the entry's `time` at or before it; any other is ignored
+   as unlisted. An app sets `until` to the ending profile entry's own `time`, so an entry the key
+   dated ahead of that does not count.
 4. A is newer than B if `A.time > B.time`, or the times are equal and `A.id > B.id`. At each path,
    the newest entry that counts is current.
 5. A current entry with a `null` body means the path is deleted.
@@ -94,7 +96,9 @@ adds fields beside them.
 ```
 { "market"?: <text>, "role"?: <text>, "hosts": [<origin>, …], "openKey"?: <open key>,
   "pay"?: { … }, "proofs"?: [ … ],
-  "keys"?: [ { "key": <address>, "open"?: <open key>, "can": [ … ] }, … ], "files"?: [ … ] }
+  "keys"?: [ { "key": <address>, "open"?: <open key>, "can": [ … ],
+               "until"?: <ms since 1970> }, … ],
+  "files"?: [ … ] }
 ```
 
 - **`market` and `role`** are both present for a market profile: the two halves of its label.
@@ -121,7 +125,8 @@ where one is not as above [`profile`]; the rest is a reader's to check.
 An access key is a key the profile hands out, to an AI app, a service or another person, made from
 random bytes ([keys](../keys/README.md#access-keys)), so they can act for the profile while none of
 the person's devices is open, and every host and reader can check what each may do. The profile
-entry lists each one, `{ key, open?, can }`: its address, its open key, and what it can do:
+entry lists each one, `{ key, open?, can, until? }`: its address, its open key, what it can do,
+and when it ended:
 
 | `can` | The key |
 |---|---|
@@ -130,18 +135,20 @@ entry lists each one, `{ key, open?, can }`: its address, its open key, and what
 | `write` | writes any entry in the folder but `profile`: an entry it signs, naming itself in `key`, counts |
 | `message` | signs messages as the profile, which the recipient's app shows as the profile's |
 
-- `open` is present whenever the key can `read` or `read-inbox`.
-- A key is listed once, with no end date: the person removes it by writing a profile entry that no
-  longer lists it.
+- `open` is present whenever the key can `read` or `read-inbox` and has no `until`.
+- A key is listed once. The person ends it by writing a profile entry that lists it with `until`,
+  whole milliseconds since 1970, 0 to 2^53 − 1 (Which entry counts): a key with `until` is ended.
 - **No access key writes `profile`**, so none can list itself, add a host or widen what it can do:
   an entry at `profile` that names a `key` is refused [`unlisted`].
-- **A key removed stops counting, and its entries with it,** for every host and reader at once:
-  what counts is decided by the current profile entry, never by when an entry was written. At each
-  path it wrote, the newest entry that still counts is current again; the app writes again, with
-  the main key, what it keeps.
+- **An ended key stops writing everywhere at once, and what it wrote stays:** an entry it signed
+  dated at or before `until` still counts; a host takes nothing more it signs (Hosts); nothing new
+  is locked to it; and no message it signs counts (The inbox).
+- **Removing a key takes it all back:** a profile entry that no longer lists it makes every entry
+  it wrote stop counting, for every host and reader at once. At each path it wrote, the newest
+  entry that still counts is current again; the app writes again, with the main key, what it keeps.
 - A `can` this code does not know grants nothing, and a listed key with a field it does not know
-  counts for nothing: the field could be a limit, such as an end date, and refusing the whole
-  profile entry would stop the person updating it on an older host.
+  counts for nothing: the field could be a limit, and refusing the whole profile entry would stop
+  the person updating it on an older host.
 - **Notes.** An access key may have a note for the person, such as who holds it: a locked entry at
   `key/<id>`, the id random so the path names no key, locked to the main key's open key alone so no
   access key reads it. Its body names the key, `{ "key": <address>, … }`; the app lists the
@@ -153,9 +160,9 @@ A locked entry's body is `{ "private": <base64url of an age file> }` and nothing
 widely used encryption format. The age file is the envelope: the canonical text of an object under
 a random key made for it, and that key locked once to each open key (`lock`, `openLocked`).
 
-- **It is locked to the main key's open key, and to each listed key that can `read`**
-  (`lockKeysOf`). Whoever writes it MUST lock it to all of them. Nobody can check: an envelope
-  names no key.
+- **It is locked to the main key's open key, and to each listed key that can `read` and has no
+  `until`** (`lockKeysOf`). Whoever writes it MUST lock it to all of them. Nobody can check: an
+  envelope names no key.
 - Each key it is locked to is an age post-quantum hybrid key (`age1pq1…`, stanza
   `mlkem768x25519`); an app MUST NOT lock an envelope to any other kind, since one classic key among
   them would let a quantum computer open it for all. Each adds about 2 KB.
@@ -198,7 +205,7 @@ An inbox entry is what anyone leaves in a folder whose profile entry has `openKe
 - It is not signed outside, so it shows no host who wrote to whom, and names only the folder it is
   to.
 - Its envelope is locked to `to`'s open key and to every key `to`'s profile entry lists with
-  `read-inbox` (`inboxLockKeysOf`). The sender locks it so; nobody can check.
+  `read-inbox` and no `until` (`inboxLockKeysOf`). The sender locks it so; nobody can check.
 
 Locked inside it is one message:
 
@@ -218,8 +225,10 @@ Locked inside it is one message:
   sender's.
 - **The recipient's app checks** that `to` is the folder it was left in, and the signature
   (`openInbox`); then the sender's profile entry, from the sender's hosts: that it lists `key` with
-  `message`, if a key signed (`senderCounts`), and anything else it wants, such as a verification, a
-  market and a role. Then it decides what to show.
+  `message` and no `until`, if a key signed (`senderCounts`), and anything else it wants, such as a
+  verification, a market and a role. Then it decides what to show. An ended key's message never
+  counts, even one dated before `until`: no host stands in front of a message to refuse the date
+  its key wrote, so a message sent before the end and read after counts no more.
 
 **Leave.** The sender reads the recipient's profile entry for its hosts and open keys, signs the
 message, locks it, and leaves the inbox entry with each host (`POST /v1/inbox`; `inboxEntry`,
@@ -315,7 +324,8 @@ if any, is that request's header.
    fields and of `files` [`canonical`, `shape`, `version`, `key`, `path`, `time`, `body`,
    `profile`, `files`, `unlisted`, `signature`], and `time ≤ now + 600,000` [`future`].
 2. Signed by an access key: the current profile entry of its folder on this host lists the key with
-   `write` [`unlisted`].
+   `write` and no `until` [`unlisted`]: a host refuses what an ended key signs, whatever date it
+   carries.
 3. It MUST become the current entry at its path by Which entry counts, over what the host stores
    plus it [`older`].
 4. A host MAY refuse an entry by its own choice [`refused`], and the first profile entry of a folder
@@ -425,7 +435,8 @@ second SHA-256 and a second EdDSA-Poseidon, and checks both proofs in
 - **Every reader computes the same view from the same entries,** wherever they came from and in
   whatever order. Its clock matters only to hold back entries dated more than ten minutes ahead.
 - **Only a profile's main key, and the access keys its profile entry lists with `write`, write for
-  it.** A host takes, and a reader counts, an entry only when one of them signed it, and only the
+  it.** A host takes an entry only when the main key, or such a key with no `until`, signed it; a
+  reader counts one an ended key signed only when it is dated at or before `until`; and only the
   main key writes the profile entry.
 - **A person can always move.** A profile's name is its key, not a host's address. A host never
   refuses a profile entry for a folder it holds by its own choice but for its size, though it may
@@ -433,7 +444,8 @@ second SHA-256 and a second EdDSA-Poseidon, and checks both proofs in
 - **A host holds nothing secret of the people it serves, and opens nothing locked.** It has no
   keys, no sign-up and no login, and cannot open a locked entry or an inbox entry, though it sees
   whom an inbox entry is for (Limits). Only the keys an inbox entry was locked to open it, and a
-  sender locks it to the folder's main key and the keys its profile entry lists with `read-inbox`.
+  sender locks it to the folder's main key and the keys its profile entry lists with `read-inbox`
+  that have not ended.
 
 ## Limits
 
@@ -444,8 +456,12 @@ second SHA-256 and a second EdDSA-Poseidon, and checks both proofs in
   never what it says, and who wrote it only if that payment tells.
 - Nobody checks what an envelope was locked to: a writer that leaves out a key, the main key's
   among them, shuts that key out.
-- A key that can write can write any path but `profile` until it is removed; removing it takes back
-  every entry it wrote, at once.
+- A key that can write can write any path but `profile` until it is ended; ending it keeps what it
+  wrote before, and only removing it takes that back, at once.
+- An ended key can still sign an entry dated at or before its `until`: a host that takes it makes a
+  reader count it. Honest hosts refuse it, and the main key wins any path by writing there again.
+- A host refuses every entry an ended key signed, so a host the folder moves to or adds later never
+  holds them; the main key writes again what it keeps.
 - What a key opened, it keeps, and it can still open an older version a host or a copy holds.
 - A file is only as true as its hash: a host checks the hash and the size, never the type.
 - A delete is a request: whoever fetched what was public has it.

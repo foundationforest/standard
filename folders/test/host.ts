@@ -61,7 +61,7 @@ export class TestHost {
     const { profile, key, path } = c.entry
     if (c.entry.time > now + MAX_FUTURE_MS) return { id: c.id, ok: false, error: 'future', message: 'dated more than ten minutes ahead' }
     const view = this.view(profile, now)
-    if (key !== undefined && !canDo(view.current.get(PROFILE_PATH)?.entry.body, key, 'write')) return { id: c.id, ok: false, error: 'unlisted', message: 'the profile entry here lists no such key with write' }
+    if (key !== undefined && !canDo(view.current.get(PROFILE_PATH)?.entry.body, key, 'write')) return { id: c.id, ok: false, error: 'unlisted', message: 'the profile entry here lists no such key with write, not ended' }
     if (this.entries.some((r) => r.id === c.id)) return { id: c.id, ok: true, message: 'already here' }
     if (viewFolder(profile, [...this.stored(profile), c], now).current.get(path)?.id !== c.id) {
       return { id: c.id, ok: false, error: 'older', message: 'a newer version is already here' }

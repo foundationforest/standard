@@ -6,12 +6,12 @@
 // for the others.
 //
 // A locked entry in a folder is locked to the main key's open key and to each listed key that can
-// read (lockKeysOf); a note about an access key, to the main key's alone. The writer locks it:
-// nobody can check, since an envelope names no key. What this does not hide: that a locked entry
-// exists, its path, time and size, and how many keys it was locked to (one stanza each), though
-// never which: a stanza holds only its encapsulation. A key removed reads no new version; it keeps
-// whatever it already opened. No forward secrecy: a key that leaks later opens every envelope ever
-// locked to it.
+// read and has not ended (lockKeysOf); a note about an access key, to the main key's alone. The
+// writer locks it: nobody can check, since an envelope names no key. What this does not hide: that
+// a locked entry exists, its path, time and size, and how many keys it was locked to (one stanza
+// each), though never which: a stanza holds only its encapsulation. A key ended or removed reads no
+// new version; it keeps whatever it already opened. No forward secrecy: a key that leaks later
+// opens every envelope ever locked to it.
 //
 // An inbox entry's `private` is one of these envelopes, holding one signed message, locked to the
 // open keys the folder's profile entry gives for its inbox (inboxLockKeysOf). inboxEntry() signs and

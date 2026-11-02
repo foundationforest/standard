@@ -176,8 +176,24 @@ describe('the profile entry', () => {
     check({ hosts, keys: [{ key: access.address, open: access.openKey, can: ['write'] }] })()
   })
 
+  test('until: whole milliseconds since 1970, 0 to 2^53 − 1; an ended key that can read needs no open key', () => {
+    const hosts = ['https://a.example']
+    for (const until of [0, T0, Number.MAX_SAFE_INTEGER]) check({ hosts, keys: [{ ...listed(['write']), until }] })()
+    for (const until of [-1, 1.5, 2 ** 53, '5', null]) assert.throws(check({ hosts, keys: [{ ...listed(['write']), until }] }), /until is whole milliseconds/, String(until))
+    check({ hosts, keys: [{ key: access.address, can: ['read', 'read-inbox', 'write'], until: T0 }] })()
+    assert.throws(check({ hosts, keys: [{ key: access.address, can: ['read'] }] }), /gives its open key/, 'not ended, it does')
+  })
+
+  test('an ended key can do nothing more, and nothing new is locked to it; the list keeps it, with its until', () => {
+    const body = profileBody('x', { keys: [{ ...listed(['read', 'read-inbox', 'write', 'message']), until: T0 }, listed(['read', 'read-inbox'], other)] })
+    assert.deepEqual(keysOf(body).map((k) => [k.key, k.until]), [[access.address, T0], [other.address, undefined]])
+    for (const can of ['read', 'read-inbox', 'write', 'message'] as const) assert.equal(canDo(body, access.address, can), false, can)
+    assert.deepEqual(lockKeysOf(body), [aliceOpening.openKey, other.openKey])
+    assert.deepEqual(inboxLockKeysOf(body), [aliceOpening.openKey, other.openKey])
+  })
+
   test('a can this code does not know grants nothing, and a listed key with a field it does not know counts for nothing; neither refuses the profile entry', () => {
-    const body = profileBody('x', { keys: [{ ...listed(['write', 'pay']) }, { key: stranger.address, can: ['write'], until: 5 }] })
+    const body = profileBody('x', { keys: [{ ...listed(['write', 'pay']) }, { key: stranger.address, can: ['write'], limit: 5 }] })
     assert.ok(checkEntry(entry(alice, 'profile', body, T0)), 'the profile entry is taken')
     assert.deepEqual(keysOf(body).map((k) => k.key), [access.address], 'the key with a field nobody defined counts for nothing')
     assert.equal(canDo(body, access.address, 'write'), true)

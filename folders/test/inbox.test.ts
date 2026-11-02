@@ -13,7 +13,7 @@ import { checkMessage, decodeInbox, encodeInbox, inboxId, messageSigningInput, s
 import { inboxEntry, lock, openInbox, openLocked } from '../src/locked.ts'
 import { signAs } from '../src/entry.ts'
 import { entry } from '../src/write.ts'
-import { T0, access, alice, aliceBuyer, aliceBuyerOpening, aliceOpening, bob, bobOpening, listed, profileBody, stranger } from './fixtures.ts'
+import { MINUTE, T0, access, alice, aliceBuyer, aliceBuyerOpening, aliceOpening, bob, bobOpening, listed, profileBody, stranger } from './fixtures.ts'
 import { startHost } from './helpers.ts'
 
 const code = (c: string) => (err: unknown) => err instanceof FolderError && err.code === c
@@ -78,13 +78,14 @@ describe('messages', () => {
     await assert.rejects(openInbox(await locked(posing), aliceOpening.identity), code('signature'), 'a key that is not from’s, unnamed')
   })
 
-  test('an access key messages as its profile only while that profile’s entry lists it with message: the recipient’s app checks', async () => {
+  test('an access key messages as its profile only while that profile’s entry lists it with message and it has not ended: the recipient’s app checks', async () => {
     const e = await toAlice('from Bob’s assistant', { profile: bob.address, key: bobsKey })
     const { message } = await openInbox(e, aliceOpening.identity)
     assert.deepEqual([message.from, message.key], [bob.address, bobsKey.address])
     assert.equal(senderCounts(message, bobsProfile), true)
     assert.equal(senderCounts(message, { ...bobsProfile, keys: [listed(['write'], bobsKey)] }), false, 'listed, but not with message')
     assert.equal(senderCounts(message, { ...bobsProfile, keys: [] }), false, 'removed')
+    assert.equal(senderCounts(message, { ...bobsProfile, keys: [{ ...listed(['message'], bobsKey), until: message.time + MINUTE }] }), false, 'ended, even after the message’s time: nothing refuses the date its key wrote')
     assert.equal(senderCounts(message, null), false, 'no profile entry')
     const fromMain = (await openInbox(await toAlice('from Bob himself'), aliceOpening.identity)).message
     assert.equal(senderCounts(fromMain, null), true, 'the main key needs no listing')

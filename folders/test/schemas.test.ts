@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs'
 import { describe, test } from 'node:test'
 import { Ajv2020 } from 'ajv/dist/2020.js'
 import formats from 'ajv-formats'
-import { isEvmAddress, mainKey, payAddresses, pointOf, serviceKey } from '@foundationforest/keys'
+import { accessKey, isEvmAddress, mainKey, payAddresses, pointOf, serviceKey } from '@foundationforest/keys'
 import { checkReputation, checkVerification } from '@foundationforest/proofs'
 import { checkValue } from '../src/canonical.ts'
 import { checkProfileBody } from '../src/profile.ts'
@@ -104,8 +104,14 @@ describe('schemas', () => {
     for (const bad of ['age1pq1' + 'q'.repeat(60), alice.address, 'AGE1' + 'Q'.repeat(58), 'age1' + 'b'.repeat(58)]) assert.ok(!fits('profile', edit('profile', ['openKey'], bad)), bad)
   })
 
-  test('a profile’s keys: each its address, what it can do, and its open key when it can read', () => {
-    assert.deepEqual(example('profile').keys, [{ key: access.address, open: access.openKey, can: ['read', 'write'] }], 'keys/’s access key')
+  test('a profile’s keys: each its address, what it can do, its open key when it can read and has not ended, and when it ended', async () => {
+    const ended = await accessKey(new Uint8Array(64).fill(0x2f))
+    assert.deepEqual(
+      example('profile').keys,
+      [{ key: access.address, open: access.openKey, can: ['read', 'write'] }, { key: ended.address, can: ['read', 'write'], until: 1_790_812_800_000 }],
+      'keys/’s access key, and one that ended (scripts/example-profile.ts)',
+    )
+    assert.ok(example('profile').keys[1].until <= T0, 'it ended at or before the time the example is signed at')
     assert.ok(fits('profile', edit('profile', ['keys'], undefined)), 'optional')
     for (const can of [['write'], ['message'], [], ['write', 'pay']]) assert.ok(fits('profile', edit('profile', ['keys'], [{ key: access.address, can }])), can.join())
     for (const can of [['read'], ['read-inbox', 'write']]) {
@@ -115,7 +121,10 @@ describe('schemas', () => {
     for (const bad of [{ key: 'x', can: [] }, { can: [] }, { key: access.address }, { key: access.address, can: 'write' }, { key: access.address, open: 'x', can: ['write'] }]) {
       assert.ok(!fits('profile', edit('profile', ['keys'], [bad])), JSON.stringify(bad))
     }
-    assert.ok(fits('profile', edit('profile', ['keys'], [{ key: access.address, can: ['write'], until: 5 }])), 'a field nobody defined: not refused, and the key counts for nothing')
+    for (const until of [0, 2 ** 53 - 1]) assert.ok(fits('profile', edit('profile', ['keys'], [{ key: access.address, can: ['write'], until }])), `until ${until}`)
+    for (const until of [-1, 1.5, 2 ** 53, '5']) assert.ok(!fits('profile', edit('profile', ['keys'], [{ key: access.address, can: ['write'], until }])), `until ${JSON.stringify(until)}`)
+    assert.ok(fits('profile', edit('profile', ['keys'], [{ key: access.address, can: ['read', 'read-inbox'], until: 5 }])), 'ended, it needs no open key')
+    assert.ok(fits('profile', edit('profile', ['keys'], [{ key: access.address, can: ['write'], limit: 5 }])), 'a field nobody defined: not refused, and the key counts for nothing')
   })
 
   test('a profile entry may carry files too, each exactly { sha256, type, size }', () => {

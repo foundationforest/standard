@@ -9,7 +9,8 @@
 // each say what they are by their own fields, so no signature is ever two of them.
 //
 // Whether an access key's entry counts is the view's (view.ts): only while the folder's current
-// profile entry lists the key with write. No access key writes `profile`, so that is refused here.
+// profile entry lists the key with write, and, once the key has ended, only when it is dated at or
+// before its until. No access key writes `profile`, so that is refused here.
 
 import { sha256 } from '@noble/hashes/sha2.js'
 import { type Point, checkBytes, packSignature, publicKeyOf, signBytes, unpackSignature } from '@foundationforest/keys/curve'

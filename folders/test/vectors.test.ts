@@ -11,14 +11,16 @@ import { mainKey } from '@foundationforest/keys'
 import { stampFromJson, stampSigned } from '@foundationforest/proofs'
 import { unpackPublicKey, unpackSignature, verifySignature } from '@zk-kit/eddsa-poseidon'
 import { b64u, base58, hex } from '../src/bytes.ts'
-import { decodeEntry } from '../src/entry.ts'
+import { checkEntry, decodeEntry } from '../src/entry.ts'
+import { viewFolder } from '../src/view.ts'
+import { entry } from '../src/write.ts'
 import { decodeInbox } from '../src/inbox.ts'
 import { openInbox, openLocked } from '../src/locked.ts'
-import { KEYS, SEED } from './fixtures.ts'
-import { IDS, LABEL, LETTERS, NOTE, vectors } from './vectors.ts'
+import { KEYS, SEED, asAccess } from './fixtures.ts'
+import { ENDED, IDS, LABEL, LETTERS, NOTE, vectors } from './vectors.ts'
 
 const pinned = JSON.parse(readFileSync(new URL('./vectors.json', import.meta.url), 'utf8'))
-const ENTRIES = ['profileEntry', 'offer', 'offerByKey', 'photo', 'deleted', 'note'] as const
+const ENTRIES = ['profileEntry', 'offer', 'offerByKey', 'photo', 'deleted', 'note', 'ended'] as const
 const [seller, buyer, profilesFolder] = KEYS.mainKeys
 
 /** A packed point's 32 bytes, little-endian, as the number zk-kit takes. */
@@ -83,6 +85,17 @@ test("the inbox entry's id is SHA-256 of its text; its message, locked inside, o
   const input = hex.decode(v.message.signingInputHex)
   isWireWithoutSig(input, v.message.wire)
   assert.ok(zkChecks(input, message.from, message.sig))
+})
+
+test('the ended profile entry ends the access key at its own time: offerByKey, dated before, still counts, and what the key dates after does not', () => {
+  const { entry: ended, id } = decodeEntry(pinned.ended.wire)
+  assert.equal(ended.time, ENDED)
+  assert.deepEqual(ended.body!.keys, [{ key: KEYS.accessKey.address, open: KEYS.accessKey.opening.openKey, can: ['read-inbox', 'write'], until: ENDED }])
+  const after = checkEntry(entry(asAccess, 'offer/later', { about: 'after the end' }, ENDED + 1))
+  const view = viewFolder(pinned.profile, [decodeEntry(pinned.profileEntry.wire), decodeEntry(pinned.offerByKey.wire), { entry: ended, id }, after], ENDED + 60_000)
+  assert.equal(view.current.get('profile')!.id, pinned.ended.id)
+  assert.equal(view.current.get('offer/physics')!.id, pinned.offerByKey.id)
+  assert.equal(view.ignored.get(after.id), 'unlisted')
 })
 
 test("the note sits at a random path and names, inside, the key it is about; it opens with tutoring/seller's open key alone", async () => {
