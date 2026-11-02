@@ -7,7 +7,7 @@ Forest lets people offer, deal with and review each other through profiles they 
 - **Your seed.** 32 secret bytes that stay on your devices. Every key you have but an access key comes from it.
 - **Your profiles.** One for each role you play, such as `tutoring/tutor`. Each has a main key that signs what it says. Nothing public links one of your profiles to another.
 - **Your folder.** Each profile has one, kept on hosts you choose: its profile entry, its posts and reviews, its photos, and an inbox where others leave you locked messages. Entries can be locked so that only the keys you choose can open them.
-- **Access keys.** Keys a profile hands out, to your AI for example, each allowed only what you switch on: read, read the inbox, write, send messages. Remove one and it stops counting everywhere at once.
+- **Access keys.** Keys a profile hands out, to your AI for example, each allowed only what you switch on: read, read the inbox, write, send messages. End one and it stops writing everywhere at once; what it wrote stays.
 - **Stamps.** A verifier checks something about you, most often that you are one real person, and signs a stamp to your seed. Your profiles can then prove they come from a stamped seed, without saying who you are or which other profiles are yours.
 
 ## The folders

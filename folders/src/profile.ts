@@ -5,7 +5,9 @@
 //
 // `hosts` says where the folder lives; `openKey`, the main key's opening half, is what envelopes
 // are locked to, and a folder whose profile entry has one takes inbox entries; `keys` lists the
-// access keys the profile hands out, each with what it can do. A market adds its own fields beside
+// access keys the profile hands out, each with what it can do, and `until`, when it ended. An ended
+// key writes nothing more a host takes, is locked to nothing new and signs no message that counts;
+// what it wrote at or before `until` still counts (view.ts). A market adds its own fields beside
 // these. A listed key with a field this code does not know counts for nothing, and a `can` it does
 // not know grants nothing: a field it skipped could be a limit, and refusing the whole profile
 // entry instead would stop a person updating it.
@@ -23,10 +25,13 @@ export const OPEN_KEY = /^age1pq1[02-9ac-hj-np-z]{1952}$/
 /** What a listed access key can do: these four, and nothing more. */
 export const CAN = ['read-inbox', 'read', 'write', 'message'] as const
 export type Can = (typeof CAN)[number]
-/** An access key a profile entry lists: its address, its open key when it can read, and what it can do. */
-export type ListedKey = { key: string; open?: string; can: string[] }
+/**
+ * An access key a profile entry lists: its address, its open key when it can read and has not
+ * ended, what it can do, and `until`, whole ms since 1970, when it ended.
+ */
+export type ListedKey = { key: string; open?: string; can: string[]; until?: number }
 
-const KEY_FIELDS = new Set(['key', 'open', 'can'])
+const KEY_FIELDS = new Set(['key', 'open', 'can', 'until'])
 const isObject = (v: unknown): v is { [key: string]: unknown } => v !== null && typeof v === 'object' && !Array.isArray(v)
 const reads = (can: unknown[]) => can.includes('read') || can.includes('read-inbox')
 
@@ -46,8 +51,9 @@ export function normalizeOrigin(url: string): string | null {
 
 /**
  * The fields of a profile entry's body a host reads: `hosts`, 1 to MAX_HOSTS distinct origins;
- * `openKey`, an open key; `keys`, each with a usable address listed once, `can` a list of text, and
- * `open`, an open key, whenever it can read or read-inbox. Throws FolderError with code `profile`.
+ * `openKey`, an open key; `keys`, each with a usable address listed once, `can` a list of text,
+ * `until`, if any, whole ms since 1970, and `open`, an open key, whenever it can read or read-inbox
+ * and has no `until`. Throws FolderError with code `profile`.
  * The rest is a reader's to check (schemas/profile.json, the proof checks).
  */
 export function checkProfileBody(body: Body): void {
@@ -65,8 +71,9 @@ export function checkProfileBody(body: Body): void {
     if (seen.has(item.key as string)) fail('profile', 'a key is listed once')
     seen.add(item.key as string)
     if (!Array.isArray(item.can) || item.can.some((c) => typeof c !== 'string')) fail('profile', 'can is a list of what the key can do')
+    if ('until' in item && (!Number.isSafeInteger(item.until) || (item.until as number) < 0)) fail('profile', 'until is whole milliseconds since 1970')
     if ('open' in item && (typeof item.open !== 'string' || !OPEN_KEY.test(item.open))) fail('profile', 'open is an open key, age1pq1…')
-    if (reads(item.can) && !('open' in item)) fail('profile', 'a key that can read gives its open key')
+    if (reads(item.can) && !('until' in item) && !('open' in item)) fail('profile', 'a key that can read gives its open key')
   }
 }
 
@@ -82,21 +89,31 @@ export function openKeyOf(body: Body | null | undefined): string | null {
   return typeof openKey === 'string' && OPEN_KEY.test(openKey) ? openKey : null
 }
 
-/** The access keys a profile entry's body lists that count: each whose every field this code knows. */
+/**
+ * The access keys a profile entry's body lists that count, ended ones among them: each whose every
+ * field this code knows.
+ */
 export function keysOf(body: Body | null | undefined): ListedKey[] {
   const keys = body?.keys
   if (!Array.isArray(keys)) return []
-  return keys.filter((k): k is ListedKey => isObject(k) && Object.keys(k).every((f) => KEY_FIELDS.has(f)) && typeof k.key === 'string' && Array.isArray(k.can))
+  return keys.filter(
+    (k): k is ListedKey => isObject(k) && Object.keys(k).every((f) => KEY_FIELDS.has(f)) && typeof k.key === 'string' && Array.isArray(k.can) && (!('until' in k) || Number.isSafeInteger(k.until)),
+  )
 }
 
-/** Whether a profile entry's body lists `address` as an access key that can do `can`. */
+/**
+ * Whether a profile entry's body lists `address` as an access key that can do `can`, and it has not
+ * ended: a host takes nothing an ended key signs, whatever date it carries, and no message an ended
+ * key signs counts, since nothing stands in front of a message to refuse the date its key wrote.
+ */
 export function canDo(body: Body | null | undefined, address: string, can: Can): boolean {
-  return keysOf(body).some((k) => k.key === address && k.can.includes(can))
+  return keysOf(body).some((k) => k.key === address && k.can.includes(can) && k.until === undefined)
 }
 
 /**
  * The open keys a locked entry in this folder is locked to: the main key's, then each listed key's
- * that can read. Throws FolderError `locked` when the profile entry gives no open key.
+ * that can read and has not ended. Throws FolderError `locked` when the profile entry gives no open
+ * key.
  */
 export function lockKeysOf(body: Body | null | undefined): string[] {
   return opening(body, 'read', 'locked', 'the profile entry gives no open key to lock to')
@@ -104,8 +121,8 @@ export function lockKeysOf(body: Body | null | undefined): string[] {
 
 /**
  * The open keys an inbox entry to this folder is locked to: the main key's, then each listed key's
- * that can read-inbox. Throws FolderError `no_inbox` when the profile entry gives no open key, so
- * the folder takes no inbox entries.
+ * that can read-inbox and has not ended. Throws FolderError `no_inbox` when the profile entry gives
+ * no open key, so the folder takes no inbox entries.
  */
 export function inboxLockKeysOf(body: Body | null | undefined): string[] {
   return opening(body, 'read-inbox', 'no_inbox', 'the profile entry gives no open key: the folder takes no inbox entries')
@@ -114,6 +131,6 @@ export function inboxLockKeysOf(body: Body | null | undefined): string[] {
 function opening(body: Body | null | undefined, can: Can, code: string, why: string): string[] {
   const openKey = openKeyOf(body)
   if (!openKey) fail(code, why)
-  const keys = keysOf(body).filter((k) => k.can.includes(can) && typeof k.open === 'string' && OPEN_KEY.test(k.open))
+  const keys = keysOf(body).filter((k) => k.can.includes(can) && k.until === undefined && typeof k.open === 'string' && OPEN_KEY.test(k.open))
   return [...new Set([openKey, ...keys.map((k) => k.open!)])]
 }

@@ -68,6 +68,13 @@ export function stampText(): string {
   return JSON.stringify(stampToJson(signStamp(key, { stampNumber, facts: fieldHash('forest example facts', verifier), verifierName: verifier, score: 0.97 })))
 }
 
+/** The profile entry that ends keys/'s access key, seven minutes in: its row, with until, the entry's own time. */
+export const ENDED = TIME + 420_000
+export const endedBody = () => {
+  const body = profileBody()
+  return { ...body, keys: body.keys.map((k) => ({ ...k, until: ENDED })) }
+}
+
 /** The inbox entry's message: from tutoring/buyer to tutoring/seller, three minutes in. */
 export const inboxMessage = () => signMessage(aliceBuyer, alice.address, MESSAGE, TIME + 180_000, 'https://host-b.example')
 
@@ -80,7 +87,7 @@ export async function vectors() {
   const inbox: InboxEntry = { v: 1, to: alice.address, private: ENVELOPES.inbox }
   const stamp = stampText()
   return {
-    about: "Forest folders vectors. The folder is keys/'s tutoring/seller profile's, from its test seed: its profile entry's openKey is that profile's main key's opening half, its pay field its pay addresses, and its keys field lists keys/'s access key, from 32 bytes of 0x2b then 32 of 0x2c, able to read-inbox and write, all pinned in keys/test/vectors.json. Every signature is EdDSA-Poseidon on Baby Jubjub over SHA-256 of the signed bytes, shifted right one byte, by the main key or the access key named; the signed bytes are the canonical text of what is signed, without its sig, and nothing else. offerByKey is the access key's; photo is an entry whose body is its file, the 26 letters a to z as text/plain. The inbox entry holds a message from keys/'s tutoring/buyer profile, from the same seed, to tutoring/seller, locked to tutoring/seller's open key and the access key's. note is the main key's note about the access key, at a random path, locked to the main key alone, naming the key it is about. profilesFolder is the seed's Profiles folder, the empty label's: its profile entry, hosts alone; its entry for tutoring/seller; and its entry for one stamp, the example verifier's, holding the stamp's JSON as text (a field the verifier added, a fraction, among it), each at a random path and locked to its own opening half. Locked bodies and random ids are made once and pinned as made, in envelopes.json and in test/vectors.ts, since age's encryption and the ids are random.",
+    about: "Forest folders vectors. The folder is keys/'s tutoring/seller profile's, from its test seed: its profile entry's openKey is that profile's main key's opening half, its pay field its pay addresses, and its keys field lists keys/'s access key, from 32 bytes of 0x2b then 32 of 0x2c, able to read-inbox and write, all pinned in keys/test/vectors.json. Every signature is EdDSA-Poseidon on Baby Jubjub over SHA-256 of the signed bytes, shifted right one byte, by the main key or the access key named; the signed bytes are the canonical text of what is signed, without its sig, and nothing else. offerByKey is the access key's; photo is an entry whose body is its file, the 26 letters a to z as text/plain. The inbox entry holds a message from keys/'s tutoring/buyer profile, from the same seed, to tutoring/seller, locked to tutoring/seller's open key and the access key's. note is the main key's note about the access key, at a random path, locked to the main key alone, naming the key it is about. profilesFolder is the seed's Profiles folder, the empty label's: its profile entry, hosts alone; its entry for tutoring/seller; and its entry for one stamp, the example verifier's, holding the stamp's JSON as text (a field the verifier added, a fraction, among it), each at a random path and locked to its own opening half. ended is a later profile entry that ends the access key: its row, with until, that entry's own time; offerByKey, dated before, still counts. Locked bodies and random ids are made once and pinned as made, in envelopes.json and in test/vectors.ts, since age's encryption and the ids are random.",
     profile: alice.address,
     accessKey: access.address,
     profileEntry: describe(entry(alice, 'profile', profileBody(), TIME)),
@@ -90,6 +97,7 @@ export async function vectors() {
     deleted: describe(entry(alice, 'offer/maths', null, TIME + 120_000)),
     inbox: { wire: canonical(inbox), id: inboxId(inbox), message: describeMessage(inboxMessage()) },
     note: describe(entry(alice, `key/${IDS.note}`, { private: ENVELOPES.note }, TIME + 240_000)),
+    ended: describe(entry(alice, 'profile', endedBody(), ENDED)),
     profilesFolder: {
       profile: profiles.address,
       profileEntry: describe(entry(profiles, 'profile', { hosts: ['https://host-a.example'] }, TIME)),

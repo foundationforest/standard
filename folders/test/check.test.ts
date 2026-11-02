@@ -148,7 +148,7 @@ describe('the host check', () => {
     }
   })
 
-  const broken: Array<[string, (h: TestHost) => void, string]> = [
+  const broken: Array<[string, (h: TestHost) => void, string | string[]]> = [
     ['serves entries out of the order taken', (h) => {
       const read = h.read.bind(h)
       h.read = (options) => {
@@ -156,10 +156,11 @@ describe('the host check', () => {
         return { ...out, lines: out.lines.reverse() }
       }
     }, 'takes a folder’s profile entry and entries, and serves them, one folder’s and everyone’s, in the order taken'],
+    // It fails two: an ended key's entry stays current only while the host refuses what is older.
     ['takes an older version at a path', (h) => {
       const accept = h.accept.bind(h)
       h.accept = async (lines) => (await accept(lines)).map((r) => (r.error === 'older' ? { i: r.i, id: r.id, ok: true } : r))
-    }, 'keeps the newest at a path: refuses an older version, and takes the same entry again'],
+    }, ['keeps the newest at a path: refuses an older version, and takes the same entry again', 'takes an entry by an access key the profile entry lists with write, refuses one it does not, and once the key has ended, keeps what it wrote and takes nothing more it signs']],
     ['refuses a newer profile entry for a folder it holds', (h) => {
       const accept = h.accept.bind(h)
       let joined = new Set<string>()
@@ -177,7 +178,17 @@ describe('the host check', () => {
     ['takes an entry by any access key', (h) => {
       const accept = h.accept.bind(h)
       h.accept = async (lines) => (await accept(lines)).map((r) => (r.error === 'unlisted' ? { i: r.i, id: r.id, ok: true } : r))
-    }, 'takes an entry by an access key the profile entry lists with write, refuses one it does not, and stops counting it once the key is removed'],
+    }, 'takes an entry by an access key the profile entry lists with write, refuses one it does not, and once the key has ended, keeps what it wrote and takes nothing more it signs'],
+    ['takes an entry an ended key dated before it ended, as a reader counts it', (h) => {
+      const accept = h.accept.bind(h)
+      h.accept = async (lines) =>
+        (await accept(lines)).map((r, i) => {
+          if (r.error !== 'unlisted') return r
+          const e = JSON.parse(lines[i]!)
+          const ended = h.view(e.profile).keys.some((k) => k.key === e.key && k.can.includes('write') && k.until !== undefined && e.time <= k.until)
+          return ended ? { i: r.i, id: r.id, ok: true } : r
+        })
+    }, 'takes an entry by an access key the profile entry lists with write, refuses one it does not, and once the key has ended, keeps what it wrote and takes nothing more it signs'],
     ['takes an inbox entry for a folder with no openKey', (h) => {
       const leave = h.leave.bind(h)
       h.leave = async (lines) => (await leave(lines)).map((r) => (r.error === 'no_inbox' ? { i: r.i, id: r.id, ok: true } : r))
@@ -197,12 +208,12 @@ describe('the host check', () => {
       }
     }, 'takes a file’s bytes only while a current entry names them, serves them with their type, and refuses bytes that do not match'],
   ]
-  for (const [what, breakIt, check] of broken) {
+  for (const [what, breakIt, checks] of broken) {
     test(`a host that ${what} fails the check for it`, async () => {
       const h = await startHost()
       breakIt(h)
       try {
-        assert.deepEqual(failed(await checkHost(h.url)), [check])
+        assert.deepEqual(failed(await checkHost(h.url)), [checks].flat())
       } finally {
         await h.close()
       }
