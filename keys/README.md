@@ -145,7 +145,10 @@ The person decides what to do with their keys. An app that holds them should kno
 
 1. The seed and the main keys stay on the person's own devices, behind each one's unlock. The main
    way is a passkey, the device's own unlock, so there is no password to keep; anyone can use an OS
-   keychain or a hardware key instead. The recipe is the same whichever is used.
+   keychain or a hardware key instead. The recipe is the same whichever is used. Anyone can open
+   one seed from several passkeys: the secret of each further one is a backup, a seed of its own
+   whose Profiles folder holds the first, locked ([folders](../folders/README.md#the-seed-entry)).
+   That copy of the seed sits on hosts, and whoever holds any one of the passkeys holds the seed.
 2. Access keys are made to be handed out. An AI app, a service or another person acts for a profile
    with an access key the profile lists, never with the seed or a main key.
 3. Verifications and reputation proofs are made on the device, from the seed, never delegated.

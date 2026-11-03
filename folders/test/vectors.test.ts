@@ -7,7 +7,7 @@ import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
-import { mainKey } from '@foundationforest/keys'
+import { mainKey, openingHalf } from '@foundationforest/keys'
 import { stampFromJson, stampSigned } from '@foundationforest/proofs'
 import { unpackPublicKey, unpackSignature, verifySignature } from '@zk-kit/eddsa-poseidon'
 import { b64u, base58, hex } from '../src/bytes.ts'
@@ -15,7 +15,7 @@ import { checkEntry, decodeEntry } from '../src/entry.ts'
 import { viewFolder } from '../src/view.ts'
 import { entry } from '../src/write.ts'
 import { decodeInbox } from '../src/inbox.ts'
-import { openInbox, openLocked } from '../src/locked.ts'
+import { SEED_PATH, lockCount, openInbox, openLocked, seedOf } from '../src/locked.ts'
 import { KEYS, SEED, asAccess } from './fixtures.ts'
 import { ENDED, IDS, LABEL, LETTERS, NOTE, vectors } from './vectors.ts'
 
@@ -132,4 +132,26 @@ test("the Profiles folder is keys/'s pinned empty label's: its profile entry hol
   assert.equal(stampSigned(back), true)
   assert.equal(back.verifierName, 'verifier-a.example')
   assert.equal(back.score, 0.97)
+})
+
+test("the seed entry: a backup of the test seed, whose Profiles folder's profile entry holds only hosts, and at seed the test seed, locked to that folder's own open key alone", async () => {
+  const v = pinned.seedEntry
+  const backup = await mainKey(hex.decode(v.seed), '')
+  assert.equal(backup.address, v.profile)
+  for (const name of ['profileEntry', 'entry'] as const) {
+    const { entry, id } = decodeEntry(v[name].wire)
+    assert.equal(id, v[name].id)
+    assert.equal(createHash('sha256').update(hex.decode(v[name].signingInputHex)).digest('hex'), id)
+    assert.ok(zkChecks(hex.decode(v[name].signingInputHex), v.profile, entry.sig), name)
+  }
+  assert.deepEqual(decodeEntry(v.profileEntry.wire).entry.body, { hosts: ['https://host-a.example'] })
+  const { entry } = decodeEntry(v.entry.wire)
+  assert.equal(entry.path, SEED_PATH)
+  assert.equal(SEED_PATH, 'seed')
+  const { identity } = await openingHalf(backup.secret)
+  // The seed in base64url without padding, as node spells it too.
+  assert.deepEqual(await openLocked(entry.body!, identity), { seed: Buffer.from(SEED).toString('base64url') })
+  assert.equal(lockCount(entry.body as { private: string }), 1)
+  assert.deepEqual(await seedOf(entry.body, identity), SEED)
+  await assert.rejects(openLocked(entry.body!, profilesFolder.opening.identity), "the test seed's own Profiles folder cannot open it")
 })

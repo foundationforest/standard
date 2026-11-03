@@ -1,7 +1,8 @@
 // The spec's test vectors. The keys are keys/'s: its test seed (bytes 00 01 … 1f), its
 // tutoring/seller and tutoring/buyer profiles, their opening halves and pay addresses, the empty
 // label's main key, the Profiles folder's, and its access key, pinned in keys/test/vectors.json and
-// not repeated here. EdDSA-Poseidon here is deterministic, and the locked bodies are pinned as made,
+// not repeated here; and a backup of the test seed, bytes 20 21 … 3f, whose Profiles folder's key
+// keys/'s mainKey makes from it. EdDSA-Poseidon here is deterministic, and the locked bodies are pinned as made,
 // in envelopes.json, so these never change unless the standard does. `node test/vectors.ts` prints
 // them; vectors.test.ts checks them against test/vectors.json, each with a second implementation.
 
@@ -14,8 +15,9 @@ import { hex } from '../src/bytes.ts'
 import { canonical } from '../src/canonical.ts'
 import { type SignedEntry, entryId, signingInput, unsignedOf } from '../src/entry.ts'
 import { type InboxEntry, type SignedMessage, inboxId, messageSigningInput, signMessage } from '../src/inbox.ts'
+import { SEED_PATH } from '../src/locked.ts'
 import { entry } from '../src/write.ts'
-import { KEYS, SEED, access, alice, aliceBuyer, aliceOpening } from './fixtures.ts'
+import { BACKUP_SEED, KEYS, SEED, access, alice, aliceBuyer, aliceOpening } from './fixtures.ts'
 
 export const TIME = 1_790_000_000_000 // 2026-09-21T13:33:20Z
 /** The locked bodies, made once with lock() and pinned as made: age's encryption is random. */
@@ -78,8 +80,12 @@ export const endedBody = () => {
 /** The inbox entry's message: from tutoring/buyer to tutoring/seller, three minutes in. */
 export const inboxMessage = () => signMessage(aliceBuyer, alice.address, MESSAGE, TIME + 180_000, 'https://host-b.example')
 
+/** The backup's profile entry and seed entry, eight minutes in. */
+export const BACKED_UP = TIME + 480_000
+
 export async function vectors() {
   const profiles = await mainKey(SEED, '')
+  const backup = await mainKey(BACKUP_SEED, '')
   // An offer's fields are its market's, and the standard names none (README.md, Folders): `about`
   // stands in for them.
   const offer = { about: 'One hour of maths, online.' }
@@ -87,7 +93,7 @@ export async function vectors() {
   const inbox: InboxEntry = { v: 1, to: alice.address, private: ENVELOPES.inbox }
   const stamp = stampText()
   return {
-    about: "Forest folders vectors. The folder is keys/'s tutoring/seller profile's, from its test seed: its profile entry's openKey is that profile's main key's opening half, its pay field its pay addresses, and its keys field lists keys/'s access key, from 32 bytes of 0x2b then 32 of 0x2c, able to read-inbox and write, all pinned in keys/test/vectors.json. Every signature is EdDSA-Poseidon on Baby Jubjub over SHA-256 of the signed bytes, shifted right one byte, by the main key or the access key named; the signed bytes are the canonical text of what is signed, without its sig, and nothing else. offerByKey is the access key's; photo is an entry whose body is its file, the 26 letters a to z as text/plain. The inbox entry holds a message from keys/'s tutoring/buyer profile, from the same seed, to tutoring/seller, locked to tutoring/seller's open key and the access key's. note is the main key's note about the access key, at a random path, locked to the main key alone, naming the key it is about. profilesFolder is the seed's Profiles folder, the empty label's: its profile entry, hosts alone; its entry for tutoring/seller; and its entry for one stamp, the example verifier's, holding the stamp's JSON as text (a field the verifier added, a fraction, among it), each at a random path and locked to its own opening half. ended is a later profile entry that ends the access key: its row, with until, that entry's own time; offerByKey, dated before, still counts. Locked bodies and random ids are made once and pinned as made, in envelopes.json and in test/vectors.ts, since age's encryption and the ids are random.",
+    about: "Forest folders vectors. The folder is keys/'s tutoring/seller profile's, from its test seed: its profile entry's openKey is that profile's main key's opening half, its pay field its pay addresses, and its keys field lists keys/'s access key, from 32 bytes of 0x2b then 32 of 0x2c, able to read-inbox and write, all pinned in keys/test/vectors.json. Every signature is EdDSA-Poseidon on Baby Jubjub over SHA-256 of the signed bytes, shifted right one byte, by the main key or the access key named; the signed bytes are the canonical text of what is signed, without its sig, and nothing else. offerByKey is the access key's; photo is an entry whose body is its file, the 26 letters a to z as text/plain. The inbox entry holds a message from keys/'s tutoring/buyer profile, from the same seed, to tutoring/seller, locked to tutoring/seller's open key and the access key's. note is the main key's note about the access key, at a random path, locked to the main key alone, naming the key it is about. profilesFolder is the seed's Profiles folder, the empty label's: its profile entry, hosts alone; its entry for tutoring/seller; and its entry for one stamp, the example verifier's, holding the stamp's JSON as text (a field the verifier added, a fraction, among it), each at a random path and locked to its own opening half. ended is a later profile entry that ends the access key: its row, with until, that entry's own time; offerByKey, dated before, still counts. seedEntry is a backup of the test seed: a second seed, its bytes in seed, whose Profiles folder's profile entry holds hosts alone, and whose seed entry, at the path seed, holds the test seed's 32 bytes in base64url without padding, { seed: <text> }, locked to that folder's own opening half alone. Locked bodies and random ids are made once and pinned as made, in envelopes.json and in test/vectors.ts, since age's encryption and the ids are random.",
     profile: alice.address,
     accessKey: access.address,
     profileEntry: describe(entry(alice, 'profile', profileBody(), TIME)),
@@ -103,6 +109,12 @@ export async function vectors() {
       profileEntry: describe(entry(profiles, 'profile', { hosts: ['https://host-a.example'] }, TIME)),
       label: describe(entry(profiles, `label/${IDS.label}`, { private: ENVELOPES.label }, TIME + 300_000)),
       stamp: { text: stamp, ...describe(entry(profiles, `stamp/${IDS.stamp}`, { private: ENVELOPES.stamp }, TIME + 360_000)) },
+    },
+    seedEntry: {
+      seed: hex.encode(BACKUP_SEED),
+      profile: backup.address,
+      profileEntry: describe(entry(backup, 'profile', { hosts: ['https://host-a.example'] }, BACKED_UP)),
+      entry: describe(entry(backup, SEED_PATH, { private: ENVELOPES.seed }, BACKED_UP)),
     },
   }
 }

@@ -13,6 +13,8 @@ export const KEYS = JSON.parse(readFileSync(new URL('../../keys/test/vectors.jso
 export const SEED = hex.decode(KEYS.seed)
 /** A second person. */
 export const OTHER_SEED = new Uint8Array(32).fill(7)
+/** A backup of keys/'s test seed, bytes 20 21 … 3f: a second seed whose Profiles folder holds SEED in its seed entry. */
+export const BACKUP_SEED = Uint8Array.from({ length: 32 }, (_, i) => 0x20 + i)
 
 export const alice = await mainKey(SEED, 'tutoring/seller')
 export const aliceBuyer = await mainKey(SEED, 'tutoring/buyer') // the same person, another label

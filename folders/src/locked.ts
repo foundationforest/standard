@@ -16,6 +16,10 @@
 // An inbox entry's `private` is one of these envelopes, holding one signed message, locked to the
 // open keys the folder's profile entry gives for its inbox (inboxLockKeysOf). inboxEntry() signs and
 // locks one; openInbox() opens one and checks its message.
+//
+// A Profiles folder's seed entry, at SEED_PATH, is one of these envelopes too, locked to that
+// folder's own opening half alone and holding the seed its own seed stands for; seedOf() opens one
+// and checks it.
 
 import { Decrypter, Encrypter } from 'age-encryption'
 import { b64u } from './bytes.ts'
@@ -55,6 +59,34 @@ export function lockCount(body: { private: string }): number {
   const bytes = b64u.decode(body.private)
   const header = new TextDecoder().decode(bytes.subarray(0, Math.min(bytes.length, 64 * 1024))).split('\n---')[0] ?? ''
   return header.split('\n').filter((line) => line.startsWith('-> ')).length
+}
+
+/** A Profiles folder's seed entry's path: one path, so a folder holds at most one. */
+export const SEED_PATH = 'seed'
+
+/**
+ * The seed a seed entry's body holds, opened with the identity of its folder's own opening half;
+ * null when the body fails a check: it is locked to one key, opens with `identity` (so it is locked
+ * to that alone), and holds `seed` and nothing else, 32 bytes in base64url without padding, the one
+ * spelling `b64u` decodes. An app passes the current entry at SEED_PATH, or a body an app keeps the
+ * same way. Who signed is not checked: a Profiles folder lists no access keys, so only its main
+ * key's entries count there.
+ */
+export async function seedOf(body: Body | null | undefined, identity: string): Promise<Uint8Array | null> {
+  if (!isLocked(body) || lockCount(body) !== 1) return null
+  let held: Body
+  try {
+    held = await openLocked(body, identity)
+  } catch {
+    return null
+  }
+  if (Object.keys(held).length !== 1 || typeof held.seed !== 'string') return null
+  try {
+    const seed = b64u.decode(held.seed)
+    return seed.length === 32 ? seed : null
+  } catch {
+    return null
+  }
 }
 
 /**

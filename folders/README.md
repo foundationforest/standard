@@ -248,8 +248,8 @@ device needs only the seed. It is a folder like any other, the empty label's
 
 - **Its profile entry holds only `hosts`**: no market, no role, no `openKey`, so no inbox and no
   access keys.
-- **Every entry in it is locked to its own opening half**, which only the person's devices mix, at
-  a random id, so the paths name nothing:
+- **Every entry in it is locked to its own opening half**, which only the person's devices mix.
+  These sit at a random id, so the paths name nothing:
   - one for each profile, at `label/<id>`: `{ "label": <label>, "time": <ms since 1970> }`, its
     label and when it was made;
   - one for each stamp, at `stamp/<id>`: `{ "stamp": <text> }`, the stamp's JSON
@@ -261,6 +261,35 @@ device needs only the seed. It is a folder like any other, the empty label's
   the labels in the markets directory ([markets](https://github.com/foundationforest/markets)) and
   ask a host whether that folder exists; a label outside the directory is found that way only by
   whoever remembers it.
+
+### The seed entry
+
+A **backup** is a second seed whose Profiles folder holds the first in its seed entry, so that
+whatever opens the second opens the first
+([keys](../keys/README.md#what-an-app-that-holds-keys-should-know)). The seed entry is at the single
+path `seed`, so a folder holds at most one, and it is locked to that folder's own opening half
+alone:
+
+```
+{ "seed": <base64url> }
+```
+
+- `seed` is the 32 bytes of the seed it stands for, in base64url without padding, and the body
+  holds nothing else.
+- **An app that finds one uses the seed it holds instead,** and finds that seed's profiles as usual.
+  It checks (`seedOf`) that the current entry at `seed` is locked to one key, opens with the
+  folder's own opening half, and holds `seed` and nothing else, 32 bytes in that one spelling; one
+  that fails names no seed. It follows one seed entry, never a second, so none loops.
+- **Nothing moves in the seed it holds:** its folders stay as they are.
+- **Nothing in the folders links the two:** the entry is locked, and the backup's address comes from
+  the backup seed.
+- **Ending a backup is deleting its seed entry,** which only the backup's own Profiles folder key
+  signs.
+- An app may pay for a backup's first write as for any folder's (Payment).
+- An app may keep, in the first seed's Profiles folder, one entry for each backup it made, at
+  `backup/<id>`, the id random: the backup seed, `{ "seed": <base64url> }`, locked to that folder's
+  own opening half alone. An app holding the first seed then lists its backups, opening each as a
+  seed entry (`seedOf`), and ends one by deleting its seed entry, then that entry.
 
 ### Proofs
 
@@ -468,6 +497,10 @@ second SHA-256 and a second EdDSA-Poseidon, and checks both proofs in
 - No forward secrecy: an opening half that leaks opens every envelope locked to it that a host or a
   copy still holds.
 - A host's size bounds an envelope: each key it is locked to adds about 2 KB.
+- A payment links a backup's folder to the seed it stands for only when it comes straight from a
+  folder or pay address of that seed; credits the host signed without seeing them link nothing.
+- Ending a backup takes back nothing: whoever opened its seed entry has the seed, and so does anyone
+  who opens a copy a host still keeps.
 
 ## FAQ
 
