@@ -1,18 +1,20 @@
 // Locked entries: a body only chosen keys open, the main key's opening half among them. Hosts
 // check and store them like any entry, and read none. Notes about access keys and the Profiles
-// folder's entries are locked entries at random paths.
+// folder's entries are locked entries at random paths; a backup's seed entry, at one path.
 
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 import { accessKey, mainKey, openingHalf } from '@foundationforest/keys'
 import { stampFromJson, stampToJson } from '@foundationforest/proofs'
 import { bech32 } from '@scure/base'
+import { b64u, hex } from '../src/bytes.ts'
 import { canonical } from '../src/canonical.ts'
 import { readAll, readFolder, write } from '../src/client.ts'
-import { isLocked, lock, lockCount, openLocked } from '../src/locked.ts'
+import type { Body } from '../src/entry.ts'
+import { SEED_PATH, isLocked, lock, lockCount, openLocked, seedOf } from '../src/locked.ts'
 import { lockKeysOf } from '../src/profile.ts'
 import { entry } from '../src/write.ts'
-import { KEYS, SEED, T0, access, alice, aliceBuyerOpening, aliceOpening, asAccess, bobOpening, listed, profileBody } from './fixtures.ts'
+import { BACKUP_SEED, KEYS, MINUTE, SEED, T0, access, alice, aliceBuyerOpening, aliceOpening, asAccess, bobOpening, listed, profileBody } from './fixtures.ts'
 import { startHost } from './helpers.ts'
 
 const strangerOpening = await openingHalf(new Uint8Array(32).fill(3))
@@ -185,5 +187,102 @@ describe('notes and the Profiles folder: locked entries at random paths', () => 
     } finally {
       await host.close()
     }
+  })
+})
+
+const first = await mainKey(SEED, '')
+const firstOpening = await openingHalf(first.secret)
+const backup = await mainKey(BACKUP_SEED, '')
+const backupOpening = await openingHalf(backup.secret)
+/** A seed entry's body: the seed in base64url without padding, locked to the backup folder's own open key alone. */
+const seedBody = (seed: Uint8Array) => lock({ seed: b64u.encode(seed) }, [backupOpening.openKey])
+
+describe('the seed entry: a backup, a second seed whose Profiles folder holds the first', () => {
+
+  test("a device holding only the backup seed reaches the first seed and finds its profiles as usual; the first seed's folder is unchanged, and nothing in the backup's names it", async () => {
+    const host = await startHost({ now: () => T0 + MINUTE })
+    try {
+      const label = { label: 'tutoring/seller', time: T0 }
+      await write([host.url], [entry(first, 'profile', { hosts: [host.url] }, T0), entry(first, `label/${randomId()}`, await lock(label, [firstOpening.openKey]), T0)])
+      const before = (await readAll(host.url, { profile: first.address })).entries.map((c) => c.id)
+      await write([host.url], [entry(backup, 'profile', { hosts: [host.url] }, T0 + MINUTE), entry(backup, SEED_PATH, await seedBody(SEED), T0 + MINUTE)])
+      assert.deepEqual((await readAll(host.url, { profile: first.address })).entries.map((c) => c.id), before, 'nothing moves in the first seed')
+
+      // A new device, holding only the backup seed: its Profiles folder's seed entry gives the first.
+      const again = await mainKey(BACKUP_SEED, '')
+      const { identity } = await openingHalf(again.secret)
+      const folder = await readFolder([host.url], again.address, T0 + MINUTE)
+      const seed = await seedOf(folder.current.get(SEED_PATH)?.entry.body, identity)
+      assert.deepEqual(seed, SEED)
+      const profiles = await mainKey(seed!, '')
+      const opening = await openingHalf(profiles.secret)
+      const theirs = await readFolder([host.url], profiles.address, T0 + MINUTE)
+      const labels = await Promise.all([...theirs.current].filter(([path]) => path.startsWith('label/')).map(([, c]) => openLocked(c.entry.body!, opening.identity)))
+      assert.deepEqual(labels, [label])
+
+      // Nothing in the backup's folder names the first: not its seed, in any spelling, nor an address.
+      const held = (await readAll(host.url, { profile: again.address })).entries.map((c) => canonical(c.entry)).join('\n')
+      for (const named of [b64u.encode(SEED), hex.encode(SEED), first.address, alice.address]) assert.ok(!held.includes(named))
+      // Only the backup folder's own opening half opens it.
+      for (const other of [firstOpening.identity, aliceOpening.identity, access.identity]) assert.equal(await seedOf(folder.current.get(SEED_PATH)!.entry.body, other), null)
+    } finally {
+      await host.close()
+    }
+  })
+
+  test("an app may keep each backup it made in the first seed's Profiles folder, so the first passkey lists and ends them; ending takes back nothing a host still keeps", async () => {
+    const host = await startHost({ now: () => T0 + MINUTE })
+    try {
+      const kept = `backup/${randomId()}`
+      await write([host.url], [
+        entry(first, 'profile', { hosts: [host.url] }, T0),
+        entry(first, kept, await lock({ seed: b64u.encode(BACKUP_SEED) }, [firstOpening.openKey]), T0),
+        entry(backup, 'profile', { hosts: [host.url] }, T0),
+        entry(backup, SEED_PATH, await seedBody(SEED), T0),
+      ])
+      // The first passkey lists its backups: each backup/ entry, checked as a seed entry is.
+      const mine = await readFolder([host.url], first.address, T0)
+      const backups = await Promise.all([...mine.current].filter(([path]) => path.startsWith('backup/')).map(([, c]) => seedOf(c.entry.body, firstOpening.identity)))
+      assert.deepEqual(backups, [BACKUP_SEED])
+
+      // It ends one: the backup's seed entry deleted, by the backup's own key, then its own entry for it.
+      const ending = await mainKey(backups[0]!, '')
+      await write([host.url], [entry(ending, SEED_PATH, null, T0 + MINUTE), entry(first, kept, null, T0 + MINUTE)])
+      const after = await readFolder([host.url], backup.address, T0 + MINUTE)
+      assert.equal(after.current.get(SEED_PATH)!.entry.body, null)
+      assert.equal(await seedOf(after.current.get(SEED_PATH)!.entry.body, backupOpening.identity), null, 'the backup names no seed now')
+      assert.equal((await readFolder([host.url], first.address, T0 + MINUTE)).current.get(kept)!.entry.body, null)
+
+      // Ending takes back nothing: while the host keeps the old version, the backup still opens it.
+      const old = (await readAll(host.url, { profile: backup.address })).entries.find((c) => c.entry.path === SEED_PATH && c.entry.body !== null)!
+      assert.deepEqual(await seedOf(old.entry.body, backupOpening.identity), SEED)
+    } finally {
+      await host.close()
+    }
+  })
+
+  test("seedOf names no seed unless the body is locked to the folder's own opening half alone and holds 32 bytes in base64url without padding, and nothing else", async () => {
+    const id = backupOpening.identity
+    const alone = [backupOpening.openKey]
+    const spelled = b64u.encode(SEED)
+    // The last character carries 4 bits and 2 zero bits: flip one of those, and the bytes are the same.
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_'
+    const flipped = spelled.slice(0, -1) + alphabet[alphabet.indexOf(spelled.at(-1)!) ^ 1]
+    assert.deepEqual(await seedOf(await seedBody(SEED), id), SEED)
+    const refused: Array<[string, Body | null | undefined]> = [
+      ['no entry', undefined],
+      ['a delete', null],
+      ['not locked', { seed: spelled }],
+      ['locked to two keys, its own among them', await lock({ seed: spelled }, [backupOpening.openKey, firstOpening.openKey])],
+      ['locked to another key', await lock({ seed: spelled }, [firstOpening.openKey])],
+      ['another field beside seed', await lock({ seed: spelled, time: T0 }, alone)],
+      ['31 bytes', await lock({ seed: b64u.encode(SEED.subarray(1)) }, alone)],
+      ['33 bytes', await lock({ seed: b64u.encode(new Uint8Array(33)) }, alone)],
+      ['hex', await lock({ seed: hex.encode(SEED) }, alone)],
+      ['padded', await lock({ seed: spelled + '=' }, alone)],
+      ['a second spelling of the same bytes', await lock({ seed: flipped }, alone)],
+      ['a number', await lock({ seed: 7 }, alone)],
+    ]
+    for (const [why, body] of refused) assert.equal(await seedOf(body, id), null, why)
   })
 })
