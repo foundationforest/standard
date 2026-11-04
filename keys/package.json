@@ -14,10 +14,6 @@
       "types": "./dist/curve.d.ts",
       "default": "./dist/curve.js"
     },
-    "./pay": {
-      "types": "./dist/pay.d.ts",
-      "default": "./dist/pay.js"
-    },
     "./package.json": "./package.json"
   },
   "files": [
