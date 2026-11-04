@@ -14,7 +14,7 @@ import { encodeInbox } from '../src/inbox.ts'
 import { inboxEntry } from '../src/locked.ts'
 import { liveContent } from '../src/view.ts'
 import { entry, nextTime } from '../src/write.ts'
-import { DAY, MINUTE, T0, alice, aliceBuyer, bob, offerBody, profileBody, reviewBody, sizedEntry } from './fixtures.ts'
+import { DAY, MINUTE, T0, alice, aliceBuyer, bob, listingBody, profileBody, reviewBody, sizedEntry } from './fixtures.ts'
 import { Clock, startHost } from './helpers.ts'
 import type { TestHost } from './host.ts'
 
@@ -35,17 +35,17 @@ describe('two hosts, readers', () => {
     await h2.close()
   })
 
-  test('write a profile, an offer and a review to two hosts; a reader that knows one host finds the other', async () => {
+  test('write a profile, a listing and a review to two hosts; a reader that knows one host finds the other', async () => {
     const urls = [h1.url, h2.url]
-    const entries: SignedEntry[] = [profileAt(alice, urls, T0, 'calculus'), entry(alice, 'offer/maths', offerBody('30'), T0), profileAt(bob, urls, T0), entry(bob, 'review/1', reviewBody(alice.address), T0)]
+    const entries: SignedEntry[] = [profileAt(alice, urls, T0, 'calculus'), entry(alice, 'listing/maths', listingBody('30'), T0), profileAt(bob, urls, T0), entry(bob, 'review/1', reviewBody(alice.address), T0)]
     for (const outcome of await write(urls, entries)) {
       assert.equal(outcome.status, 200)
       assert.ok(outcome.results.every((r) => r.ok), JSON.stringify(outcome.results))
     }
-    // Host 2 alone gets one more offer: a reader that starts at host 1 still sees it.
-    await write([h2.url], [entry(alice, 'offer/physics', offerBody('35'), T0)])
+    // Host 2 alone gets one more listing: a reader that starts at host 1 still sees it.
+    await write([h2.url], [entry(alice, 'listing/physics', listingBody('35'), T0)])
     const v = await readFolder([h1.url], alice.address, clock.t)
-    assert.deepEqual([...liveContent(v).keys()].sort(), ['offer/maths', 'offer/physics', 'profile'])
+    assert.deepEqual([...liveContent(v).keys()].sort(), ['listing/maths', 'listing/physics', 'profile'])
     const review = (await readFolder([h1.url], bob.address, clock.t)).current.get('review/1')!
     assert.equal((review.entry.body as { about: string }).about, alice.address)
   })
@@ -53,17 +53,17 @@ describe('two hosts, readers', () => {
   test('an update and a delete reach readers from either host', async () => {
     clock.advance(MINUTE)
     const known = await readFolder([h1.url], alice.address, clock.t)
-    // Only host 2 gets the update; only host 1 gets the delete of the offer.
-    await write([h2.url], [entry(alice, 'offer/maths', offerBody('35'), nextTime(clock.t, known, 'offer/maths'))])
-    await write([h1.url], [entry(alice, 'offer/physics', null, nextTime(clock.t, known, 'offer/physics'))])
+    // Only host 2 gets the update; only host 1 gets the delete of the listing.
+    await write([h2.url], [entry(alice, 'listing/maths', listingBody('35'), nextTime(clock.t, known, 'listing/maths'))])
+    await write([h1.url], [entry(alice, 'listing/physics', null, nextTime(clock.t, known, 'listing/physics'))])
     const v = await readFolder([h1.url, h2.url], alice.address, clock.t)
-    assert.equal((v.current.get('offer/maths')!.entry.body as { about: string }).about, '35')
-    assert.equal(v.current.get('offer/physics')!.entry.body, null)
-    assert.ok((await readAll(h1.url, { profile: alice.address })).entries.some((c) => c.entry.path === 'offer/physics' && c.entry.body === null), 'a delete is an entry like any other')
+    assert.equal((v.current.get('listing/maths')!.entry.body as { about: string }).about, '35')
+    assert.equal(v.current.get('listing/physics')!.entry.body, null)
+    assert.ok((await readAll(h1.url, { profile: alice.address })).entries.some((c) => c.entry.path === 'listing/physics' && c.entry.body === null), 'a delete is an entry like any other')
   })
 
   test('a host keeps only the newest: an older version is refused when it arrives', async () => {
-    const results = await errors(h1, [entry(alice, 'offer/maths', offerBody('1'), T0 - 1), entry(alice, 'offer/maths', offerBody('30'), T0)])
+    const results = await errors(h1, [entry(alice, 'listing/maths', listingBody('1'), T0 - 1), entry(alice, 'listing/maths', listingBody('30'), T0)])
     assert.deepEqual(results, ['older', 'ok'], 'the second is already there')
   })
 })
@@ -72,16 +72,16 @@ describe('reading', () => {
   test('one folder’s by POST, everyone’s by GET, after a cursor; in the order taken', async () => {
     const h = await startHost({ now: () => T0 })
     try {
-      await write([h.url], [profileAt(alice, [h.url], T0), entry(alice, 'offer/a', offerBody('0'), T0)])
-      await write([h.url], [profileAt(bob, [h.url], T0), entry(bob, 'offer/b', offerBody('b'), T0)])
-      await write([h.url], [entry(alice, 'offer/c', offerBody('1'), T0)])
+      await write([h.url], [profileAt(alice, [h.url], T0), entry(alice, 'listing/a', listingBody('0'), T0)])
+      await write([h.url], [profileAt(bob, [h.url], T0), entry(bob, 'listing/b', listingBody('b'), T0)])
+      await write([h.url], [entry(alice, 'listing/c', listingBody('1'), T0)])
       assert.deepEqual((await readAll(h.url)).entries.map((c) => c.entry.profile), [alice.address, alice.address, bob.address, bob.address, alice.address])
-      assert.deepEqual((await readAll(h.url, { profile: alice.address })).entries.map((c) => c.entry.path), ['profile', 'offer/a', 'offer/c'])
+      assert.deepEqual((await readAll(h.url, { profile: alice.address })).entries.map((c) => c.entry.path), ['profile', 'listing/a', 'listing/c'])
       // This host numbers what it takes 1, 2, 3, …: the second entry taken is 2.
       const second = 2
       const since = await readPage(h.url, { after: second })
-      assert.deepEqual(since.entries.map((c) => c.entry.path), ['profile', 'offer/b', 'offer/c'])
-      assert.deepEqual((await readPage(h.url, { after: second, profile: alice.address })).entries.map((c) => c.entry.path), ['offer/c'])
+      assert.deepEqual(since.entries.map((c) => c.entry.path), ['profile', 'listing/b', 'listing/c'])
+      assert.deepEqual((await readPage(h.url, { after: second, profile: alice.address })).entries.map((c) => c.entry.path), ['listing/c'])
       assert.equal((await readPage(h.url, { after: since.cursor })).entries.length, 0, 'nothing new since the cursor')
     } finally {
       await h.close()
@@ -117,7 +117,7 @@ describe('a folder copies whole', () => {
     const fresh = await startHost({ now: clock.now })
     try {
       await write([old.url], [profileAt(alice, [old.url, fresh.url], T0)])
-      await write([old.url], [entry(alice, 'offer/w', offerBody('9'), T0 + 1), entry(alice, 'offer/x', offerBody('3'), T0 + 2), entry(alice, 'offer/w', null, T0 + 3)])
+      await write([old.url], [entry(alice, 'listing/w', listingBody('9'), T0 + 1), entry(alice, 'listing/x', listingBody('3'), T0 + 2), entry(alice, 'listing/w', null, T0 + 3)])
       clock.advance(DAY)
       const there = await readFolder([old.url], alice.address, clock.t)
       const folder = [...there.current.values()].map((c) => c.entry)
@@ -128,8 +128,8 @@ describe('a folder copies whole', () => {
       const here = await readFolder([fresh.url], alice.address, clock.t)
       const ids = (v: typeof here) => [...v.current.values()].map((c) => c.id).sort()
       assert.deepEqual(ids(here), ids(there))
-      assert.deepEqual([...here.current.keys()].sort(), ['offer/w', 'offer/x', 'profile'])
-      assert.equal(here.current.get('offer/w')!.entry.body, null, 'a delete copies as the delete it is')
+      assert.deepEqual([...here.current.keys()].sort(), ['listing/w', 'listing/x', 'profile'])
+      assert.equal(here.current.get('listing/w')!.entry.body, null, 'a delete copies as the delete it is')
     } finally {
       await old.close()
       await fresh.close()
@@ -145,7 +145,7 @@ describe('a host that closes, or blocks a reader', () => {
     const three = await startHost({ now: clock.now })
     try {
       // The app writes every entry to every host the profile entry names, and keeps its own copies.
-      const copies: SignedEntry[] = [entry(aliceBuyer, 'offer/wanted', offerBody('25'), T0), entry(aliceBuyer, 'offer/other', offerBody('5'), T0)]
+      const copies: SignedEntry[] = [entry(aliceBuyer, 'listing/wanted', listingBody('25'), T0), entry(aliceBuyer, 'listing/other', listingBody('5'), T0)]
       await write([one.url, two.url], [profileAt(aliceBuyer, [one.url, two.url], T0, 'algebra'), ...copies])
       const ids = (v: { current: Map<string, { id: string; entry: SignedEntry }> }) => [...v.current.values()].filter((c) => c.entry.path !== 'profile').map((c) => c.id).sort()
       const was = ids(await readFolder([one.url], aliceBuyer.address, clock.t))
@@ -177,16 +177,16 @@ describe('a host that closes, or blocks a reader', () => {
     const kept = await startHost({ now: () => T0 })
     try {
       const both = [old.url, kept.url]
-      await write(both, [profileAt(alice, both, T0), entry(alice, 'offer/a', offerBody('1'), T0)])
+      await write(both, [profileAt(alice, both, T0), entry(alice, 'listing/a', listingBody('1'), T0)])
       await write(both, [profileAt(alice, [kept.url], T0 + 1)])
 
       // The old host may keep its copies; the reader follows the profile entry it finds there.
       const viaOld = await readFolder([old.url], alice.address, T0 + MINUTE)
       assert.deepEqual(viaOld.hosts, [kept.url])
-      assert.ok(viaOld.current.get('offer/a'))
+      assert.ok(viaOld.current.get('listing/a'))
       const viaKept = await readFolder(viaOld.hosts, alice.address, T0 + MINUTE)
       assert.deepEqual(viaKept.hosts, [kept.url])
-      assert.ok(viaKept.current.get('offer/a'))
+      assert.ok(viaKept.current.get('listing/a'))
     } finally {
       await old.close()
       await kept.close()
@@ -200,12 +200,12 @@ describe('hosts that misbehave', () => {
     const bad = await startHost({ now: () => T0 })
     try {
       const urls = [honest.url, bad.url]
-      await write(urls, [profileAt(alice, urls, T0), entry(alice, 'offer/maths', offerBody('30'), T0)])
-      const newer = entry(alice, 'offer/maths', offerBody('45'), T0 + MINUTE)
+      await write(urls, [profileAt(alice, urls, T0), entry(alice, 'listing/maths', listingBody('30'), T0)])
+      const newer = entry(alice, 'listing/maths', listingBody('45'), T0 + MINUTE)
       await write([honest.url], [newer]) // the bad host "missed" it
 
       // The bad host also serves a forged version: same fields, price changed, old signature.
-      const forgedLine = encodeEntry({ ...newer, body: offerBody('4500') })
+      const forgedLine = encodeEntry({ ...newer, body: listingBody('4500') })
       const serve = bad.read.bind(bad)
       bad.read = (options) => {
         const out = serve(options)
@@ -213,7 +213,7 @@ describe('hosts that misbehave', () => {
       }
       assert.equal((await readPage(bad.url)).refused.length, 1)
       const v = await readFolder([bad.url], alice.address, T0 + 2 * MINUTE)
-      assert.equal(v.current.get('offer/maths')!.id, checkEntry(newer).id)
+      assert.equal(v.current.get('listing/maths')!.id, checkEntry(newer).id)
     } finally {
       await honest.close()
       await bad.close()
@@ -243,7 +243,7 @@ describe('limits: each host’s own batch and page; each reader’s own size; 60
       const h = await startHost({ now: () => T0 })
       h.page = page
       try {
-        await write([h.url], Array.from({ length: 5 }, (_, i) => entry(alice, `offer/${i}`, offerBody('1'), T0)))
+        await write([h.url], Array.from({ length: 5 }, (_, i) => entry(alice, `listing/${i}`, listingBody('1'), T0)))
         assert.equal(h.read().lines.length, page)
         assert.equal((await readAll(h.url)).entries.length, 5, String(page))
       } finally {
@@ -299,7 +299,7 @@ describe('limits: each host’s own batch and page; each reader’s own size; 60
   })
 
   test('a read ends with an error on a cursor that is not a whole number or does not move forward, and the whole read is bounded', async () => {
-    const line = encodeEntry(entry(alice, 'offer/a', offerBody('1'), T0)) + '\n'
+    const line = encodeEntry(entry(alice, 'listing/a', listingBody('1'), T0)) + '\n'
     let cursor = 'x'
     let forward = 0
     const odd = createServer((req, res) => {
@@ -344,13 +344,13 @@ describe('limits: each host’s own batch and page; each reader’s own size; 60
     await new Promise<void>((resolve) => front.listen(0, '127.0.0.1', resolve))
     const url = `http://127.0.0.1:${(front.address() as { port: number }).port}`
     try {
-      const entries = ['offer/a', 'offer/b', 'offer/c'].map((path) => entry(alice, path, offerBody('1'), T0))
+      const entries = ['listing/a', 'listing/b', 'listing/c'].map((path) => entry(alice, path, listingBody('1'), T0))
       const [outcome] = await write([url], entries)
       assert.deepEqual(outcome!.results.map((r) => [r.i, r.ok]), [[0, true], [1, true], [2, true]])
       assert.deepEqual(asked, [3, 2, 1, 1, 1], 'in halves, down to one line')
       asked.length = 0
-      const more = ['offer/d', 'offer/e', 'offer/f'].map((path) => entry(alice, path, offerBody('1'), T0))
-      const [batched] = await write([`${url}/batch`], [entry(alice, 'offer/a', offerBody('1'), T0 - 1), ...more])
+      const more = ['listing/d', 'listing/e', 'listing/f'].map((path) => entry(alice, path, listingBody('1'), T0))
+      const [batched] = await write([`${url}/batch`], [entry(alice, 'listing/a', listingBody('1'), T0 - 1), ...more])
       assert.deepEqual(batched!.results.map((r) => [r.i, r.error ?? 'ok']), [[0, 'older'], [1, 'ok'], [2, 'ok'], [3, 'ok']], 'each result at its place in the request')
       assert.deepEqual(asked, [4, 2, 1, 1, 2, 1, 1])
       const [broken] = await write([`${url}/broken`], entries.slice(0, 1))
@@ -391,7 +391,7 @@ describe('limits: each host’s own batch and page; each reader’s own size; 60
     }
   })
 
-  test('writing, leaving, listing and uploading go through the fetch given too, and may refuse redirects', async () => {
+  test('writing, leaving, reading the inbox and uploading go through the fetch given too, and may refuse redirects', async () => {
     const h = await startHost({ now: () => T0 })
     const away = createServer((req, res) => res.writeHead(307, { location: `${h.url}${req.url}` }).end())
     await new Promise<void>((resolve) => away.listen(0, '127.0.0.1', resolve))
@@ -488,7 +488,7 @@ describe('payment: the forest-payment header a write carries', () => {
       return lines.length > 1 ? [{ i: 0, ok: false, error: 'batch', message: 'one line a request' }] : accept(lines)
     }
     try {
-      const entries = ['offer/a', 'offer/b'].map((path) => entry(alice, path, offerBody('1'), T0))
+      const entries = ['listing/a', 'listing/b'].map((path) => entry(alice, path, listingBody('1'), T0))
       const [outcome] = await write([h.url], entries, { payment })
       assert.ok(outcome!.results.every((r) => r.ok), JSON.stringify(outcome))
       const lines = entries.map(encodeEntry)

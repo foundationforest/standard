@@ -29,13 +29,13 @@ directory. Its folder is every entry signed for it, one current entry per path:
 |---|---|
 | `profile` | the profile entry: hosts, market and role, open key, pay addresses, proofs, access keys |
 | `key/<id>` | a note for the person about one access key, at a random id (Access keys) |
-| any other | anything the writer chooses: a market's posts and reviews, an app's own entries |
+| any other | anything the writer chooses: a market's listings and reviews, an app's own entries |
 
 - A path is 1 to 4 segments separated by `/`, each `[a-z0-9][a-z0-9._-]{0,63}`, at most 256 bytes.
   `profile` is a single path: `profile/<anything>` is refused.
 - Beside `profile`, paths and bodies are the writer's. The main way is the market's the label names:
-  [markets](https://github.com/foundationforest/markets) keeps `post/<id>` and `review/<id>` among
-  them. Readers MAY ignore a first segment they do not know.
+  [markets](https://github.com/foundationforest/markets) keeps `listing/<id>` and `review/<id>`
+  among them. Readers MAY ignore a first segment they do not know.
 - An entry sits in the folder of the profile that wrote it, so the profile a review is about cannot
   erase it; the one who wrote it can.
 
@@ -235,7 +235,7 @@ folder, and the sender is locked inside. Each host checks it on its own, and lim
 chooses (Hosts).
 
 **List.** Anyone lists a folder's inbox after a cursor (`POST /v1/inbox/read`, with `{ "to",
-"after"? }`; `readInbox`), since a listing shows only what its host sees anyway. Nothing pushes: an
+"after"? }`; `readInbox`), since a list shows only what its host sees anyway. Nothing pushes: an
 app lists each inbox after its last cursor.
 
 ### The Profiles folder
@@ -412,7 +412,7 @@ import { mainKey, newAccessKey, openingHalf } from '@foundationforest/keys'
 import { entry, leave, readFolder, readInbox, write } from '@foundationforest/folders'
 import { inboxEntry, openInbox } from '@foundationforest/folders/locked'
 
-// A profile with one post, handing out an access key that can write and read the inbox.
+// A profile with one listing, handing out an access key that can write and read the inbox.
 const me = await mainKey(seed, 'tutoring/tutor')
 const ai = await newAccessKey() // ai.secret goes to whoever it is for
 const profile = {
@@ -420,8 +420,8 @@ const profile = {
   openKey: (await openingHalf(me.secret)).openKey,
   keys: [{ key: ai.address, open: ai.openKey, can: ['write', 'read-inbox'] }],
 }
-await write([host], [entry(me, 'profile', profile, Date.now()), entry(me, 'post/maths', post, Date.now())]) // a post's fields are its market's
-await write([host], [entry({ profile: me.address, key: ai }, 'post/physics', post, Date.now())]) // by the access key
+await write([host], [entry(me, 'profile', profile, Date.now()), entry(me, 'listing/maths', listing, Date.now())]) // a listing's fields are its market's
+await write([host], [entry({ profile: me.address, key: ai }, 'listing/physics', listing, Date.now())]) // by the access key
 
 // Another profile leaves a message; anyone lists the inbox, and only the keys it was locked to open it.
 const them = await mainKey(otherSeed, 'tutoring/student')

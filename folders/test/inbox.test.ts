@@ -19,7 +19,7 @@ import { startHost } from './helpers.ts'
 const code = (c: string) => (err: unknown) => err instanceof FolderError && err.code === c
 /** Alice's profile entry body: her open key, and her access key able to read her inbox. */
 const alicesProfile = profileBody('maths', { keys: [listed(['read-inbox', 'write'])] })
-/** Bob's profile entry body, listing a key of his own that can message as him. */
+/** Bob's profile entry body: it lists a key of his own that can message as him. */
 const bobsKey = await accessKey(new Uint8Array(64).fill(0x2e))
 const bobsProfile = { market: 'tutoring', role: 'buyer', hosts: ['https://host-b.example'], openKey: bobOpening.openKey, keys: [listed(['message'], bobsKey)] }
 const toAlice = (text: string, from: Parameters<typeof inboxEntry>[0] = bob, time = T0) => inboxEntry(from, alice.address, { text }, time, alicesProfile, 'https://host-b.example')
@@ -88,7 +88,7 @@ describe('messages', () => {
     assert.equal(senderCounts(message, { ...bobsProfile, keys: [{ ...listed(['message'], bobsKey), until: message.time + MINUTE }] }), false, 'ended, even after the message’s time: nothing refuses the date its key wrote')
     assert.equal(senderCounts(message, null), false, 'no profile entry')
     const fromMain = (await openInbox(await toAlice('from Bob himself'), aliceOpening.identity)).message
-    assert.equal(senderCounts(fromMain, null), true, 'the main key needs no listing')
+    assert.equal(senderCounts(fromMain, null), true, 'the main key need not be listed')
   })
 })
 

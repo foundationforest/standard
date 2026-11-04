@@ -1,6 +1,6 @@
 // The profile entry's schema (schemas/profile.json), checked with a standard JSON Schema validator:
 // the example and the bodies the other tests write fit it; each of its rules still refuses what it
-// refused; the example is a body a profile entry can carry. An offer's and a review's body is the
+// refused; the example is a body a profile entry can carry. A listing's and a review's body is the
 // market's, so the standard has no schema for them. The example's proofs are checked with their own
 // proof checks (proofs/), for the profile's own address.
 

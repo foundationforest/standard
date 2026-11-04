@@ -8,28 +8,28 @@ import { describe, test } from 'node:test'
 import { type Checked, type SignedEntry, checkEntry, signAs, signingInput } from '../src/entry.ts'
 import { liveContent, viewFolder } from '../src/view.ts'
 import { entry, nextTime } from '../src/write.ts'
-import { MINUTE, T0, access, alice, asAccess, bob, listed, offerBody, profileBody, stranger } from './fixtures.ts'
+import { MINUTE, T0, access, alice, asAccess, bob, listed, listingBody, profileBody, stranger } from './fixtures.ts'
 
 const checked = (...entries: SignedEntry[]): Checked[] => entries.map((e) => checkEntry(e))
 const view = (entries: SignedEntry[], now = T0 + MINUTE) => viewFolder(alice.address, checked(...entries), now)
 const idOf = (e: SignedEntry) => checkEntry(e).id
-/** Alice's profile entry, listing her access key with what it can do, or listing none. */
+/** Alice's profile entry: it lists her access key with what it can do, or lists none. */
 const profileWith = (can: string[] | null, time = T0) => entry(alice, 'profile', profileBody('maths', can ? { keys: [listed(can)] } : {}), time)
 
 describe('versions', () => {
   test('the newest time wins, whatever order the entries come in', () => {
-    const v1 = entry(alice, 'offer/maths', offerBody('30'), T0)
-    const v2 = entry(alice, 'offer/maths', offerBody('35'), T0 + 1000)
-    assert.equal(view([v2, v1]).current.get('offer/maths')!.id, idOf(v2))
+    const v1 = entry(alice, 'listing/maths', listingBody('30'), T0)
+    const v2 = entry(alice, 'listing/maths', listingBody('35'), T0 + 1000)
+    assert.equal(view([v2, v1]).current.get('listing/maths')!.id, idOf(v2))
     assert.equal(view([v1, v2]).ignored.get(idOf(v1)), 'older')
   })
 
   test('a null body deletes; the live content drops the path', () => {
-    const v1 = entry(alice, 'offer/maths', offerBody('30'), T0)
-    const gone = entry(alice, 'offer/maths', null, T0 + 1000)
+    const v1 = entry(alice, 'listing/maths', listingBody('30'), T0)
+    const gone = entry(alice, 'listing/maths', null, T0 + 1000)
     const v = view([v1, gone])
-    assert.equal(v.current.get('offer/maths')!.entry.body, null)
-    assert.equal(liveContent(v).has('offer/maths'), false)
+    assert.equal(v.current.get('listing/maths')!.entry.body, null)
+    assert.equal(liveContent(v).has('listing/maths'), false)
   })
 
   test('an edit never loses to its own older version, whatever the app’s clock says', () => {
@@ -58,13 +58,13 @@ describe('versions', () => {
     const entries = [
       profileWith(['write'], T0),
       entry(alice, 'profile', profileBody('physics', { keys: [listed(['write'])] }), T0), // same time: the larger id wins
-      entry(alice, 'offer/a', offerBody('1'), T0),
-      entry(alice, 'offer/a', null, T0 + 1),
-      entry(asAccess, 'offer/b', offerBody('2'), T0 + 2),
-      entry(alice, 'offer/b', offerBody('3'), T0 + 3),
-      entry(asAccess, 'offer/c', offerBody('4'), T0 + 3),
-      entry({ profile: alice.address, key: stranger }, 'offer/d', offerBody('5'), T0 + 4), // a key nobody listed
-      entry(bob, 'offer/c', offerBody('6'), T0 + 3), // another profile's
+      entry(alice, 'listing/a', listingBody('1'), T0),
+      entry(alice, 'listing/a', null, T0 + 1),
+      entry(asAccess, 'listing/b', listingBody('2'), T0 + 2),
+      entry(alice, 'listing/b', listingBody('3'), T0 + 3),
+      entry(asAccess, 'listing/c', listingBody('4'), T0 + 3),
+      entry({ profile: alice.address, key: stranger }, 'listing/d', listingBody('5'), T0 + 4), // a key nobody listed
+      entry(bob, 'listing/c', listingBody('6'), T0 + 3), // another profile's
     ]
     const summary = (list: Checked[]) => [...viewFolder(alice.address, list, T0 + MINUTE).current].map(([p, c]) => `${p}:${c.id}`).sort().join()
     const expected = summary(checked(...entries))
@@ -81,49 +81,49 @@ describe('versions', () => {
 
 describe('who writes', () => {
   test('a key that is not the main key, and that the profile entry does not list, signs nothing that counts', () => {
-    const unsigned = { v: 1 as const, profile: alice.address, path: 'offer/x', time: T0, body: offerBody('1') }
+    const unsigned = { v: 1 as const, profile: alice.address, path: 'listing/x', time: T0, body: listingBody('1') }
     assert.throws(() => checkEntry({ ...unsigned, sig: signAs(stranger, stranger.address, signingInput(unsigned)) }), /signature/, 'unnamed, it is checked as the main key’s')
-    const named = entry({ profile: alice.address, key: stranger }, 'offer/x', offerBody('1'), T0)
+    const named = entry({ profile: alice.address, key: stranger }, 'listing/x', listingBody('1'), T0)
     assert.equal(view([profileWith(['write']), named]).ignored.get(idOf(named)), 'unlisted')
-    assert.equal(view([entry(bob, 'offer/x', offerBody('1'), T0)]).current.size, 0, 'Bob’s entry is in Bob’s folder')
+    assert.equal(view([entry(bob, 'listing/x', listingBody('1'), T0)]).current.size, 0, 'Bob’s entry is in Bob’s folder')
   })
 
   test('an access key’s entry counts while the current profile entry lists it with write, and not before, nor with only another can', () => {
-    const byKey = entry(asAccess, 'offer/x', offerBody('by the key'), T0 + 1)
+    const byKey = entry(asAccess, 'listing/x', listingBody('by the key'), T0 + 1)
     assert.equal(view([byKey]).ignored.get(idOf(byKey)), 'unlisted', 'no profile entry, no listed key')
     for (const can of [['read'], ['read-inbox', 'message'], []]) assert.equal(view([profileWith(can), byKey]).ignored.get(idOf(byKey)), 'unlisted', can.join())
     const v = view([profileWith(['write']), byKey])
-    assert.equal(v.current.get('offer/x')!.id, idOf(byKey))
+    assert.equal(v.current.get('listing/x')!.id, idOf(byKey))
     assert.deepEqual(v.keys.map((k) => k.key), [access.address])
   })
 
   test('an ended key keeps what it wrote at or before its until; what it dated after does not count', () => {
-    const mine = entry(alice, 'offer/x', offerBody('the main key’s'), T0)
-    const byKey = entry(asAccess, 'offer/x', offerBody('by the key'), T0 + 1)
-    const atEnd = entry(asAccess, 'offer/y', offerBody('at its end'), T0 + 2)
+    const mine = entry(alice, 'listing/x', listingBody('the main key’s'), T0)
+    const byKey = entry(asAccess, 'listing/x', listingBody('by the key'), T0 + 1)
+    const atEnd = entry(asAccess, 'listing/y', listingBody('at its end'), T0 + 2)
     // Written while it was listed, dated ahead: the ending profile entry's time is its until.
-    const ahead = entry(asAccess, 'offer/z', offerBody('dated ahead'), T0 + 2 + 5 * MINUTE)
+    const ahead = entry(asAccess, 'listing/z', listingBody('dated ahead'), T0 + 2 + 5 * MINUTE)
     const ending = entry(alice, 'profile', profileBody('maths', { keys: [{ ...listed(['write']), until: T0 + 2 }] }), T0 + 2)
     const v = view([profileWith(['write'], T0), ending, mine, byKey, atEnd, ahead], T0 + 10 * MINUTE)
-    assert.equal(v.current.get('offer/x')!.id, idOf(byKey))
-    assert.equal(v.current.get('offer/y')!.id, idOf(atEnd), 'dated at until, it counts')
-    assert.equal(v.current.has('offer/z'), false)
+    assert.equal(v.current.get('listing/x')!.id, idOf(byKey))
+    assert.equal(v.current.get('listing/y')!.id, idOf(atEnd), 'dated at until, it counts')
+    assert.equal(v.current.has('listing/z'), false)
     assert.equal(v.ignored.get(idOf(ahead)), 'unlisted')
     assert.deepEqual(v.keys, [{ ...listed(['write']), until: T0 + 2 }], 'the list keeps it, with its until')
     // Before it ended, the entry dated ahead counted.
-    assert.equal(view([profileWith(['write'], T0), mine, byKey, atEnd, ahead], T0 + 10 * MINUTE).current.get('offer/z')!.id, idOf(ahead))
+    assert.equal(view([profileWith(['write'], T0), mine, byKey, atEnd, ahead], T0 + 10 * MINUTE).current.get('listing/z')!.id, idOf(ahead))
   })
 
   test('removing the row takes every entry it wrote back: the main key’s older entry at the path is current again', () => {
-    const mine = entry(alice, 'offer/x', offerBody('the main key’s'), T0)
-    const byKey = entry(asAccess, 'offer/x', offerBody('by the key'), T0 + 1)
-    assert.equal(view([profileWith(['write'], T0), mine, byKey]).current.get('offer/x')!.id, idOf(byKey))
+    const mine = entry(alice, 'listing/x', listingBody('the main key’s'), T0)
+    const byKey = entry(asAccess, 'listing/x', listingBody('by the key'), T0 + 1)
+    assert.equal(view([profileWith(['write'], T0), mine, byKey]).current.get('listing/x')!.id, idOf(byKey))
     const removed = view([profileWith(['write'], T0), profileWith(null, T0 + 2), mine, byKey])
-    assert.equal(removed.current.get('offer/x')!.id, idOf(mine))
+    assert.equal(removed.current.get('listing/x')!.id, idOf(mine))
     assert.equal(removed.ignored.get(idOf(byKey)), 'unlisted')
     assert.deepEqual(removed.keys, [])
     // Listed again, it counts again: nothing is kept of when it was listed.
-    assert.equal(view([profileWith(null, T0), profileWith(['write'], T0 + 2), mine, byKey]).current.get('offer/x')!.id, idOf(byKey))
+    assert.equal(view([profileWith(null, T0), profileWith(['write'], T0 + 2), mine, byKey]).current.get('listing/x')!.id, idOf(byKey))
   })
 
   test('a note is a path like any other: the newest entry there is current, and a delete deletes it', () => {

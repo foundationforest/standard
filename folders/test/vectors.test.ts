@@ -20,7 +20,7 @@ import { KEYS, SEED, asAccess } from './fixtures.ts'
 import { ENDED, IDS, LABEL, LETTERS, NOTE, vectors } from './vectors.ts'
 
 const pinned = JSON.parse(readFileSync(new URL('./vectors.json', import.meta.url), 'utf8'))
-const ENTRIES = ['profileEntry', 'offer', 'offerByKey', 'photo', 'deleted', 'note', 'ended'] as const
+const ENTRIES = ['profileEntry', 'listing', 'listingByKey', 'photo', 'deleted', 'note', 'ended'] as const
 const [seller, buyer, profilesFolder] = KEYS.mainKeys
 
 /** A packed point's 32 bytes, little-endian, as the number zk-kit takes. */
@@ -62,7 +62,7 @@ test('each entry checks with a second EdDSA-Poseidon and a second SHA-256, by th
     const input = hex.decode(v.signingInputHex)
     isWireWithoutSig(input, v.wire)
     assert.equal(createHash('sha256').update(input).digest('hex'), v.id)
-    assert.equal(entry.key, name === 'offerByKey' ? KEYS.accessKey.address : undefined, name)
+    assert.equal(entry.key, name === 'listingByKey' ? KEYS.accessKey.address : undefined, name)
     assert.ok(zkChecks(input, entry.key ?? entry.profile, entry.sig), name)
   }
   const photo = decodeEntry(pinned.photo.wire).entry.body!
@@ -87,14 +87,14 @@ test("the inbox entry's id is SHA-256 of its text; its message, locked inside, o
   assert.ok(zkChecks(input, message.from, message.sig))
 })
 
-test('the ended profile entry ends the access key at its own time: offerByKey, dated before, still counts, and what the key dates after does not', () => {
+test('the ended profile entry ends the access key at its own time: listingByKey, dated before, still counts, and what the key dates after does not', () => {
   const { entry: ended, id } = decodeEntry(pinned.ended.wire)
   assert.equal(ended.time, ENDED)
   assert.deepEqual(ended.body!.keys, [{ key: KEYS.accessKey.address, open: KEYS.accessKey.opening.openKey, can: ['read-inbox', 'write'], until: ENDED }])
-  const after = checkEntry(entry(asAccess, 'offer/later', { about: 'after the end' }, ENDED + 1))
-  const view = viewFolder(pinned.profile, [decodeEntry(pinned.profileEntry.wire), decodeEntry(pinned.offerByKey.wire), { entry: ended, id }, after], ENDED + 60_000)
+  const after = checkEntry(entry(asAccess, 'listing/later', { about: 'after the end' }, ENDED + 1))
+  const view = viewFolder(pinned.profile, [decodeEntry(pinned.profileEntry.wire), decodeEntry(pinned.listingByKey.wire), { entry: ended, id }, after], ENDED + 60_000)
   assert.equal(view.current.get('profile')!.id, pinned.ended.id)
-  assert.equal(view.current.get('offer/physics')!.id, pinned.offerByKey.id)
+  assert.equal(view.current.get('listing/physics')!.id, pinned.listingByKey.id)
   assert.equal(view.ignored.get(after.id), 'unlisted')
 })
 

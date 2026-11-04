@@ -201,7 +201,7 @@ lamports.
   authority's, and Token-2022 passes the authority to a hook as a plain account. Tested with a
   spy in Token-2022's place that refuses any signature after the authority, handed the recipient
   and the fee payer as signing accounts (`the_escrow_hands_the_token_program_no_signature_but_its_own`),
-  and with a hook listing the recipient as a signer, the client marking it so and the recipient
+  and with a hook that lists the recipient as a signer, the client marking it so and the recipient
   signing (`a_hook_that_asks_for_a_signature_gets_none`). Removing the rule fails the first.
 - **5.4 SOL around CPI. Applied:** the named signers (payer, recipient, arbiter, closer) are never
   passed to the token program, and forwarded accounts carry no signature, so no CPI can spend from
