@@ -21,7 +21,7 @@ const photo = bytesOf(1)
 const clip = bytesOf(2, 5000)
 
 describe('files', () => {
-  test('a photo is an entry whose body is its file: its hosts take the bytes it names, and a reader follows the entry to them, with their type', async () => {
+  test('an entry names a file: its hosts take the bytes it names, and a reader follows the entry to them, with their type', async () => {
     const h1 = await startHost({ now: () => T0 })
     const h2 = await startHost({ now: () => T0 })
     try {

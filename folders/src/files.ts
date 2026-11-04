@@ -3,7 +3,7 @@
 //   files: [{ sha256, type, size }, …]
 //
 // and the folder's hosts keep the bytes, uploaded by their hash, while a current entry names them.
-// Anyone fetches them by hash and checks it. A photo is an entry whose body is its file.
+// Anyone fetches them by hash and checks it.
 
 import { sha256 } from '@noble/hashes/sha2.js'
 import { hex } from './bytes.ts'

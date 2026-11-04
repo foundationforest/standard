@@ -29,7 +29,7 @@ directory. Its folder is every entry signed for it, one current entry per path:
 |---|---|
 | `profile` | the profile entry: hosts, market and role, open key, pay addresses, proofs, access keys |
 | `key/<id>` | a note for the person about one access key, at a random id (Access keys) |
-| any other | anything the writer chooses: a market's posts and reviews, an app's own entries, a photo |
+| any other | anything the writer chooses: a market's posts and reviews, an app's own entries |
 
 - A path is 1 to 4 segments separated by `/`, each `[a-z0-9][a-z0-9._-]{0,63}`, at most 256 bytes.
   `profile` is a single path: `profile/<anything>` is refused.
@@ -183,8 +183,6 @@ Any body that is not locked MAY carry `files`, the files it names:
 - **A file's name** is what a stranger needs to fetch and check it: `sha256` of the bytes, in
   lowercase hex; `type`, `type/subtype` in lower case, at most 255 characters; and `size`, in bytes.
   Each item is exactly these three; any other is refused [`files`] (`fileOf`, `filesOf`).
-- **A photo is an entry whose body is its file,** `{ "files": [ <its name> ] }`, at a path the
-  market or the app chooses.
 - **Upload.** The app writes the entry first, then uploads the bytes to each of the folder's hosts
   (`PUT /v1/files/<sha256>`, `upload`). A host takes them only while a current entry it holds names
   them, with that type and size, so a file needs no signed request of its own.
