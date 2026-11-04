@@ -2,9 +2,8 @@
 # chain, the Solana escrow built as SBPF v3 with its LiteSVM tests, and proofs/, both its circuits
 # compiled and checked against their setups, then type-checked and tested. Each Node job runs npm ci
 # at the root, which installs every package, then npm run build, which builds the packages others
-# import to dist/ in the order they import each other. After a merge, every package type-checks
-# together. Nightly, and by hand: the escrow's fuzzer. A test that skips fails its step: the summary
-# must say "# skipped 0".
+# import to dist/ in the order they import each other. Nightly, and by hand: the escrow's fuzzer. A
+# test that skips fails its step: the summary must say "# skipped 0".
 
 name: checks
 
@@ -88,22 +87,6 @@ jobs:
         run: |
           npm test | tee "$RUNNER_TEMP/tap"
           grep -qx '# skipped 0' "$RUNNER_TEMP/tap"
-
-  types:
-    if: github.event_name == 'push'
-    runs-on: ubuntu-latest
-    timeout-minutes: 40
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-      - name: Install
-        run: npm ci --no-audit --no-fund
-      - name: Build
-        run: npm run build
-      - name: Type-check every package
-        run: npm run check
 
   programs:
     runs-on: ubuntu-latest

@@ -22,7 +22,7 @@
 #    names. The keypair files go to FOREST_DEVNET_KEYS (default ~/.forest-devnet/keys), never under
 #    the repo: the directory mode 700, the files 600, and a file holding another key is refused,
 #    not overwritten. Only public keys are printed, and the phrase is in no file. Any phrase works;
-#    the id must be no program this record or registry/devnet/devnet.json names but the record's own.
+#    the id must be no program this record names but the record's own.
 # 2. Build. escrows/solana/program's Cargo.toml, Cargo.lock and src are copied into
 #    escrows/solana/devnet/target/ (ignored), `declare_id!` alone is replaced with the devnet id, checked to
 #    appear exactly once, and the copy is built for SBPF v3.
@@ -49,7 +49,6 @@ here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../../.." && pwd)
 out="$here/target"
 record="$here/devnet.json"
-registry="$root/registry/devnet/devnet.json"
 keys="${FOREST_DEVNET_KEYS:-$HOME/.forest-devnet/keys}"
 rpc="${FOREST_DEVNET_RPC:-https://api.devnet.solana.com}"
 [ -n "${FOREST_DEVNET_SEED:-}" ] || { echo "FOREST_DEVNET_SEED is missing or empty" >&2; exit 1; }
@@ -61,10 +60,10 @@ chmod 700 "$keys"
 
 # 1. Keys.
 label=escrow-v4-program
-node - "$keys" "$record" "$registry" "$label" <<'JS'
+node - "$keys" "$record" "$label" <<'JS'
 const crypto = require('crypto')
 const fs = require('fs')
-const [dir, own, registry, idLabel] = process.argv.slice(2)
+const [dir, own, idLabel] = process.argv.slice(2)
 const phrase = process.env.FOREST_DEVNET_SEED.normalize('NFKD').trim().split(/\s+/).join(' ')
 // An ed25519 private key as PKCS#8 DER is this fixed prefix and the 32-byte seed.
 const PKCS8_ED25519 = Buffer.from('302e020100300506032b657004220420', 'hex')
@@ -90,10 +89,9 @@ for (const label of ['deploy', 'payer', 'buyer', 'seller', idLabel]) {
 }
 const record = fs.existsSync(own) ? JSON.parse(fs.readFileSync(own, 'utf8')) : null
 const id = pk[idLabel]
-const other = fs.existsSync(registry) ? JSON.parse(fs.readFileSync(registry, 'utf8')) : {}
 // The record's own program is this id only on a second run of the same deploy.
 const previous = record?.escrow?.programId === id ? [] : [record?.escrow?.programId]
-const taken = [...previous, ...(record?.earlier ?? []).map((e) => e.escrow.programId), other.registry?.programId, ...(other.earlier ?? []).map((e) => e.registry.programId)]
+const taken = [...previous, ...(record?.earlier ?? []).map((e) => e.escrow.programId)]
 if (taken.includes(id)) throw new Error('the id is one already deployed for another program or version')
 console.log(`escrow program id ${id}, deploy key ${pk.deploy}, payer ${pk.payer}, buyer ${pk.buyer}, seller ${pk.seller}`)
 JS

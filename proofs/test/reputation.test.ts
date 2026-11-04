@@ -10,7 +10,7 @@ import assert from 'node:assert/strict'
 import { randomBytes } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { test } from 'node:test'
+import { after, test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 
 import { groth16 } from 'snarkjs'
@@ -27,6 +27,10 @@ import {
   signedBytes,
   type Leaf,
 } from '../src/index.ts'
+
+// snarkjs keeps its BN254 curve, and the curve's worker threads, alive in a global of
+// ffjavascript's: stopping them lets this file's process end, so every result is reported.
+after(() => (globalThis as { curve_bn128?: { terminate(): Promise<void> } }).curve_bn128?.terminate())
 
 const here = dirname(fileURLToPath(import.meta.url))
 const artifacts = { wasm: join(here, '../reputation/setup/reputation.wasm'), zkey: join(here, '../reputation/setup/reputation.zkey') }
@@ -64,6 +68,9 @@ const stranger = await mainKey(otherSeed, profileLabel)
 
 const shownOf = (r: Awaited<ReturnType<typeof proveReputation>>) => ({ proof: r.proof, root: r.root, score: r.score, profile: profile.address, index, time, signature })
 
+// The proof of all three of the person's profiles, made once: the tests below only read it.
+const three = await proveReputation({ seed, labels, leaves, profileLabel, artifacts })
+
 test("one profile: its score exactly, on the prover's own profile", async () => {
   const r = await proveReputation({ seed, labels: [labels[0]!], leaves, profileLabel, artifacts })
   assert.equal(r.score, 47n)
@@ -72,7 +79,7 @@ test("one profile: its score exactly, on the prover's own profile", async () => 
 })
 
 test('three profiles: the plain average of their scores, rounded down', async () => {
-  const r = await proveReputation({ seed, labels, leaves, profileLabel, artifacts })
+  const r = three
   assert.equal(r.score, (47n + 39n + 50n) / 3n)
   const shown = shownOf(r)
   assert.equal(await checkReputation(shown), true)
@@ -97,8 +104,7 @@ test('three profiles: the plain average of their scores, rounded down', async ()
 })
 
 test("a proof lands only on the prover's own profile: it cannot be lent", async () => {
-  const r = await proveReputation({ seed, labels, leaves, profileLabel, artifacts })
-  const shown = shownOf(r)
+  const shown = shownOf(three)
   // Copied, or lent, to someone else's profile, or to another profile of mine: not this proof.
   assert.equal(await checkReputation({ ...shown, profile: stranger.address }), false, "someone else's profile")
   assert.equal(await checkReputation({ ...shown, profile: (await mainKey(seed, labels[0]!)).address }), false, 'my other profile')
@@ -116,7 +122,7 @@ test("a proof lands only on the prover's own profile: it cannot be lent", async 
 })
 
 test('the 256 bytes a profile entry stores: the same proof back, and it checks from them', async () => {
-  const r = await proveReputation({ seed, labels, leaves, profileLabel, artifacts })
+  const r = three
   const { pi_a, pi_b, pi_c } = r.proof
   const bytes = proofBytes(r.proof)
   const order = [pi_a[0], pi_a[1], pi_b[0][1], pi_b[0][0], pi_b[1][1], pi_b[1][0], pi_c[0], pi_c[1]]

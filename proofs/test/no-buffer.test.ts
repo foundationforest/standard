@@ -4,7 +4,7 @@
 
 import assert from 'node:assert/strict'
 import { dirname, join } from 'node:path'
-import { test } from 'node:test'
+import { after, test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 
 // To this client and keys/, Buffer is undefined. Node's internals and the dependencies still see
@@ -21,6 +21,10 @@ const artifacts = { wasm: join(here, '../verification/setup/verification.wasm'),
 const seed = hexToBytes('000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f')
 const NAME = 'verifier-a.example'
 const LABEL = 'tutoring/seller'
+
+// snarkjs keeps its BN254 curve, and the curve's worker threads, alive in a global of
+// ffjavascript's: stopping them lets this file's process end, so every result is reported.
+after(() => (globalThis as { curve_bn128?: { terminate(): Promise<void> } }).curve_bn128?.terminate())
 
 test('with no Buffer: a verifier signs a stamp, the device proves, a reader checks', async () => {
   assert.equal(typeof Buffer, 'undefined')
