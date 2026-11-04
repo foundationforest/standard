@@ -5,6 +5,7 @@
 
 export * from './keys.ts'
 export * from './canonical.ts'
+export * from './codes.ts'
 export * from './fail.ts'
 export * from './entry.ts'
 export * from './profile.ts'

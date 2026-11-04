@@ -161,8 +161,8 @@ widely used encryption format. The age file is the envelope: the canonical text 
 a random key made for it, and that key locked once to each open key (`lock`, `openLocked`).
 
 - **It is locked to the main key's open key, and to each listed key that can `read` and has no
-  `until`** (`lockKeysOf`). Whoever writes it MUST lock it to all of them. Nobody can check: an
-  envelope names no key.
+  `until`** (`lockKeysOf`, which refuses a profile entry with no `openKey` [`locked`]). Whoever
+  writes it MUST lock it to all of them. Nobody can check: an envelope names no key.
 - Each key it is locked to is an age post-quantum hybrid key (`age1pq1…`, stanza
   `mlkem768x25519`); an app MUST NOT lock an envelope to any other kind, since one classic key among
   them would let a quantum computer open it for all. Each adds about 2 KB.
@@ -221,7 +221,7 @@ Locked inside it is one message:
 - `sig` is EdDSA-Poseidon, strict as an entry's, by `key` or `from`, over UTF-8 of the message's
   canonical text without `sig`. It signs `to`, so nobody can move a message to another inbox as its
   sender's.
-- **The recipient's app checks** that `to` is the folder it was left in, and the signature
+- **The recipient's app checks** that `to` is the folder it was left in [`to`], and the signature
   (`openInbox`); then the sender's profile entry, from the sender's hosts: that it lists `key` with
   `message` and no `until`, if a key signed (`senderCounts`), and anything else it wants, such as a
   verification, a market and a role. Then it decides what to show. An ended key's message never
@@ -344,6 +344,8 @@ a payment it takes, by its own choice [`refused`], where the steps below let it:
 entry for a folder it holds. `write`, `leave`, `upload` and `checkHost` take a `payment`: a function
 given the host's origin and the bytes one request carries, called for each request, whose answer,
 if any, is that request's header.
+
+Every code in brackets is in `src/codes.ts` (`CODES`), for apps to import.
 
 **Taking an entry in**, in this order, error code in brackets:
 
