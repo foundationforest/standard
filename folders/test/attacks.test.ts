@@ -17,7 +17,7 @@ import { checkEntry, checkSignature, encodeEntry, signAs, signingInput, unsigned
 import { checkMessage, checkMessageShape, messageSigningInput, signMessage } from '../src/inbox.ts'
 import { viewFolder } from '../src/view.ts'
 import { entry } from '../src/write.ts'
-import { MINUTE, SEED, T0, access, aliceBuyerOpening, aliceOpening, alice, aliceBuyer, asAccess, bob, listed, offerBody, profileBody, stranger } from './fixtures.ts'
+import { MINUTE, SEED, T0, access, aliceBuyerOpening, aliceOpening, alice, aliceBuyer, asAccess, bob, listed, listingBody, profileBody, stranger } from './fixtures.ts'
 import { startHost } from './helpers.ts'
 import type { TestHost } from './host.ts'
 
@@ -28,9 +28,9 @@ const fromLe = (b: Uint8Array) => b.reduceRight((acc, byte) => (acc << 8n) + Big
 const ORDER_2: [bigint, bigint] = [0n, BN254_R - 1n]
 
 describe('nobody forges; a signature means one thing everywhere', () => {
-  const offer = entry(alice, 'offer/a', offerBody('30'), T0)
-  const message = signingInput(unsignedOf(offer))
-  const sig = b64u.decode(offer.sig)
+  const listing = entry(alice, 'listing/a', listingBody('30'), T0)
+  const message = signingInput(unsignedOf(listing))
+  const sig = b64u.decode(listing.sig)
 
   test("a valid signature: ours and zk-kit's agree", () => {
     assert.equal(checkSignature(sig, message, alice.address), true)
@@ -42,7 +42,7 @@ describe('nobody forges; a signature means one thing everywhere', () => {
     const malleated = concat(sig.subarray(0, 32), le(S + L))
     assert.equal(checkSignature(malleated, message, alice.address), false)
     assert.equal(zkVerify(bytesMessage(message), { R8: unpackSignature(sig)!.R8, S: S + L }, alice.publicKey), false)
-    assert.throws(() => checkEntry({ ...offer, sig: b64u.encode(malleated) }), /signature/)
+    assert.throws(() => checkEntry({ ...listing, sig: b64u.encode(malleated) }), /signature/)
   })
 
   test("a small-order key: (R8 = identity, S = 0) passes zk-kit's check for any message; Forest refuses the key outright", (t) => {
@@ -53,8 +53,8 @@ describe('nobody forges; a signature means one thing everywhere', () => {
     // An entry for a small-order key cannot even be read: its profile is no usable address, nor its
     // key.
     const packed = base58.encode(le(ORDER_2[1]))
-    assert.throws(() => checkEntry({ ...offer, profile: packed, sig: b64u.encode(packSignature(universal)) }), /usable/)
-    assert.throws(() => checkEntry({ ...offer, key: packed, sig: b64u.encode(packSignature(universal)) }), /access key/)
+    assert.throws(() => checkEntry({ ...listing, profile: packed, sig: b64u.encode(packSignature(universal)) }), /usable/)
+    assert.throws(() => checkEntry({ ...listing, key: packed, sig: b64u.encode(packSignature(universal)) }), /access key/)
   })
 
   test("a mixed-order key (the owner's key plus the point of order 2): zk-kit's check takes the owner's signatures for it; Forest refuses it", () => {
@@ -73,24 +73,24 @@ describe('nobody forges; a signature means one thing everywhere', () => {
 
   test('an entry, a message and an index root each sign their own canonical text and nothing else, and their fields tell them apart', () => {
     const text = (bytes: Uint8Array) => new TextDecoder().decode(bytes)
-    assert.equal(text(message), canonical(unsignedOf(offer)), 'an entry: its canonical text, no prefix')
+    assert.equal(text(message), canonical(unsignedOf(listing)), 'an entry: its canonical text, no prefix')
     const { sig: _sig, ...sent } = signMessage(alice, bob.address, { text: 'hi' }, T0)
     assert.equal(text(messageSigningInput(sent)), canonical(sent), 'a message: its canonical text, to among its fields')
     const root = utf8(JSON.stringify({ root: '1', time: T0 }))
     const fields = (bytes: Uint8Array) => Object.keys(JSON.parse(text(bytes))).sort()
     assert.deepEqual([fields(message), fields(messageSigningInput(sent)), fields(root)], [['body', 'path', 'profile', 'time', 'v'], ['body', 'from', 'time', 'to'], ['root', 'time']])
     // An entry's signature, offered as a message with the entry's fields: no message has them.
-    assert.throws(() => checkMessageShape({ ...unsignedOf(offer), sig: offer.sig }), /unknown message field/)
+    assert.throws(() => checkMessageShape({ ...unsignedOf(listing), sig: listing.sig }), /unknown message field/)
   })
 
   test('replaying an entry into another folder, path or time fails; the same entry twice is one entry', () => {
-    for (const change of [{ profile: bob.address }, { path: 'offer/b' }, { time: T0 + 1 }]) {
-      assert.throws(() => checkEntry({ ...offer, ...change }), /signature/)
+    for (const change of [{ profile: bob.address }, { path: 'listing/b' }, { time: T0 + 1 }]) {
+      assert.throws(() => checkEntry({ ...listing, ...change }), /signature/)
     }
-    assert.equal(checkEntry(offer).id, checkEntry(JSON.parse(encodeEntry(offer))).id)
+    assert.equal(checkEntry(listing).id, checkEntry(JSON.parse(encodeEntry(listing))).id)
     // An access key's entry for Alice, replayed as Bob's: the key is not Bob's to list, and the
     // signature names Alice.
-    const byKey = entry(asAccess, 'offer/a', offerBody('30'), T0)
+    const byKey = entry(asAccess, 'listing/a', listingBody('30'), T0)
     assert.throws(() => checkEntry({ ...byKey, profile: bob.address }), /signature/)
   })
 })
@@ -100,8 +100,8 @@ describe('a key that is not the main key, nor the key named', () => {
 
   test('signs nothing for the profile: its entry and its message are each refused [signature]', () => {
     const signature = (run: () => unknown) => assert.throws(run, (err: { code?: string }) => err.code === 'signature')
-    signature(() => checkEntry(posing({ v: 1 as const, profile: alice.address, path: 'offer/x', time: T0, body: offerBody('1') }, signingInput)))
-    signature(() => checkEntry(posing({ v: 1 as const, profile: alice.address, path: 'offer/x', time: T0, body: offerBody('1'), key: access.address }, signingInput)))
+    signature(() => checkEntry(posing({ v: 1 as const, profile: alice.address, path: 'listing/x', time: T0, body: listingBody('1') }, signingInput)))
+    signature(() => checkEntry(posing({ v: 1 as const, profile: alice.address, path: 'listing/x', time: T0, body: listingBody('1'), key: access.address }, signingInput)))
     const sent = { from: alice.address, to: bob.address, time: T0, body: { text: 'hi' } }
     assert.equal(checkMessage({ ...sent, sig: signAs(stranger, stranger.address, messageSigningInput(sent)) }), false)
     assert.equal(checkMessage({ ...sent, key: access.address, sig: signAs(stranger, stranger.address, messageSigningInput({ ...sent, key: access.address })) }), false)
@@ -128,17 +128,17 @@ describe('over real hosts', () => {
     h1 = await startHost({ now: () => T0 + 10 * MINUTE })
     h2 = await startHost({ now: () => T0 + 10 * MINUTE })
     const urls = [h1.url, h2.url]
-    await write(urls, [entry(alice, 'profile', profileBody('maths', { hosts: urls }), T0), entry(alice, 'offer/a', offerBody('1'), T0)])
+    await write(urls, [entry(alice, 'profile', profileBody('maths', { hosts: urls }), T0), entry(alice, 'listing/a', listingBody('1'), T0)])
   })
   after(async () => {
     await h1.close()
     await h2.close()
   })
 
-  test('a deleted offer cannot be brought back by a host that still has the old version', async () => {
-    await write([h1.url], [entry(alice, 'offer/a', null, T0 + 1)]) // only host 1 hears the delete
+  test('a deleted listing cannot be brought back by a host that still has the old version', async () => {
+    await write([h1.url], [entry(alice, 'listing/a', null, T0 + 1)]) // only host 1 hears the delete
     const v = await readFolder([h2.url, h1.url], alice.address, T0 + 10 * MINUTE)
-    assert.equal(v.current.get('offer/a')!.entry.body, null)
+    assert.equal(v.current.get('listing/a')!.entry.body, null)
   })
 
   test('a host holds no key: all it holds has no secret of the person', async () => {
@@ -157,7 +157,7 @@ describe('over real hosts', () => {
   })
 
   test('two readers reading different hosts compute the same view', async () => {
-    await write([h2.url], [entry(alice, 'offer/a', null, T0 + 1)]) // now both hosts hold everything
+    await write([h2.url], [entry(alice, 'listing/a', null, T0 + 1)]) // now both hosts hold everything
     const summary = (v: { current: Map<string, { id: string }> }) => [...v.current].map(([p, c]) => `${p}=${c.id}`).sort().join()
     const one = viewFolder(alice.address, (await readAll(h1.url, { profile: alice.address })).entries, T0 + 10 * MINUTE)
     const two = viewFolder(alice.address, (await readAll(h2.url, { profile: alice.address })).entries, T0 + 10 * MINUTE)
@@ -189,9 +189,9 @@ describe('linking two profiles of one person', () => {
       await write([host.url], [entry(alice, 'profile', profileBody('maths'), T0)])
       await write([host.url], [entry(bob, 'profile', profileBody('physics'), T0)])
       // One app writes both of a person's profiles at once:
-      await write([host.url], [entry(alice, 'offer/x', offerBody('1'), T0 + 1), entry(aliceBuyer, 'offer/y', offerBody('1'), T0 + 1)])
-      const listing = (await readAll(host.url)).entries.map((c) => c.entry.profile)
-      assert.deepEqual(listing.slice(-2), [alice.address, aliceBuyer.address], 'adjacent, same millisecond: an observer can guess they are one person')
+      await write([host.url], [entry(alice, 'listing/x', listingBody('1'), T0 + 1), entry(aliceBuyer, 'listing/y', listingBody('1'), T0 + 1)])
+      const profiles = (await readAll(host.url)).entries.map((c) => c.entry.profile)
+      assert.deepEqual(profiles.slice(-2), [alice.address, aliceBuyer.address], 'adjacent, same millisecond: an observer can guess they are one person')
     } finally {
       await host.close()
     }

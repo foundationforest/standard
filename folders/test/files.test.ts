@@ -27,7 +27,7 @@ describe('files', () => {
     try {
       const hosts = [h1.url, h2.url]
       const name = fileOf(photo, 'image/jpeg')
-      await write(hosts, [entry(alice, 'profile', profileBody('photos', { hosts }), T0), entry(alice, 'photo/1', { files: [name] }, T0), entry(alice, 'offer/video', { about: 'a clip', files: [fileOf(clip, 'video/mp4')] }, T0)])
+      await write(hosts, [entry(alice, 'profile', profileBody('photos', { hosts }), T0), entry(alice, 'photo/1', { files: [name] }, T0), entry(alice, 'listing/video', { about: 'a clip', files: [fileOf(clip, 'video/mp4')] }, T0)])
       assert.deepEqual((await upload(hosts, photo, 'image/jpeg')).map((o) => [o.status, o.ok]), [[200, true], [200, true]])
       assert.deepEqual((await upload(hosts, clip, 'video/mp4')).map((o) => o.ok), [true, true])
       assert.equal(await up(h1, photo), 'already here')

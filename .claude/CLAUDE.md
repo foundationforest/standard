@@ -7,9 +7,10 @@ Use these words: seed, seed's number, main key, signing half, opening half, open
 profile, Profiles folder, profile entry, entry, folder, address, label, scope, verifier, verified,
 stamp, stamp number, facts, verification, reputation proof, check, host, plug, host check, service
 key, connector, private, locked (an entry, to a key), envelope, message, inbox, inbox entry, file,
-post, review, pay address, pay key, escrow, receipt, deal, index, fee payer, app, market, role.
+pay address, pay key, escrow, receipt, deal, index, fee payer, app, market, role.
 Plain words, no em-dashes. The seed is the secret on your device; a stamp is the verifier's
-signature for your seed, kept private; a verification is what a profile shows.
+signature for your seed, kept private; a verification is what a profile shows. The standard says
+entry: anything in a folder. Markets name the kinds (listing, review, vouch, report).
 
 - Locked, never "sealed".
 - Never "record" for what a folder holds (it is an entry), "signer" (a chain's transaction signer
@@ -36,9 +37,11 @@ What an app that holds keys should know: `keys/README.md`. Never copy it here.
 ## How to work in this repo
 
 - Work in plan mode. One task per session. Open a pull request; never push to main.
+- A pull request's title says what changed, in plain words, readable on its own: no session codes
+  or item numbers. Each pull request lands as one commit under its title.
 - The promises in each README change only when Carlos says so in a chat; never change one as a side
   effect of a task.
-- Content shapes are never defined in this repo: what an offer, a review or a market holds is
+- Content shapes are never defined in this repo: what a listing, a review or a market holds is
   `foundationforest/markets`'s.
 - The repo is `keys/`, `proofs/` (`verification/`, `reputation/`), `folders/`, `escrows/`
   (`solana/`), `README.md` and `LICENSE`, with `.github/`, `.claude/CLAUDE.md`, and the npm

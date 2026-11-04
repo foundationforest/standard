@@ -48,9 +48,9 @@ export const profileBody = (subject: string, options: { hosts?: string[]; keys?:
   subjects: [subject],
 })
 
-// An offer's and a review's fields are the market's, not the standard's (README.md, Folders):
+// A listing's and a review's fields are the market's, not the standard's (README.md, Folders):
 // these tests need only bodies that differ, so `about` stands in for them.
-export const offerBody = (about: string): Body => ({ about })
+export const listingBody = (about: string): Body => ({ about })
 export const reviewBody = (about: string): Body => ({ about })
 
 /** A main-key entry whose canonical text is exactly `bytes` long, `wide` of its characters two-byte (é). */

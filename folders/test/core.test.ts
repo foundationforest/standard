@@ -11,7 +11,7 @@ import type { FolderError } from '../src/fail.ts'
 import { fileOf } from '../src/files.ts'
 import { canDo, checkProfileBody, hostsOf, inboxLockKeysOf, keysOf, lockKeysOf, openKeyOf } from '../src/profile.ts'
 import { entry } from '../src/write.ts'
-import { KEYS, T0, access, aliceOpening, alice, aliceBuyer, asAccess, listed, offerBody, profileBody, sizedEntry, stranger } from './fixtures.ts'
+import { KEYS, T0, access, aliceOpening, alice, aliceBuyer, asAccess, listed, listingBody, profileBody, sizedEntry, stranger } from './fixtures.ts'
 
 /** The packed bytes of y, with x's sign bit as given, in base58: an address whatever point it names, or none. */
 const packedY = (y: bigint, negative = false) => {
@@ -78,19 +78,19 @@ const code = (c: string) => (err: FolderError) => err.code === c
 const other = await accessKey(new Uint8Array(64).fill(0x2c))
 
 describe('entries', () => {
-  const offer = entry(alice, 'offer/maths', offerBody('30'), T0)
+  const listing = entry(alice, 'listing/maths', listingBody('30'), T0)
 
   test('a main-key entry checks, carries no key, and its id is the hash of what was signed', () => {
-    const { id } = checkEntry(offer)
-    assert.equal('key' in offer, false)
-    assert.equal(id, entryId(unsignedOf(offer)))
-    const wire = encodeEntry(offer)
+    const { id } = checkEntry(listing)
+    assert.equal('key' in listing, false)
+    assert.equal(id, entryId(unsignedOf(listing)))
+    const wire = encodeEntry(listing)
     assert.equal(decodeEntry(wire).id, id)
     assert.ok(wire.startsWith('{"body":'))
   })
 
   test('an access key’s entry names it in key, and its signature is that key’s', () => {
-    const byKey = entry(asAccess, 'offer/physics', offerBody('35'), T0)
+    const byKey = entry(asAccess, 'listing/physics', listingBody('35'), T0)
     assert.equal(byKey.key, access.address)
     assert.equal(byKey.profile, alice.address)
     assert.ok(checkEntry(byKey))
@@ -101,40 +101,40 @@ describe('entries', () => {
   })
 
   test('any change to any field breaks the signature', () => {
-    const changes: Array<{ [key: string]: unknown }> = [{ path: 'offer/other' }, { time: T0 + 1 }, { profile: aliceBuyer.address }, { body: offerBody('3') }, { body: null }, { key: access.address }]
-    for (const change of changes) assert.throws(() => checkEntry({ ...offer, ...change }), code('signature'), JSON.stringify(change))
+    const changes: Array<{ [key: string]: unknown }> = [{ path: 'listing/other' }, { time: T0 + 1 }, { profile: aliceBuyer.address }, { body: listingBody('3') }, { body: null }, { key: access.address }]
+    for (const change of changes) assert.throws(() => checkEntry({ ...listing, ...change }), code('signature'), JSON.stringify(change))
   })
 
   test('a key signs only as itself: signEntry refuses another, and a forged signature is refused [signature]', () => {
-    assert.throws(() => signEntry({ v: 1, profile: aliceBuyer.address, path: 'offer/x', time: T0, body: offerBody('x') }, alice), /not the one named to sign/)
-    assert.throws(() => signEntry({ v: 1, profile: alice.address, path: 'offer/x', time: T0, body: offerBody('x'), key: access.address }, alice), /not the one named to sign/)
-    const unsigned = { v: 1 as const, profile: alice.address, path: 'offer/x', time: T0, body: offerBody('1') }
+    assert.throws(() => signEntry({ v: 1, profile: aliceBuyer.address, path: 'listing/x', time: T0, body: listingBody('x') }, alice), /not the one named to sign/)
+    assert.throws(() => signEntry({ v: 1, profile: alice.address, path: 'listing/x', time: T0, body: listingBody('x'), key: access.address }, alice), /not the one named to sign/)
+    const unsigned = { v: 1 as const, profile: alice.address, path: 'listing/x', time: T0, body: listingBody('1') }
     const posing = { ...unsigned, sig: b64u.encode(packSignature(signBytes(stranger.scalar, signingInput(unsigned)))) }
     assert.throws(() => checkEntry(posing), code('signature'))
   })
 
   test('no access key writes the profile entry [unlisted], and key is never the main key’s own address [key]', () => {
     assert.throws(() => entry(asAccess, 'profile', profileBody('x'), T0), code('unlisted'))
-    assert.throws(() => signEntry({ v: 1, profile: alice.address, path: 'offer/x', time: T0, body: null, key: alice.address }, alice), code('key'))
+    assert.throws(() => signEntry({ v: 1, profile: alice.address, path: 'listing/x', time: T0, body: null, key: alice.address }, alice), code('key'))
   })
 
   test('shape rules: unknown fields, paths, the profile path', () => {
-    const base = { v: 1 as const, profile: alice.address, path: 'offer/x', time: T0, body: offerBody('maths') }
+    const base = { v: 1 as const, profile: alice.address, path: 'listing/x', time: T0, body: listingBody('maths') }
     assert.throws(() => signEntry({ ...base, extra: 1 } as never, alice), code('shape'))
     assert.throws(() => signEntry({ ...base, v: 2 } as never, alice), code('version'))
-    assert.throws(() => signEntry({ ...base, path: 'Offer/x' }, alice), code('path'))
-    assert.throws(() => signEntry({ ...base, path: 'offer/../x' }, alice), code('path'))
+    assert.throws(() => signEntry({ ...base, path: 'Listing/x' }, alice), code('path'))
+    assert.throws(() => signEntry({ ...base, path: 'listing/../x' }, alice), code('path'))
     assert.throws(() => signEntry({ ...base, path: 'a/b/c/d/e' }, alice), code('path'))
     assert.throws(() => signEntry({ ...base, path: 'profile/x' }, alice), code('path'), 'profile is a single path')
     assert.throws(() => signEntry({ ...base, time: -1 }, alice), code('time'))
     assert.throws(() => signEntry({ ...base, body: [] as never }, alice), code('body'))
     assert.throws(() => signEntry({ ...base, key: 'x' }, alice), code('key'))
     assert.ok(checkEntry(entry(alice, 'key/0123456789abcdef0123456789abcdef', { private: 'YWdl' }, T0)), 'a note is a path like any other')
-    assert.ok(checkEntry(entry(alice, 'offer/x', null, T0)))
+    assert.ok(checkEntry(entry(alice, 'listing/x', null, T0)))
   })
 
   test('no size is a rule: how large an entry to take is each host’s own choice, and each reader’s', () => {
-    const big = entry(alice, 'offer/big', { about: 'x'.repeat(200_000) }, T0)
+    const big = entry(alice, 'listing/big', { about: 'x'.repeat(200_000) }, T0)
     assert.ok(decodeEntry(encodeEntry(big)).id)
     assert.ok(checkEntry(sizedEntry(alice, 'stamp/a', 100_000, 1)).id)
   })
