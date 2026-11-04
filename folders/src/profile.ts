@@ -13,6 +13,7 @@
 // entry instead would stop a person updating it.
 
 import type { Json } from './canonical.ts'
+import type { Code } from './codes.ts'
 import { fail } from './fail.ts'
 import { publicKeyFromAddress } from './keys.ts'
 
@@ -128,7 +129,7 @@ export function inboxLockKeysOf(body: Body | null | undefined): string[] {
   return opening(body, 'read-inbox', 'no_inbox', 'the profile entry gives no open key: the folder takes no inbox entries')
 }
 
-function opening(body: Body | null | undefined, can: Can, code: string, why: string): string[] {
+function opening(body: Body | null | undefined, can: Can, code: Code, why: string): string[] {
   const openKey = openKeyOf(body)
   if (!openKey) fail(code, why)
   const keys = keysOf(body).filter((k) => k.can.includes(can) && k.until === undefined && typeof k.open === 'string' && OPEN_KEY.test(k.open))
