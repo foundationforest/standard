@@ -1,7 +1,7 @@
 // The host check: a test any host runs against its own address, to show it fits the plug
 // (README.md, Hosts). It writes to the host from two profiles of one seed, under the labels in
 // CHECK_LABELS, and an access key it makes, and checks each answer against the plug: taking an
-// entry in, access keys and ending one, reading, taking an inbox entry in and listing it, and
+// entry in, access keys and ending one, reading, taking an inbox entry in, the inbox's list, and
 // taking a file in.
 //
 // A refusal the plug lets a host make by its own choice is no failure: the first profile entry of a
@@ -260,9 +260,9 @@ export async function checkHost(url: string, options: CheckOptions = {}): Promis
       const out: string[] = []
       let cursor = 0
       for (let pages = 0; ; pages++) {
-        expect(pages < 1000, 'an inbox listing that never ends')
+        expect(pages < 1000, 'an inbox list that never ends')
         const page = await readInbox(host, a!.address, { after: cursor })
-        expect(page.refused.length === 0, `the inbox listing served ${page.refused.length} lines that do not check, or to another folder`)
+        expect(page.refused.length === 0, `the inbox list served ${page.refused.length} lines that do not check, or to another folder`)
         out.push(...page.entries.map((e) => e.id))
         if (!page.entries.length) {
           expect(page.cursor === cursor, 'an empty page did not give the cursor asked with')
@@ -278,7 +278,7 @@ export async function checkHost(url: string, options: CheckOptions = {}): Promis
     const third = await fromB('third')
     await takeInbox(third, 'an inbox entry')
     const since = await readInbox(host, a!.address, { after: cursor })
-    expect(JSON.stringify(since.entries.map((e) => e.id)) === JSON.stringify([inboxId(third)]), 'a listing after the cursor did not serve the one inbox entry since')
+    expect(JSON.stringify(since.entries.map((e) => e.id)) === JSON.stringify([inboxId(third)]), 'a list after the cursor did not serve the one inbox entry since')
     expect(!(await readInbox(host, b!.address)).entries.some((e) => all.includes(e.id)), 'another folder’s inbox listed this folder’s entries')
   })
 

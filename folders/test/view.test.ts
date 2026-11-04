@@ -13,7 +13,7 @@ import { MINUTE, T0, access, alice, asAccess, bob, listed, listingBody, profileB
 const checked = (...entries: SignedEntry[]): Checked[] => entries.map((e) => checkEntry(e))
 const view = (entries: SignedEntry[], now = T0 + MINUTE) => viewFolder(alice.address, checked(...entries), now)
 const idOf = (e: SignedEntry) => checkEntry(e).id
-/** Alice's profile entry, listing her access key with what it can do, or listing none. */
+/** Alice's profile entry: it lists her access key with what it can do, or lists none. */
 const profileWith = (can: string[] | null, time = T0) => entry(alice, 'profile', profileBody('maths', can ? { keys: [listed(can)] } : {}), time)
 
 describe('versions', () => {

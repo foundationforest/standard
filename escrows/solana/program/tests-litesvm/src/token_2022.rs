@@ -334,7 +334,7 @@ pub(crate) fn make_open_usd(h: &mut Harness, hook: HookProgram) {
     assert_eq!(h.payer_account(), ata_address_under(&payer, &m, &TOKEN_2022_PROGRAM));
 }
 
-/// Writes the test hook's validation account for the harness's mint, listing `accounts`.
+/// Writes the test hook's validation account for the harness's mint: it lists `accounts`.
 pub fn set_hook_list(h: &mut Harness, accounts: &[ExtraAccountMeta]) {
     let size = ExtraAccountMetaList::size_of(accounts.len()).unwrap();
     let mut data = vec![0u8; size];

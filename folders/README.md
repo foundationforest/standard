@@ -235,7 +235,7 @@ folder, and the sender is locked inside. Each host checks it on its own, and lim
 chooses (Hosts).
 
 **List.** Anyone lists a folder's inbox after a cursor (`POST /v1/inbox/read`, with `{ "to",
-"after"? }`; `readInbox`), since a listing shows only what its host sees anyway. Nothing pushes: an
+"after"? }`; `readInbox`), since a list shows only what its host sees anyway. Nothing pushes: an
 app lists each inbox after its last cursor.
 
 ### The Profiles folder

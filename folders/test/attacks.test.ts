@@ -183,7 +183,7 @@ describe('linking two profiles of one person', () => {
     assert.deepEqual(shared, ['https://big-host.example'])
   })
 
-  test('FINDING: written in the same moment, two profiles sit side by side in a host’s listing', async () => {
+  test('FINDING: written in the same moment, two profiles sit side by side in a host’s list', async () => {
     const host = await startHost({ now: () => T0 })
     try {
       await write([host.url], [entry(alice, 'profile', profileBody('maths'), T0)])

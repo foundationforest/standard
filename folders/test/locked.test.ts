@@ -142,7 +142,7 @@ describe('notes and the Profiles folder: locked entries at random paths', () => 
       assert.match(note.path, /^key\/[0-9a-f]{32}$/)
       assert.ok(!note.path.includes(access.address.slice(0, 8)), 'the path names nothing')
       await assert.rejects(openLocked(note.body!, access.identity), 'a key that can read opens no note: a note is locked to the main key alone')
-      // The app finds the note about a key by listing key/ and opening each.
+      // The app finds the note about a key by opening each entry under key/.
       const folder = await readFolder([host.url], alice.address, T0)
       const notes = await Promise.all([...folder.current].filter(([path]) => path.startsWith('key/')).map(async ([, c]) => openLocked(c.entry.body!, aliceOpening.identity)))
       assert.deepEqual(notes.filter((n) => n.key === access.address), [about])

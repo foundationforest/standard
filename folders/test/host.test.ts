@@ -391,7 +391,7 @@ describe('limits: each host’s own batch and page; each reader’s own size; 60
     }
   })
 
-  test('writing, leaving, listing and uploading go through the fetch given too, and may refuse redirects', async () => {
+  test('writing, leaving, reading the inbox and uploading go through the fetch given too, and may refuse redirects', async () => {
     const h = await startHost({ now: () => T0 })
     const away = createServer((req, res) => res.writeHead(307, { location: `${h.url}${req.url}` }).end())
     await new Promise<void>((resolve) => away.listen(0, '127.0.0.1', resolve))
