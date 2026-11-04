@@ -7,7 +7,7 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { test } from 'node:test'
+import { after, test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 
 import { derivePublicKey, signMessage } from '@zk-kit/eddsa-poseidon'
@@ -28,6 +28,10 @@ import {
   verifierKeyOf,
   type SignedStamp,
 } from '../src/index.ts'
+
+// snarkjs keeps its BN254 curve, and the curve's worker threads, alive in a global of
+// ffjavascript's: stopping them lets this file's process end, so every result is reported.
+after(() => (globalThis as { curve_bn128?: { terminate(): Promise<void> } }).curve_bn128?.terminate())
 
 const here = dirname(fileURLToPath(import.meta.url))
 const artifacts = { wasm: join(here, '../verification/setup/verification.wasm'), zkey: join(here, '../verification/setup/verification.zkey') }

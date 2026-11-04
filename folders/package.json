@@ -31,7 +31,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "check": "tsc --noEmit",
-    "test": "node --test --test-concurrency=1 --test-force-exit test/*.test.ts",
+    "test": "node --test test/*.test.ts",
     "check-host": "node scripts/check-host.ts"
   },
   "dependencies": {

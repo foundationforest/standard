@@ -10,7 +10,7 @@ import assert from 'node:assert/strict'
 import { randomBytes } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { test } from 'node:test'
+import { after, test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 
 import { groth16 } from 'snarkjs'
@@ -27,6 +27,10 @@ import {
   signedBytes,
   type Leaf,
 } from '../src/index.ts'
+
+// snarkjs keeps its BN254 curve, and the curve's worker threads, alive in a global of
+// ffjavascript's: stopping them lets this file's process end, so every result is reported.
+after(() => (globalThis as { curve_bn128?: { terminate(): Promise<void> } }).curve_bn128?.terminate())
 
 const here = dirname(fileURLToPath(import.meta.url))
 const artifacts = { wasm: join(here, '../reputation/setup/reputation.wasm'), zkey: join(here, '../reputation/setup/reputation.zkey') }

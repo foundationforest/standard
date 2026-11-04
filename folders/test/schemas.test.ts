@@ -6,7 +6,7 @@
 
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { describe, test } from 'node:test'
+import { after, describe, test } from 'node:test'
 import { Ajv2020 } from 'ajv/dist/2020.js'
 import formats from 'ajv-formats'
 import { accessKey, isEvmAddress, mainKey, payAddresses, pointOf, serviceKey } from '@foundationforest/keys'
@@ -17,6 +17,10 @@ import { proofsOf, reputationCheck, verificationCheck } from '../src/proofs.ts'
 import { checkEntry, decodeEntry, encodeEntry } from '../src/entry.ts'
 import { entry } from '../src/write.ts'
 import { SEED, T0, access, aliceOpening, alice, aliceBuyer, listed, profileBody } from './fixtures.ts'
+
+// snarkjs keeps its BN254 curve, and the curve's worker threads, alive in a global of
+// ffjavascript's: stopping them lets this file's process end, so every result is reported.
+after(() => (globalThis as { curve_bn128?: { terminate(): Promise<void> } }).curve_bn128?.terminate())
 
 const read = (path: string) => JSON.parse(readFileSync(new URL(path, import.meta.url), 'utf8'))
 const KINDS = ['profile'] as const
