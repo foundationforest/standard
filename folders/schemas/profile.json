@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "profile",
-  "description": "A profile's profile entry, at the path `profile` in its folder: one per folder, written by its main key only. A market profile lives in one market, in one role; its label is <market>/<role>, and its profile entry carries both. The Profiles folder's carries only hosts. The fields below are the standard's; any other field is the market's (foundationforest/markets).",
+  "description": "A profile's profile entry, at the path `profile` in its folder: one per folder, written by its main key only. A market profile lives in one market, in one role; its label is <market>/<role>, and its profile entry carries both. The Profiles folder's carries only hosts. The fields below are the standard's.",
   "type": "object",
   "required": [
     "hosts"

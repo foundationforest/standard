@@ -21,8 +21,8 @@ locked to it. This README is the standard; the library in `src/` follows it, and
   without BIP39's PBKDF2 step, which would hash the words into another seed.
 - Whoever controls the app that holds the seed controls the seed. A web app's code arrives from its
   server on each visit; an installed app's does not.
-- Nothing derived from the seed is stored: the app derives the one key an action needs, uses it,
-  and drops it.
+- No secret key derived from the seed is stored: the app derives the one key an action needs, uses
+  it, and drops it. Public keys and addresses are published.
 
 ### The recipe
 
@@ -135,10 +135,12 @@ whoever holds it learns nothing of the seed or of any other key.
 
 ### Service keys
 
-A service key is an index's or a verifier's own signing key: 32 random bytes from no seed
-(`serviceKey`). Its scalar is the lowest 250 bits of the bytes read big-endian; bytes whose lowest
-250 bits are 0 are no key. It signs as a main key does, and its address is spelled the same way.
-An index signs its roots with one, and a verifier its stamps ([proofs](../proofs/README.md)).
+A service key is an index's or a verifier's own signing key (`serviceKey`): 32 bytes from no
+person's seed, random or derived from the service's own secret, as our verifier's two keys are
+([services](https://github.com/foundationforest/services)). Its scalar is the lowest 250 bits of
+the bytes read big-endian; bytes whose lowest 250 bits are 0 are no key. It signs as a main key
+does, and its address is spelled the same way. An index signs its roots with one, and a verifier
+its stamps ([proofs](../proofs/README.md)).
 
 ### What an app that holds keys should know
 
@@ -185,8 +187,9 @@ but the words without the library.
 ## Promises
 
 - **The same seed gives the same keys,** in any app, on any device, every time.
-- **Nothing ties two profiles together.** Each profile's keys are derived with its own label's
-  text: one profile's main key, address, pay key or encryption key says nothing about another's.
+- **Nothing ties two profiles together** unless the person links them (Limits). Each profile's
+  keys are derived with its own label's text: one profile's main key, address, pay key or
+  encryption key says nothing about another's.
 - **Nothing ties two verifiers together.** Each stamp number is derived with its verifier's own
   name, so a person's stamp numbers at two verifiers are unrelated, and two verifiers comparing what
   they hold cannot match them, as long as no two share a name: two under one name get the same

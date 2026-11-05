@@ -65,7 +65,7 @@ describe('schemas', () => {
     }
   })
 
-  test('entries stay open: a market adds fields, flat beside the standard’s, and a field nobody defined is not refused', () => {
+  test('the profile entry stays open: a field nobody defined is not refused', () => {
     for (const kind of KINDS) assert.ok(fits(kind, { ...example(kind), anythingElse: 1 }), kind)
   })
 

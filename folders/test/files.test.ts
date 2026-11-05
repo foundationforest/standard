@@ -1,11 +1,13 @@
 // Files: bytes an entry names. A host takes them, uploaded by their hash, only while a current
-// entry it holds names them, with their type and size; anyone fetches them by hash and checks it.
+// entry it holds names them, with their type and size; anyone fetches them by hash and checks it,
+// following a host's redirect to them a few times at most.
 // Here, the client's side, against the minimal host (host.ts); what a host checks on an upload is
 // the host check's (check.test.ts).
 
 import assert from 'node:assert/strict'
+import { createServer } from 'node:http'
 import { describe, test } from 'node:test'
-import { fetchFile, readFolder, upload, write } from '../src/client.ts'
+import { MAX_FILE_REDIRECTS, fetchFile, readFolder, upload, write } from '../src/client.ts'
 import { type FileName, fileOf, filesOf } from '../src/files.ts'
 import { entry } from '../src/write.ts'
 import { T0, alice, asAccess, listed, profileBody } from './fixtures.ts'
@@ -93,6 +95,55 @@ describe('files', () => {
       assert.equal(await fetchFile(['http://127.0.0.1:1', good.url], name).then((g) => g!.host), good.url, 'a host that does not answer is skipped')
     } finally {
       await good.close()
+      await bad.close()
+    }
+  })
+
+  test('a host may answer a file read with a redirect: a reader follows three at most, each through its own fetch, each https or loopback, and still checks the hash', async () => {
+    const h = await startHost({ now: () => T0 })
+    const bad = await startHost({ now: () => T0 })
+    bad.fetchFile = async () => ({ type: 'image/jpeg', bytes: clip })
+    // `/<n>/v1/files/<sha256>` hands a read on n times: to `/<n - 1>/…`, then to `last`.
+    let last = h.url
+    const hops = createServer((req, res) => {
+      const [, n, path] = /^\/(\d+)(\/.*)$/.exec(req.url ?? '') ?? []
+      res.writeHead(302, { location: Number(n) > 1 ? `/${Number(n) - 1}${path}` : `${last}${path}` }).end()
+    })
+    await new Promise<void>((resolve) => hops.listen(0, '127.0.0.1', resolve))
+    const url = `http://127.0.0.1:${(hops.address() as { port: number }).port}`
+    try {
+      const name = fileOf(photo, 'image/jpeg').sha256
+      await write([h.url], [entry(alice, 'photo/1', { files: [fileOf(photo, 'image/jpeg')] }, T0)])
+      assert.equal(await up(h, photo), 'ok')
+      const asked: string[] = []
+      const counting: typeof fetch = (input, init) => {
+        asked.push(String(input))
+        return fetch(input, init)
+      }
+
+      assert.deepEqual((await fetchFile([`${url}/1`], name))!.bytes, photo, 'one redirect')
+      const got = await fetchFile([`${url}/${MAX_FILE_REDIRECTS}`], name, { fetch: counting })
+      assert.deepEqual([got!.host, got!.bytes, got!.type], [`${url}/3`, photo, 'image/jpeg'], 'three')
+      assert.deepEqual(asked, [`${url}/3`, `${url}/2`, `${url}/1`, h.url].map((at) => `${at}/v1/files/${name}`), 'every hop through the reader’s own fetch')
+      assert.equal(await fetchFile([`${url}/${MAX_FILE_REDIRECTS + 1}`], name), null, 'four is more than a reader follows')
+      assert.equal(await fetchFile([`${url}/1`], name, { redirect: 'error' }), null, 'none, when told to refuse redirects')
+
+      last = bad.url
+      assert.equal(await fetchFile([`${url}/1`], name), null, 'a redirect to other bytes fails the hash')
+      last = 'http://example.com'
+      asked.length = 0
+      assert.equal(await fetchFile([`${url}/1`], name, { fetch: counting }), null, 'a redirect to http off loopback is refused')
+      assert.deepEqual(asked, [`${url}/1/v1/files/${name}`], 'before it is sent')
+
+      // A browser hides where a redirect leads: the read is sent again, for the browser to follow.
+      last = h.url
+      const opaque = { type: 'opaqueredirect', status: 0, ok: false, headers: new Headers(), body: null } as unknown as Response
+      const browser: typeof fetch = async (input, init) => (init?.redirect === 'manual' ? opaque : fetch(input, init))
+      assert.deepEqual((await fetchFile([`${url}/2`], name, { fetch: browser }))!.bytes, photo, 'in a browser, the browser follows')
+    } finally {
+      hops.closeAllConnections()
+      await new Promise((resolve) => hops.close(resolve))
+      await h.close()
       await bad.close()
     }
   })

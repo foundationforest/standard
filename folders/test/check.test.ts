@@ -1,9 +1,11 @@
 // The host check, run against the minimal host (host.ts): every check passes. Against a host that
 // charges to join or for every write, or takes only small lines, as the host API lets a host
 // choose, nothing fails, and given a seed whose folders it holds, or the payment it asks for, every
-// check runs. Against hosts that break the host API, the check says which promise broke.
+// check runs; so does one that answers a file read with a redirect a reader can follow. Against
+// hosts that break the host API, the check says which promise broke.
 
 import assert from 'node:assert/strict'
+import { createServer } from 'node:http'
 import { describe, test } from 'node:test'
 import { mainKey } from '@foundationforest/keys'
 import { utf8 } from '../src/bytes.ts'
@@ -144,6 +146,35 @@ describe('the host check', () => {
       assert.deepEqual(failed(results), [], statuses(results).join('\n'))
       assert.ok(results.some((r) => r.status === 'unchecked' && /size/.test(r.why ?? '')), 'a profile entry with its open key is larger than the cap')
     } finally {
+      await h.close()
+    }
+  })
+
+  test('a host that answers a file read with a redirect passes, while a reader can follow it; a redirect to http off loopback fails the file check', async () => {
+    const h = await startHost()
+    // A front for the host: a file read is a redirect to `to`, and every other request passes to the host as it came.
+    let to = h.url
+    const front = createServer(async (req, res) => {
+      const chunks: Buffer[] = []
+      for await (const chunk of req) chunks.push(chunk as Buffer)
+      if (req.method === 'GET' && req.url!.startsWith('/v1/files/')) return void res.writeHead(302, { location: `${to}${req.url}` }).end()
+      const pass = (headers: Headers | NodeJS.Dict<string | string[]>, names: string[]) => Object.fromEntries(names.flatMap((n) => {
+        const value = headers instanceof Headers ? headers.get(n) : headers[n]
+        return typeof value === 'string' ? [[n, value]] : []
+      }))
+      const out = await fetch(`${h.url}${req.url}`, { method: req.method, headers: pass(req.headers, ['content-type', 'forest-payment']), ...(chunks.length && { body: Buffer.concat(chunks) }) })
+      res.writeHead(out.status, pass(out.headers, ['content-type', 'forest-cursor'])).end(Buffer.from(await out.arrayBuffer()))
+    })
+    await new Promise<void>((resolve) => front.listen(0, '127.0.0.1', resolve))
+    const url = `http://127.0.0.1:${(front.address() as { port: number }).port}`
+    try {
+      const results = await checkHost(url)
+      assert.ok(results.every((r) => r.status === 'ok'), statuses(results).join('\n'))
+      to = 'http://example.com'
+      assert.deepEqual(failed(await checkHost(url)), ['takes a file’s bytes only while a current entry names them, serves them with their type, and refuses bytes that do not match'])
+    } finally {
+      front.closeAllConnections()
+      await new Promise((resolve) => front.close(resolve))
       await h.close()
     }
   })

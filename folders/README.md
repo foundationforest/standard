@@ -93,8 +93,7 @@ Beyond step 1, readers check no clock. An app sets `time = max(now, newest known
 ### The profile entry
 
 The entry at `profile`, written by the main key only, shows the profile, and is the one body every
-host reads. The JSON Schema in `schemas/` shapes it: its fields are the standard's, and its market
-adds fields beside them.
+host reads. The JSON Schema in `schemas/` shapes it, and its fields are the standard's.
 
 ```
 { "market"?: <text>, "role"?: <text>, "hosts": [<origin>, …],
@@ -137,19 +136,21 @@ encryption key, what it can do, and when it ended:
 | `read` | opens the folder's locked entries: every one written after the profile entry listed it is locked to it |
 | `read-inbox` | opens the folder's inbox entries |
 | `write` | writes any entry in the folder but `profile`: an entry it signs, naming itself in `key`, counts |
-| `message` | signs messages as the profile, which the recipient's app shows as the profile's |
+| `message` | signs messages as the profile, which the recipient's app shows as the profile's; a host may also let it pay for what it sends from the folder's credits there, as ours does ([services](https://github.com/foundationforest/services/blob/main/host/README.md)) |
 
 - `open` is present whenever the key can `read` or `read-inbox` and has no `until`.
 - A key is listed once. The person ends it by writing a profile entry that lists it with `until`,
   whole milliseconds since 1970, 0 to 2^53 − 1 (Which entry counts): a key with `until` is ended.
 - **No access key writes `profile`**, so none can list itself, add a host or widen what it can do:
   an entry at `profile` that names a `key` is refused [`unlisted`].
-- **An ended key stops writing everywhere at once, and what it wrote stays:** an entry it signed
-  dated at or before `until` still counts; a host takes nothing more it signs (Hosts); nothing new
-  is locked to it; and no message it signs counts (The inbox).
+- **An ended key stops writing on every host that has the new profile entry, and what it wrote
+  stays where it is:** an entry it signed dated at or before `until` still counts; a host takes
+  nothing more it signs (Hosts); nothing new is locked to it; and no message it signs counts (The
+  inbox).
 - **Removing a key takes it all back:** a profile entry that no longer lists it makes every entry
-  it wrote stop counting, for every host and reader at once. At each path it wrote, the newest
-  entry that still counts is current again; the app writes again, with the main key, what it keeps.
+  it wrote stop counting, for every host and reader that has that profile entry. At each path it
+  wrote, the newest entry that still counts is current again; the app writes again, with the main
+  key, what it keeps.
 - A `can` this code does not know grants nothing, and a listed key with a field it does not know
   counts for nothing: the field could be a limit, and refusing the whole profile entry would stop
   the person updating it on an older host.
@@ -166,8 +167,11 @@ a random key made for it, and that key locked once to each public encryption key
 `openLocked`).
 
 - **It is locked to the main key's public encryption key, and to each listed key that can `read`
-  and has no `until`** (`lockKeysOf`, which refuses a profile entry with no `openKey` [`locked`]). Whoever
-  writes it MUST lock it to all of them. Nobody can check: an envelope names no key.
+  and has no `until`** (`lockKeysOf`, which refuses a profile entry with no `openKey` [`locked`]).
+  Whoever writes it MUST lock it to all of them, but for two kinds of entry, each locked to one key
+  alone: a note at `key/<id>`, to the main key (Access keys), and every entry in the Profiles
+  folder, to that folder's own encryption key, which its profile entry does not publish (The
+  Profiles folder). Nobody can check: an envelope names no key.
 - Each key it is locked to is an age post-quantum hybrid key (`age1pq1…`, stanza
   `mlkem768x25519`); an app MUST NOT lock an envelope to any other kind, since one classic key among
   them would let a quantum computer open it for all. Each adds about 2 KB.
@@ -193,7 +197,12 @@ Any body that is not locked MAY carry `files`, the files it names:
   them, with that type and size, so a file needs no signed request of its own.
 - **Kept** while a current entry names them; once none does, for the host's keep days.
 - **Fetch.** Anyone fetches a file from the folder's hosts (`GET /v1/files/<sha256>`, `fetchFile`),
-  with nothing to sign, and checks its SHA-256: a host that serves other bytes is skipped.
+  with nothing to sign. A host MAY answer with a redirect to the bytes, such as a short-lived link
+  into a bucket: `fetchFile` follows three at most, each to https (http only on loopback) and each
+  through the caller's own `fetch`, so whatever that checks, such as refusing private addresses,
+  it checks on every hop; in a browser, which hides where a redirect leads, the browser follows it.
+  The reader checks the bytes' SHA-256 wherever they came from: a host that serves other bytes is
+  skipped.
 
 ### The inbox
 
@@ -333,7 +342,7 @@ but the profile entry's and each body's `files`, and needs nothing from an index
 | `POST /v1/inbox` | NDJSON, one canonical inbox entry a line | as for entries |
 | `POST /v1/inbox/read` | `{ "to": <address>, "after"?: <cursor> }` | NDJSON of the inbox entries left for that folder after the cursor, in arrival order |
 | `PUT /v1/files/<sha256>` | the raw bytes, `content-type` their type | `{ok, error?, message?}` |
-| `GET /v1/files/<sha256>` | none | the bytes, with the type they came in with, or 404 |
+| `GET /v1/files/<sha256>` | none | the bytes, with the type they came in with, or a redirect to them (Files); or 404 |
 
 - A page's header `forest-cursor` is the last sequence number on it, or, on an empty page, the
   cursor asked with; the next page is after it. A page holds at least one line while there is one,
@@ -491,7 +500,7 @@ second SHA-256 and a second EdDSA-Poseidon, and checks both proofs in
 - Nobody checks what an envelope was locked to: a writer that leaves out a key, the main key's
   among them, shuts that key out.
 - A key that can write can write any path but `profile` until it is ended; ending it keeps what it
-  wrote before, and only removing it takes that back, at once.
+  wrote before, and only removing it takes that back, wherever the new profile entry is.
 - An ended key can still sign an entry dated at or before its `until`: a host that takes it makes a
   reader count it. Honest hosts refuse it, and the main key wins any path by writing there again.
 - A host refuses every entry an ended key signed, so a host the folder moves to or adds later never

@@ -13,7 +13,7 @@
 import { mainKey, newAccessKey, openingHalf, serviceKey } from '@foundationforest/keys'
 import { hex, utf8 } from './bytes.ts'
 import { canonical } from './canonical.ts'
-import { type Payment, type Result, readAll, readInbox, readPage, upload } from './client.ts'
+import { type Payment, READ_TIMEOUT_MS, type Result, getFile, readAll, readInbox, readPage, upload } from './client.ts'
 import { type Body, MAX_FUTURE_MS, type SignedEntry, encodeEntry, entryId, signAs, signingInput, unsignedOf } from './entry.ts'
 import { fileOf } from './files.ts'
 import { type InboxEntry, encodeInbox, inboxId } from './inbox.ts'
@@ -293,8 +293,9 @@ export async function checkHost(url: string, options: CheckOptions = {}): Promis
       if (!answer.ok && OWN_CHOICE.includes(answer.error ?? '')) throw new Unchecked(`the host refused a file by its own choice: ${answer.error}`)
       return answer.ok ? (answer.message ?? 'ok') : `${res.status} ${answer.error}`
     }
+    // Read as a reader reads it (getFile): a redirect to the bytes is an answer, as long as fetchFile could follow it.
     const fetched = async (sha256: string) => {
-      const res = await fetch(`${host}/v1/files/${sha256}`)
+      const res = await getFile(`${host}/v1/files/${sha256}`, { signal: AbortSignal.timeout(READ_TIMEOUT_MS) })
       return { status: res.status, type: res.headers.get('content-type'), bytes: new Uint8Array(await res.arrayBuffer()) }
     }
     expect((await fetched(name.sha256)).status === 404, 'bytes it does not hold were not 404')

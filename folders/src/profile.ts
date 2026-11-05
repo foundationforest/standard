@@ -36,6 +36,12 @@ const KEY_FIELDS = new Set(['key', 'open', 'can', 'until'])
 const isObject = (v: unknown): v is { [key: string]: unknown } => v !== null && typeof v === 'object' && !Array.isArray(v)
 const reads = (can: unknown[]) => can.includes('read') || can.includes('read-inbox')
 
+/** Whether a URL is https, or http on loopback, for tests: what a host's origin is, and every hop of a file read. */
+export function isHttpsOrLoopback(u: URL): boolean {
+  const loopback = u.hostname === '127.0.0.1' || u.hostname === 'localhost' || u.hostname === '[::1]'
+  return u.protocol === 'https:' || (u.protocol === 'http:' && loopback)
+}
+
 /** The origin form hosts are named by, or null. https only, except http on loopback for tests. */
 export function normalizeOrigin(url: string): string | null {
   let u: URL
@@ -44,8 +50,7 @@ export function normalizeOrigin(url: string): string | null {
   } catch {
     return null
   }
-  const loopback = u.hostname === '127.0.0.1' || u.hostname === 'localhost' || u.hostname === '[::1]'
-  if (u.protocol !== 'https:' && !(u.protocol === 'http:' && loopback)) return null
+  if (!isHttpsOrLoopback(u)) return null
   if (u.username || u.password || u.search || u.hash || (u.pathname !== '/' && u.pathname !== '')) return null
   return u.origin
 }
