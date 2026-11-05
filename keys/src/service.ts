@@ -1,7 +1,8 @@
 // A service key: the signing key of an index or a verifier. It is 32 random bytes the service makes
 // for itself, from no seed; its scalar is the lowest 250 bits of the bytes read big-endian, as a
-// main key's is the lowest 250 bits of a Poseidon mix. It signs as a main key does, and its address
-// is spelled as one is. The signing half of an access key is made the same way (access.ts).
+// main key's is the lowest 250 bits of a number Poseidon derives. It signs as a main key does, and
+// its address is spelled as one is. The signing key of an access key is made the same way
+// (access.ts).
 
 import { type Point, addressOf, keyScalar, publicKeyOf } from './curve.ts'
 import { numberOf } from './field.ts'

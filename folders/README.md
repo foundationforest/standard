@@ -5,12 +5,12 @@ Part of [Forest's standard](../README.md). The profile entry's shape: [schemas/]
 ## What it is
 
 How a profile writes, locks and reads its entries; the inbox; files; the Profiles folder; and the
-plug every host fits. Each profile has one folder on one or more hosts: its profile entry, which
+host API every host answers. Each profile has one folder on one or more hosts: its profile entry, which
 shows it; its entries, of any shape, public or locked; and its inbox, the entries others leave it,
 always locked. An entry is a small signed JSON value at a path. Hosts serve folders to anyone, and
 every reader checks every signature itself, so a host can withhold an entry but never forge one.
 This README is the standard: `src/` does every MUST in it (MUST, SHOULD and MAY as in RFC 2119),
-`test/` checks it, and the host check shows that a host fits the plug.
+`test/` checks it, and the host check shows that a host answers the host API.
 
 ## How it works
 
@@ -27,17 +27,20 @@ directory. Its folder is every entry signed for it, one current entry per path:
 
 | Path | What it holds |
 |---|---|
-| `profile` | the profile entry: hosts, market and role, open key, pay addresses, proofs, access keys |
+| `profile` | the profile entry: hosts, market and role, public encryption key, pay addresses, proofs, access keys |
 | `key/<id>` | a note for the person about one access key, at a random id (Access keys) |
 | any other | anything the writer chooses: a market's listings and reviews, an app's own entries |
 
 - A path is 1 to 4 segments separated by `/`, each `[a-z0-9][a-z0-9._-]{0,63}`, at most 256 bytes.
   `profile` is a single path: `profile/<anything>` is refused.
-- Beside `profile`, paths and bodies are the writer's. The main way is the market's the label names:
-  [markets](https://github.com/foundationforest/markets) keeps `listing/<id>` and `review/<id>`
-  among them. Readers MAY ignore a first segment they do not know.
+- Beside `profile`, paths and bodies are the writer's. The main way is the paths and bodies of the
+  market the label names: [markets](https://github.com/foundationforest/markets) keeps
+  `listing/<id>` and `review/<id>` among them. Readers MAY ignore a first segment they do not know.
 - An entry sits in the folder of the profile that wrote it, so the profile a review is about cannot
   erase it; the one who wrote it can.
+- A folder need not be a market's: anyone can keep one under a label of their own, for private
+  notes, say, locked to its main key and the access keys it lists with `read` (Locked entries); the
+  main way is a market's label.
 
 ### Entries
 
@@ -94,9 +97,9 @@ host reads. The JSON Schema in `schemas/` shapes it: its fields are the standard
 adds fields beside them.
 
 ```
-{ "market"?: <text>, "role"?: <text>, "hosts": [<origin>, …], "openKey"?: <open key>,
-  "pay"?: { … }, "proofs"?: [ … ],
-  "keys"?: [ { "key": <address>, "open"?: <open key>, "can": [ … ],
+{ "market"?: <text>, "role"?: <text>, "hosts": [<origin>, …],
+  "openKey"?: <public encryption key>, "pay"?: { … }, "proofs"?: [ … ],
+  "keys"?: [ { "key": <address>, "open"?: <public encryption key>, "can": [ … ],
                "until"?: <ms since 1970> }, … ],
   "files"?: [ … ] }
 ```
@@ -108,7 +111,8 @@ adds fields beside them.
   the new host, then every entry. To leave a host, write a profile entry that no longer names it to
   every host, that one included, so a reader that still asks it is pointed on; the old host may keep
   its copies, and readers follow the profile entry.
-- **`openKey`** is the main key's open key, `age1pq1…` ([keys](../keys/README.md#opening-halves)).
+- **`openKey`** is the main key's public encryption key, `age1pq1…`
+  ([keys](../keys/README.md#encryption-keys)).
   Locked entries and inbox entries are locked to it; a folder whose profile entry has one takes
   inbox entries.
 - **`pay`** lists any of the profile's pay addresses by chain, `solana` or `evm`, as keys/'s
@@ -122,11 +126,11 @@ where one is not as above [`profile`]; the rest is a reader's to check.
 
 ### Access keys
 
-An access key is a key the profile hands out, to an AI app, a service or another person, made from
-random bytes ([keys](../keys/README.md#access-keys)), so they can act for the profile while none of
-the person's devices is open, and every host and reader can check what each may do. The profile
-entry lists each one, `{ key, open?, can, until? }`: its address, its open key, what it can do,
-and when it ended:
+An access key is a key the profile hands out, made from random bytes
+([keys](../keys/README.md#access-keys)), so that an AI app, a service or another person can act for
+the profile while none of the person's devices is open; every host and reader can check what each
+may do. The profile entry lists each one, `{ key, open?, can, until? }`: its address, its public
+encryption key, what it can do, and when it ended:
 
 | `can` | The key |
 |---|---|
@@ -150,18 +154,19 @@ and when it ended:
   counts for nothing: the field could be a limit, and refusing the whole profile entry would stop
   the person updating it on an older host.
 - **Notes.** An access key may have a note for the person, such as who holds it: a locked entry at
-  `key/<id>`, the id random so the path names no key, locked to the main key's open key alone so no
-  access key reads it. Its body names the key, `{ "key": <address>, … }`; the app lists the
+  `key/<id>`, the id random so the path names no key, locked to the main key's public encryption
+  key alone so no access key reads it. Its body names the key, `{ "key": <address>, … }`; the app lists the
   folder's `key/` entries and opens each.
 
 ### Locked entries
 
 A locked entry's body is `{ "private": <base64url of an age file> }` and nothing else, age being a
 widely used encryption format. The age file is the envelope: the canonical text of an object under
-a random key made for it, and that key locked once to each open key (`lock`, `openLocked`).
+a random key made for it, and that key locked once to each public encryption key (`lock`,
+`openLocked`).
 
-- **It is locked to the main key's open key, and to each listed key that can `read` and has no
-  `until`** (`lockKeysOf`, which refuses a profile entry with no `openKey` [`locked`]). Whoever
+- **It is locked to the main key's public encryption key, and to each listed key that can `read`
+  and has no `until`** (`lockKeysOf`, which refuses a profile entry with no `openKey` [`locked`]). Whoever
   writes it MUST lock it to all of them. Nobody can check: an envelope names no key.
 - Each key it is locked to is an age post-quantum hybrid key (`age1pq1…`, stanza
   `mlkem768x25519`); an app MUST NOT lock an envelope to any other kind, since one classic key among
@@ -202,8 +207,8 @@ An inbox entry is what anyone leaves in a folder whose profile entry has `openKe
   text. Each host keeps it for its keep days.
 - It is not signed outside, so it shows no host who wrote to whom, and names only the folder it is
   to.
-- Its envelope is locked to `to`'s open key and to every key `to`'s profile entry lists with
-  `read-inbox` and no `until` (`inboxLockKeysOf`). The sender locks it so; nobody can check.
+- Its envelope is locked to `to`'s public encryption key and to every key `to`'s profile entry
+  lists with `read-inbox` and no `until` (`inboxLockKeysOf`). The sender locks it so; nobody can check.
 
 Locked inside it is one message:
 
@@ -225,11 +230,11 @@ Locked inside it is one message:
   (`openInbox`); then the sender's profile entry, from the sender's hosts: that it lists `key` with
   `message` and no `until`, if a key signed (`senderCounts`), and anything else it wants, such as a
   verification, a market and a role. Then it decides what to show. An ended key's message never
-  counts, even one dated before `until`: no host stands in front of a message to refuse the date
-  its key wrote, so a message sent before the end and read after counts no more.
+  counts, even one dated before `until`: no host can open a message to refuse a date its key
+  wrote, so one sent before the end and read after counts no more.
 
-**Leave.** The sender reads the recipient's profile entry for its hosts and open keys, signs the
-message, locks it, and leaves the inbox entry with each host (`POST /v1/inbox`; `inboxEntry`,
+**Leave.** The sender reads the recipient's profile entry for its hosts and public encryption
+keys, signs the message, locks it, and leaves the inbox entry with each host (`POST /v1/inbox`; `inboxEntry`,
 `leave`). Anyone may, with no login: a rule for senders would need each host to read the sender's
 folder, and the sender is locked inside. Each host checks it on its own, and limits spam as it
 chooses (Hosts).
@@ -246,7 +251,8 @@ device needs only the seed. It is a folder like any other, the empty label's
 
 - **Its profile entry holds only `hosts`**: no market, no role, no `openKey`, so no inbox and no
   access keys.
-- **Every entry in it is locked to its own opening half**, which only the person's devices mix.
+- **Every entry in it is locked to its own encryption key**, which only the person's devices
+  derive.
   These sit at a random id, so the paths name nothing:
   - one for each profile, at `label/<id>`: `{ "label": <label>, "time": <ms since 1970> }`, its
     label and when it was made;
@@ -265,7 +271,7 @@ device needs only the seed. It is a folder like any other, the empty label's
 A **backup** is a second seed whose Profiles folder holds the first in its seed entry, so that
 whatever opens the second opens the first
 ([keys](../keys/README.md#what-an-app-that-holds-keys-should-know)). The seed entry is at the single
-path `seed`, so a folder holds at most one, and it is locked to that folder's own opening half
+path `seed`, so a folder holds at most one, and it is locked to that folder's own encryption key
 alone:
 
 ```
@@ -276,7 +282,7 @@ alone:
   holds nothing else.
 - **An app that finds one uses the seed it holds instead,** and finds that seed's profiles as usual.
   It checks (`seedOf`) that the current entry at `seed` is locked to one key, opens with the
-  folder's own opening half, and holds `seed` and nothing else, 32 bytes in that one spelling; one
+  folder's own encryption key, and holds `seed` and nothing else, 32 bytes in that one spelling; one
   that fails names no seed. It follows one seed entry, never a second, so none loops.
 - **Nothing moves in the seed it holds:** its folders stay as they are.
 - **Nothing in the folders links the two:** the entry is locked, and the backup's address comes from
@@ -286,7 +292,7 @@ alone:
 - An app may pay for a backup's first write as for any folder's (Payment).
 - An app may keep, in the first seed's Profiles folder, one entry for each backup it made, at
   `backup/<id>`, the id random: the backup seed, `{ "seed": <base64url> }`, locked to that folder's
-  own opening half alone. An app holding the first seed then lists its backups, opening each as a
+  own encryption key alone. An app holding the first seed then lists its backups, opening each as a
   seed entry (`seedOf`), and ends one by deleting its seed entry, then that entry.
 
 ### Proofs
@@ -313,12 +319,11 @@ takes.
 
 ### Hosts
 
-A host is an address that answers seven requests, the plug, however many machines stand behind it.
-It has no keys, no sign-up and no login: a signature is all it asks for, and a payment if it
-charges. It takes signed entries for any folder, inbox entries for any folder whose profile entry
-on it has `openKey`, and the bytes a current entry names, and serves each to anyone. It reads no
-body but the profile entry's and each body's `files`, and needs nothing from an index or another
-host.
+A host is an address that answers seven requests, the host API, however many machines stand behind
+it. It has no keys, no sign-up and no login: a signature is all it asks for, and a payment if it
+charges. It takes signed entries for any folder, inbox entries for any folder whose profile entry on
+it has `openKey`, and the bytes a current entry names, and serves each to anyone. It reads no body
+but the profile entry's and each body's `files`, and needs nothing from an index or another host.
 
 | Request | Body | Answer |
 |---|---|---|
@@ -386,12 +391,12 @@ may skip one (zk-kit's `verifySignature` does not check that the key is in the p
 subgroup).
 
 **The host check.** Any host runs `checkHost` (`@foundationforest/folders/check`) against its own
-address, `npm run check-host -- <address>`, to show it fits the plug. It writes from two profiles of
-one seed, `check/a` and `check/b` (`CHECK_LABELS`), and an access key it makes, sends each request
-above, and checks every answer and every refusal's code. A refusal the plug lets a host make by its
-own choice, such as a folder's first profile entry or a size, is no failure: what it stops is
-reported unchecked, and given a seed whose folders the host already holds, and the payment it asks
-for, the check runs it all.
+address, `npm run check-host -- <address>`, to show it answers the host API. It writes from two
+profiles of one seed, `check/a` and `check/b` (`CHECK_LABELS`), and an access key it makes, sends
+each request above, and checks every answer and every refusal's code. A refusal the host API lets a
+host make by its own choice, such as a folder's first profile entry or a size, is no failure: what
+it stops is reported unchecked, and given a seed whose folders the host already holds, and the
+payment it asks for, the check runs it all.
 
 **What a host chooses**, and says where it describes itself:
 
@@ -494,8 +499,8 @@ second SHA-256 and a second EdDSA-Poseidon, and checks both proofs in
 - What a key opened, it keeps, and it can still open an older version a host or a copy holds.
 - A file is only as true as its hash: a host checks the hash and the size, never the type.
 - A delete is a request: whoever fetched what was public has it.
-- No forward secrecy: an opening half that leaks opens every envelope locked to it that a host or a
-  copy still holds.
+- No forward secrecy: an encryption key that leaks opens every envelope locked to it that a host or
+  a copy still holds.
 - A host's size bounds an envelope: each key it is locked to adds about 2 KB.
 - A payment links a backup's folder to the seed it stands for only when it comes straight from a
   folder or pay address of that seed; credits the host signed without seeing them link nothing.

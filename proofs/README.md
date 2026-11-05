@@ -10,15 +10,14 @@ verification** shows that a verifier signed a stamp to the seed behind a profile
 proof** shows, on one of the person's profiles, the plain average of the scores of one to eight of
 their profiles in an index's tree, naming none. Each is one statement with its own circuit and its
 own setup, in `verification/` and `reputation/`. Both are one package, `@foundationforest/proofs`,
-since both are made on the device, checked by anyone, and share their pieces: `src/` is the one
-client, which talks to no network.
+since they share their pieces: `src/` is the one client, which talks to no network.
 
 ## How it works
 
 - The device makes a proof from the seed's number ([keys](../keys/README.md#the-recipe)), so the
   seed never leaves it. Inside both proofs, the profile's key is worked out from the seed as keys/
-  mixes it, so a proof holds only for a profile of the seed behind it, and a second key for the same
-  label has no proof.
+  derives it, so a proof holds only for a profile of the seed behind it, and a second key for the
+  same label has no proof.
 - No chain is touched: a profile shows its proofs in its profile entry
   ([folders](../folders/README.md#proofs)), and whoever reads them checks them. The entry takes any
   circuit's proofs, and a reader skips one it does not know: these two are ours, and anyone can add
@@ -39,15 +38,15 @@ device ── the verification, for one profile ──▶ its profile entry, for
 
 Anyone can sign stamps, and whoever does is a verifier. The main way is a verifier that checks one
 human per seed and signs them one stamp (one is in
-[services](https://github.com/foundationforest/services)); a school, a club or a license board
-could sign stamps the same way. A verifier decides whom it signs for and how many stamps each gets;
-a reader decides which verifiers count.
+[services](https://github.com/foundationforest/services)). Others could too: a university could
+stamp its graduates, a medical board its doctors, an event its ticket holders. A verifier decides
+whom it signs for and how many stamps each gets; a reader decides which verifiers count.
 
 **The stamp** is *stamp number, facts, the verifier's name*, signed by the verifier:
 
 - The stamp number is `Poseidon(the seed's number, name hash)`
   ([keys](../keys/README.md#the-recipe)). The device sends it once: the verifier learns nothing
-  else mixed from the seed, and sees the same number each time for that person.
+  else derived from the seed, and sees the same number each time for that person.
 - The facts are one number below BN254's scalar order, whatever the verifier puts there, such as a
   hash of what it saw. The proof keeps them private.
 - The verifier signs `Poseidon(name hash, stamp number, facts)` by EdDSA-Poseidon, with its service
@@ -133,7 +132,8 @@ reader's.
 ### The setups
 
 A Groth16 proof needs a setup, made once for its circuit: whoever knows all of its secret randomness
-could make a false proof, so it is made in public by many people, and one honest one is enough.
+could make a false proof, so a setup is best made in public by many people, where one honest one is
+enough.
 Each circuit has its own, in its `setup/`.
 
 - **Phase 1** is public: PSE's Perpetual Powers of Tau, `ppot_0080_16.ptau`, pinned by SHA-256, the

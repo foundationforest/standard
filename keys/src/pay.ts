@@ -1,5 +1,5 @@
-// A profile's pay keys: one keypair for each chain, per label, mixed from the seed. Each holds and
-// moves the profile's money on its chain; the main key, on Baby Jubjub, is no chain's account.
+// A profile's pay keys: one keypair for each chain, per label, derived from the seed. Each holds
+// and moves the profile's money on its chain; the main key, on Baby Jubjub, is no chain's account.
 //
 // - solana: an ed25519 keypair; its address is the public key in base58.
 // - evm: the 32 bytes, read big-endian, are a secp256k1 private key; its address is the last 20

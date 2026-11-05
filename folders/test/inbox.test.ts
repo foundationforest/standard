@@ -17,7 +17,7 @@ import { MINUTE, T0, access, alice, aliceBuyer, aliceBuyerOpening, aliceOpening,
 import { startHost } from './helpers.ts'
 
 const code = (c: string) => (err: unknown) => err instanceof FolderError && err.code === c
-/** Alice's profile entry body: her open key, and her access key able to read her inbox. */
+/** Alice's profile entry body: her public encryption key, and her access key able to read her inbox. */
 const alicesProfile = profileBody('maths', { keys: [listed(['read-inbox', 'write'])] })
 /** Bob's profile entry body: it lists a key of his own that can message as him. */
 const bobsKey = await accessKey(new Uint8Array(64).fill(0x2e))

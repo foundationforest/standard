@@ -3,14 +3,14 @@
 //
 //   { market?, role?, hosts, openKey?, pay?, proofs?, keys?, files? }
 //
-// `hosts` says where the folder lives; `openKey`, the main key's opening half, is what envelopes
-// are locked to, and a folder whose profile entry has one takes inbox entries; `keys` lists the
-// access keys the profile hands out, each with what it can do, and `until`, when it ended. An ended
-// key writes nothing more a host takes, is locked to nothing new and signs no message that counts;
-// what it wrote at or before `until` still counts (view.ts). A market adds its own fields beside
-// these. A listed key with a field this code does not know counts for nothing, and a `can` it does
-// not know grants nothing: a field it skipped could be a limit, and refusing the whole profile
-// entry instead would stop a person updating it.
+// `hosts` says where the folder lives; `openKey`, the main key's public encryption key, is what
+// envelopes are locked to, and a folder whose profile entry has one takes inbox entries; `keys`
+// lists the access keys the profile hands out, each with what it can do, and `until`, when it
+// ended. An ended key writes nothing more a host takes, is locked to nothing new and signs no
+// message that counts; what it wrote at or before `until` still counts (view.ts). A market adds its
+// own fields beside these. A listed key with a field this code does not know counts for nothing,
+// and a `can` it does not know grants nothing: a field it skipped could be a limit, and refusing
+// the whole profile entry instead would stop a person updating it.
 
 import type { Json } from './canonical.ts'
 import type { Code } from './codes.ts'
@@ -21,14 +21,14 @@ type Body = { [key: string]: Json }
 
 /** A profile entry names 1 to MAX_HOSTS hosts. */
 export const MAX_HOSTS = 8
-/** An open key: an age post-quantum hybrid key (mlkem768x25519), what envelopes are locked to. */
+/** A public encryption key: an age post-quantum hybrid key (mlkem768x25519), what envelopes are locked to. */
 export const OPEN_KEY = /^age1pq1[02-9ac-hj-np-z]{1952}$/
 /** What a listed access key can do: these four, and nothing more. */
 export const CAN = ['read-inbox', 'read', 'write', 'message'] as const
 export type Can = (typeof CAN)[number]
 /**
- * An access key a profile entry lists: its address, its open key when it can read and has not
- * ended, what it can do, and `until`, whole ms since 1970, when it ended.
+ * An access key a profile entry lists: its address, its public encryption key when it can read and
+ * has not ended, what it can do, and `until`, whole ms since 1970, when it ended.
  */
 export type ListedKey = { key: string; open?: string; can: string[]; until?: number }
 
@@ -52,10 +52,10 @@ export function normalizeOrigin(url: string): string | null {
 
 /**
  * The fields of a profile entry's body a host reads: `hosts`, 1 to MAX_HOSTS distinct origins;
- * `openKey`, an open key; `keys`, each with a usable address listed once, `can` a list of text,
- * `until`, if any, whole ms since 1970, and `open`, an open key, whenever it can read or read-inbox
- * and has no `until`. Throws FolderError with code `profile`.
- * The rest is a reader's to check (schemas/profile.json, the proof checks).
+ * `openKey`, a public encryption key; `keys`, each with a usable address listed once, `can` a list
+ * of text, `until`, if any, whole ms since 1970, and `open`, a public encryption key, whenever it
+ * can read or read-inbox and has no `until`. Throws FolderError with code `profile`. The rest is a
+ * reader's to check (schemas/profile.json, the proof checks).
  */
 export function checkProfileBody(body: Body): void {
   const hosts = body.hosts
@@ -84,7 +84,7 @@ export function hostsOf(body: Body | null | undefined): string[] {
   return Array.isArray(hosts) ? hosts.filter((h): h is string => typeof h === 'string') : []
 }
 
-/** The main key's open key a profile entry's body gives, or null. */
+/** The main key's public encryption key a profile entry's body gives, or null. */
 export function openKeyOf(body: Body | null | undefined): string | null {
   const openKey = body?.openKey
   return typeof openKey === 'string' && OPEN_KEY.test(openKey) ? openKey : null
@@ -112,18 +112,18 @@ export function canDo(body: Body | null | undefined, address: string, can: Can):
 }
 
 /**
- * The open keys a locked entry in this folder is locked to: the main key's, then each listed key's
- * that can read and has not ended. Throws FolderError `locked` when the profile entry gives no open
- * key.
+ * The public encryption keys a locked entry in this folder is locked to: the main key's, then each
+ * listed key's that can read and has not ended. Throws FolderError `locked` when the profile entry
+ * gives no public encryption key.
  */
 export function lockKeysOf(body: Body | null | undefined): string[] {
   return opening(body, 'read', 'locked', 'the profile entry gives no open key to lock to')
 }
 
 /**
- * The open keys an inbox entry to this folder is locked to: the main key's, then each listed key's
- * that can read-inbox and has not ended. Throws FolderError `no_inbox` when the profile entry gives
- * no open key, so the folder takes no inbox entries.
+ * The public encryption keys an inbox entry to this folder is locked to: the main key's, then each
+ * listed key's that can read-inbox and has not ended. Throws FolderError `no_inbox` when the
+ * profile entry gives no public encryption key, so the folder takes no inbox entries.
  */
 export function inboxLockKeysOf(body: Body | null | undefined): string[] {
   return opening(body, 'read-inbox', 'no_inbox', 'the profile entry gives no open key: the folder takes no inbox entries')

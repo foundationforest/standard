@@ -42,7 +42,7 @@ const Fp = Curve.Fp
 export const SCALAR_BITS = 250
 const MASK = (1n << 250n) - 1n
 
-/** A key's scalar from a number, a Poseidon mix or a service key's bytes: its lowest 250 bits. */
+/** A key's scalar from a number, such as one Poseidon derived or a service key's bytes: its lowest 250 bits. */
 export function keyScalar(raw: bigint): bigint {
   return raw & MASK
 }

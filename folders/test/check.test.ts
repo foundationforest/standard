@@ -1,7 +1,7 @@
 // The host check, run against the minimal host (host.ts): every check passes. Against a host that
-// charges to join or for every write, or takes only small lines, as the plug lets a host choose,
-// nothing fails, and given a seed whose folders it holds, or the payment it asks for, every check
-// runs. Against hosts that break the plug, the check says which promise broke.
+// charges to join or for every write, or takes only small lines, as the host API lets a host
+// choose, nothing fails, and given a seed whose folders it holds, or the payment it asks for, every
+// check runs. Against hosts that break the host API, the check says which promise broke.
 
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
@@ -21,8 +21,8 @@ const failed = (results: HostCheck[]) => results.filter((r) => r.status === 'fai
 const PAID = 'paid'
 const pay: Payment = () => PAID
 /**
- * A host that charges for every write, as the plug lets it: by its own choice, so never for a
- * profile entry of a folder it holds, unless `always`, which breaks the plug.
+ * A host that charges for every write, as the host API lets it: by its own choice, so never for a
+ * profile entry of a folder it holds, unless `always`, which breaks the host API.
  */
 function charge(h: TestHost, always = false) {
   const [accept, leave, upload] = [h.accept.bind(h), h.leave.bind(h), h.upload.bind(h)]
@@ -35,7 +35,7 @@ function charge(h: TestHost, always = false) {
         const { profile, path } = decodeEntry(line).entry
         free = !always && path === 'profile' && h.view(profile).current.has('profile')
       } catch {
-        // What does not check is refused by the plug, before any choice.
+        // What does not check is refused by the host API, before any choice.
       }
       out.push(payment === PAID || free ? { ...(await accept([line]))[0]!, i } : { i, ...unpaid })
     }
@@ -66,7 +66,7 @@ describe('the host check', () => {
     const paid = new Set<string>()
     const held = new Set<string>()
     const accept = h.accept.bind(h)
-    // Its own choice, as the plug lets it: a folder joins only once paid, and entries go only to a folder it holds.
+    // Its own choice, as the host API lets it: a folder joins only once paid, and entries go only to a folder it holds.
     h.accept = async (lines) => {
       const out = []
       for (const [i, line] of lines.entries()) {
@@ -75,7 +75,7 @@ describe('the host check', () => {
         try {
           ;({ profile, path } = decodeEntry(line).entry)
         } catch {
-          // What does not check is refused by the plug, before any choice.
+          // What does not check is refused by the host API, before any choice.
         }
         if (profile && !held.has(profile) && !(path === 'profile' && paid.has(profile))) out.push({ i, ok: false, error: 'refused', message: 'pay to join this host' })
         else {

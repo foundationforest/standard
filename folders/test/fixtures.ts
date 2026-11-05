@@ -1,5 +1,5 @@
-// Shared test fixtures: keys/'s test seed, a few keys, and ready-made bodies. Folders mixes no key:
-// the keys come from keys/, as an app gets them.
+// Shared test fixtures: keys/'s test seed, a few keys, and ready-made bodies. Folders derives no
+// key: the keys come from keys/, as an app gets them.
 
 import { readFileSync } from 'node:fs'
 import { accessKey, mainKey, openingHalf, serviceKey } from '@foundationforest/keys'
@@ -8,7 +8,7 @@ import { canonical } from '../src/canonical.ts'
 import type { Key } from '../src/keys.ts'
 import { type Body, type SignedEntry, type UnsignedEntry, signAs, signingInput } from '../src/entry.ts'
 
-/** keys/'s pinned vectors: its test seed (bytes 00 01 … 1f), its profiles, their opening halves and its access key. */
+/** keys/'s pinned vectors: its test seed (bytes 00 01 … 1f), its profiles, their encryption keys and its access key. */
 export const KEYS = JSON.parse(readFileSync(new URL('../../keys/test/vectors.json', import.meta.url), 'utf8'))
 export const SEED = hex.decode(KEYS.seed)
 /** A second person. */
@@ -32,12 +32,12 @@ export const T0 = Date.UTC(2026, 9, 2, 12, 0, 0)
 export const MINUTE = 60_000
 export const DAY = 86_400_000
 
-/** A listed access key: its address, its open key when it can read, and what it can do. */
+/** A listed access key: its address, its public encryption key when it can read, and what it can do. */
 export const listed = (can: string[], key = access): Body => ({ key: key.address, ...(can.some((c) => c.startsWith('read')) && { open: key.openKey }), can })
 
 /**
- * A profile entry's body for Alice: hosts, her open key, and the keys given. `subjects`, a field a
- * market adds, tells one version from another.
+ * A profile entry's body for Alice: hosts, her public encryption key, and the keys given.
+ * `subjects`, a field a market adds, tells one version from another.
  */
 export const profileBody = (subject: string, options: { hosts?: string[]; keys?: Body[]; openKey?: string | null } = {}): Body => ({
   market: 'tutoring',
