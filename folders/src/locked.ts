@@ -1,25 +1,25 @@
 // Locked entries and inbox entries: bodies only chosen keys open. A locked body on a host is
 // `{ private: <age file, base64url> }`. The age file is the envelope: one random file key per
-// body, locked once to each open key, naming none of them. Each open key is age's post-quantum
-// hybrid (mlkem768x25519: ML-KEM-768 with X25519), `age1pq1…`, an opening half's (keys/'s
-// openingHalf). The entry around the envelope is signed as usual, so no reader can forge content
-// for the others.
+// body, locked once to each public encryption key, naming none of them. Each public encryption key
+// is age's post-quantum hybrid (mlkem768x25519: ML-KEM-768 with X25519), `age1pq1…`, from an
+// encryption key (keys/'s openingHalf). The entry around the envelope is signed as usual, so no
+// reader can forge content for the others.
 //
-// A locked entry in a folder is locked to the main key's open key and to each listed key that can
-// read and has not ended (lockKeysOf); a note about an access key, to the main key's alone. The
-// writer locks it: nobody can check, since an envelope names no key. What this does not hide: that
-// a locked entry exists, its path, time and size, and how many keys it was locked to (one stanza
-// each), though never which: a stanza holds only its encapsulation. A key ended or removed reads no
-// new version; it keeps whatever it already opened. No forward secrecy: a key that leaks later
-// opens every envelope ever locked to it.
+// A locked entry in a folder is locked to the main key's public encryption key and to each listed
+// key that can read and has not ended (lockKeysOf); a note about an access key, to the main key's
+// alone. The writer locks it: nobody can check, since an envelope names no key. What this does not
+// hide: that a locked entry exists, its path, time and size, and how many keys it was locked to
+// (one stanza each), though never which: a stanza holds only its encapsulation. A key ended or
+// removed reads no new version; it keeps whatever it already opened. No forward secrecy: a key that
+// leaks later opens every envelope ever locked to it.
 //
 // An inbox entry's `private` is one of these envelopes, holding one signed message, locked to the
-// open keys the folder's profile entry gives for its inbox (inboxLockKeysOf). inboxEntry() signs and
-// locks one; openInbox() opens one and checks its message.
+// public encryption keys the folder's profile entry gives for its inbox (inboxLockKeysOf).
+// inboxEntry() signs and locks one; openInbox() opens one and checks its message.
 //
 // A Profiles folder's seed entry, at SEED_PATH, is one of these envelopes too, locked to that
-// folder's own opening half alone and holding the seed its own seed stands for; seedOf() opens one
-// and checks it.
+// folder's own encryption key alone and holding the seed its own seed stands for; seedOf() opens
+// one and checks it.
 
 import { Decrypter, Encrypter } from 'age-encryption'
 import { b64u } from './bytes.ts'
@@ -32,7 +32,7 @@ import type { Writer } from './write.ts'
 
 export { isLocked }
 
-/** A locked body: `body` in an envelope locked to these open keys (`age1pq1…`), which only their identities open. */
+/** A locked body: `body` in an envelope locked to these public encryption keys (`age1pq1…`), which only their identities open. */
 export async function lock(body: Body, openKeys: string[]): Promise<{ private: string }> {
   if (!openKeys.length) throw new Error('lock it to at least one key')
   const encrypter = new Encrypter()
@@ -44,7 +44,7 @@ export async function lock(body: Body, openKeys: string[]): Promise<{ private: s
   return { private: b64u.encode(await encrypter.encrypt(canonical(body))) }
 }
 
-/** Open a locked body with an opening half's identity. Throws if the envelope was not locked to it. */
+/** Open a locked body with an encryption key's identity. Throws if the envelope was not locked to it. */
 export async function openLocked(body: Body, identity: string): Promise<Body> {
   if (!isLocked(body)) throw new Error('not a locked body')
   const decrypter = new Decrypter()
@@ -65,7 +65,7 @@ export function lockCount(body: { private: string }): number {
 export const SEED_PATH = 'seed'
 
 /**
- * The seed a seed entry's body holds, opened with the identity of its folder's own opening half;
+ * The seed a seed entry's body holds, opened with the identity of its folder's own encryption key;
  * null when the body fails a check: it is locked to one key, opens with `identity` (so it is locked
  * to that alone), and holds `seed` and nothing else, 32 bytes in base64url without padding, the one
  * spelling `b64u` decodes. An app passes the current entry at SEED_PATH, or a body an app keeps the
@@ -91,9 +91,9 @@ export async function seedOf(body: Body | null | undefined, identity: string): P
 
 /**
  * An inbox entry for `to`'s folder: a message, signed by the writer (the sender's main key, or an
- * access key its profile entry lists with message), locked to the open keys `toProfile`, to's
- * current profile entry's body, gives for its inbox, and nothing else. `host` is one of the
- * sender's hosts.
+ * access key its profile entry lists with message), locked to the public encryption keys
+ * `toProfile`, to's current profile entry's body, gives for its inbox, and nothing else. `host` is
+ * one of the sender's hosts.
  */
 export async function inboxEntry(writer: Writer, to: string, body: Body, time: number, toProfile: Body | null | undefined, host?: string): Promise<InboxEntry> {
   const message = signMessage(writer, to, body, time, host)

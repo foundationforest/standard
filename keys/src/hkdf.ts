@@ -1,13 +1,13 @@
 // HKDF-SHA256 over Web Crypto, and the three texts every key hangs on. None of them is secret. Each
-// says what it mixes, so no key can be turned into any other key. A text's bytes are part of every
-// key made with it: changing one gives other keys.
+// says what it derives, so no key can be turned into any other key. A text's bytes are part of
+// every key made with it: changing one gives other keys.
 
 /**
- * The texts the seed is mixed with. A label or a name is used exactly as given. A text enters HKDF
- * as its UTF-8 bytes, and Poseidon as its number (field.ts).
+ * The texts the recipe derives keys with. A label or a name is used exactly as given. A text enters
+ * HKDF as its UTF-8 bytes, and Poseidon as its number (field.ts).
  */
 export const TEXT = {
-  /** A profile: its main key's signing half, from the text's number, and its opening half, by HKDF. The empty label is the Profiles folder. */
+  /** A profile: its main key's signing key, from the text's number, and its encryption key, by HKDF. The empty label is the Profiles folder. */
   profile: (label: string) => `forest/profile/${label}`,
   /** The person's stamp number at a verifier, from the text's number. */
   verifier: (name: string) => `forest/verifier/${name}`,

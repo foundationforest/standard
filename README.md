@@ -16,13 +16,13 @@ Forest lets people offer, deal with and review each other through profiles they 
 |---|---|---|
 | `keys/` | The recipe that makes every key from your seed, and access keys | Whenever an app holds a seed |
 | `proofs/` | Two proofs a device makes and anyone checks: that a profile comes from a stamped seed, and the trust it carries from your other profiles, naming none | When a profile shows it's verified, or carries trust |
-| `folders/` | How a profile writes, locks and reads its entries; the inbox; files; the Profiles folder; and the plug every host fits | Everything a profile says |
+| `folders/` | How a profile writes, locks and reads its entries; the inbox; files; the Profiles folder; and the host API every host answers | Everything a profile says |
 | `escrows/` | A lockbox on chain that holds a deal's money by a schedule both sides agreed. On Solana, the one place the standard touches a chain | When payments come; no app offers them yet |
 
 ## What's not here
 
 - What a listing, review, vouch or report holds: [markets](https://github.com/foundationforest/markets).
-- The services we run (verifier, host, index, mcp): [services](https://github.com/foundationforest/services).
+- The services we run (verifier, host, index, MCP server): [services](https://github.com/foundationforest/services).
 - The app that holds your seed: [app](https://github.com/foundationforest/app).
 
 Anyone can run or propose their own of each.

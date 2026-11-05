@@ -1,6 +1,6 @@
 // Field elements as 32 big-endian bytes, and the numbers the proofs take, which are keys/'s: the
 // seed's number, a label's scope, a verifier's name hash and the stamp number come from the same
-// recipe that mixes the keys.
+// recipe that derives the keys.
 
 export { BN254_R, fieldHash, isFieldElement, nameHashOf, scopeOf, seedNumber, stampNumberOf } from '@foundationforest/keys'
 

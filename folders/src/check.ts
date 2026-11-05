@@ -1,14 +1,14 @@
-// The host check: a test any host runs against its own address, to show it fits the plug
+// The host check: a test any host runs against its own address, to show it answers the host API
 // (README.md, Hosts). It writes to the host from two profiles of one seed, under the labels in
-// CHECK_LABELS, and an access key it makes, and checks each answer against the plug: taking an
+// CHECK_LABELS, and an access key it makes, and checks each answer against the host API: taking an
 // entry in, access keys and ending one, reading, taking an inbox entry in, the inbox's list, and
 // taking a file in.
 //
-// A refusal the plug lets a host make by its own choice is no failure: the first profile entry of a
-// folder it does not hold yet, an entry, an inbox entry or a file it does not take, a size it does
-// not take. What such a refusal stops is reported unchecked, with why. To check it all on a host
-// that charges to join or caps sizes, give a seed whose folders under CHECK_LABELS the host holds
-// already, and on a host that charges for writes, its payment.
+// A refusal the host API lets a host make by its own choice is no failure: the first profile entry
+// of a folder it does not hold yet, an entry, an inbox entry or a file it does not take, a size it
+// does not take. What such a refusal stops is reported unchecked, with why. To check it all on a
+// host that charges to join or caps sizes, give a seed whose folders under CHECK_LABELS the host
+// holds already, and on a host that charges for writes, its payment.
 
 import { mainKey, newAccessKey, openingHalf, serviceKey } from '@foundationforest/keys'
 import { hex, utf8 } from './bytes.ts'
@@ -34,7 +34,7 @@ export type CheckOptions = {
   payment?: Payment
 }
 
-/** What the host refused by its own choice, as the plug lets it: the check stops there, unchecked. */
+/** What the host refused by its own choice, as the host API lets it: the check stops there, unchecked. */
 class Unchecked extends Error {}
 /** The codes a host may answer by its own choice. */
 const OWN_CHOICE = ['refused', 'size', 'batch']
@@ -102,7 +102,7 @@ export async function checkHost(url: string, options: CheckOptions = {}): Promis
     if (OWN_CHOICE.includes(r.error ?? '')) throw new Unchecked(`the host refused ${what} by its own choice: ${r.error}${r.message ? `, ${r.message}` : ''}`)
     throw new Error(`the host refused ${what}: ${r.error}${r.message ? `, ${r.message}` : ''}`)
   }
-  /** Lines the host refuses, each with its code, in the plug's order. */
+  /** Lines the host refuses, each with its code, in the host API's order. */
   const refuses = async (path: string, cases: Array<[line: string, code: string, what: string]>) => {
     for (const [line, code, what] of cases) {
       const r = await send(path, line)

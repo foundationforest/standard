@@ -1,6 +1,6 @@
-// A profile's main key, one per label: its signing half mixed from the seed's number so the proofs
-// can derive it too, and its opening secret mixed from the seed with the same text. The empty label
-// gives the Profiles folder's. See README.md, "The recipe".
+// A profile's main key, one per label: its signing key derived from the seed's number so the proofs
+// can derive it too, and its encryption key's secret derived from the seed with the same text. The
+// empty label gives the Profiles folder's. See README.md, "The recipe".
 
 import { poseidon2 } from 'poseidon-lite/poseidon2'
 import { type Point, addressOf, keyScalar, publicKeyOf } from './curve.ts'
@@ -8,7 +8,7 @@ import { isFieldElement, scopeOf, seedNumber } from './field.ts'
 import { TEXT, SEED_LENGTH, assertBytes, assertText, hkdf } from './hkdf.ts'
 
 /**
- * A profile's main key, on Baby Jubjub: its signing half, and the secret its opening half is. Its
+ * A profile's main key, on Baby Jubjub: its signing key, and the secret its encryption key is. Its
  * address is the profile's name. It signs the profile's entries. Held in memory only.
  */
 export type MainKey = {
@@ -21,7 +21,7 @@ export type MainKey = {
   publicKey: Point
   /** The public key packed into 32 bytes, in base58: the profile's name. */
   address: string
-  /** The opening secret, `HKDF(seed, "forest/profile/<label>")`: the opening half, as it is (`openingHalf`). No public key gives it. */
+  /** The encryption key's secret, `HKDF(seed, "forest/profile/<label>")`, as it is (`openingHalf`). No public key gives it. */
   secret: Uint8Array
 }
 
@@ -32,8 +32,8 @@ export function profileScalarOf(seed: bigint, label: string): bigint {
 }
 
 /**
- * The main key for `label`, from the seed. One Poseidon mix per label, so two labels give
- * unrelated keys, and the same seed and label always give the same key. Its opening half is
+ * The main key for `label`, from the seed. Poseidon derives one per label, so two labels give
+ * unrelated keys, and the same seed and label always give the same key. Its encryption key is
  * `openingHalf(secret)`.
  */
 export async function mainKey(seed: Uint8Array, label: string): Promise<MainKey> {

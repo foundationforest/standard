@@ -1,4 +1,4 @@
-// Forest keys: the seed, and every key mixed from it. Runs in a browser or in Node, and talks
+// Forest keys: the seed, and every key derived from it. Runs in a browser or in Node, and talks
 // to nothing. See README.md.
 
 export { TEXT, SEED_LENGTH, hkdf } from './hkdf.ts'

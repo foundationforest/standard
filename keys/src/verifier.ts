@@ -1,5 +1,6 @@
-// The person's stamp number at one verifier: a Poseidon mix of the seed's number and the verifier's
-// name hash. A verifier is anyone who signs stamps for people, such as one that checks faces.
+// The person's stamp number at one verifier: what Poseidon derives from the seed's number and the
+// verifier's name hash. A verifier is anyone who signs stamps for people, such as one that checks
+// faces.
 //
 // The name, not the verifier's key: a verifier that changes its key changes no one's stamp number.
 // A different number at each verifier, so no two verifiers share a number for one person: two

@@ -320,7 +320,7 @@ test('a signature holds for its message and key only', () => {
   assert.throws(() => signWithScalar(scalar, BN254_R), /field element/)
 })
 
-// Opening halves
+// Encryption keys
 
 test("each profile gives its main key's pinned opening half: its opening secret, as it is, never the main key's scalar", async () => {
   for (const expected of vectors.mainKeys) {
@@ -333,8 +333,8 @@ test("an opening half, recomputed without the library: the 32 bytes as they are,
   const secret = mix(seed, 'forest/profile/tutoring/seller')
   assert.equal(hex.encode(secret), seller.secret)
   assert.equal(bech32.encodeFromBytes('AGE-SECRET-KEY-PQ-', secret).toUpperCase(), seller.opening.identity)
-  // The open key is the hybrid public key the 32 bytes expand to, in bech32 under age1pq, with no
-  // length limit: it is about 1,960 characters.
+  // The public encryption key is the hybrid public key the 32 bytes expand to, in bech32 under
+  // age1pq, with no length limit: it is about 1,960 characters.
   const publicKey = MLKEM768X25519.getPublicKey(secret)
   assert.equal(bech32.encode('age1pq', bech32.toWords(publicKey), false), seller.opening.openKey)
   assert.match(seller.opening.identity, /^AGE-SECRET-KEY-PQ-1[0-9A-Z]+$/)
@@ -359,13 +359,13 @@ test('an opening half needs a 32-byte secret', async () => {
 
 // Service keys and access keys: random bytes, from no seed
 
-/** A signing half by hand: the lowest 250 bits of the bytes read big-endian, times Base8 by zk-kit, packed by hand. */
+/** A signing key by hand: the lowest 250 bits of the bytes read big-endian, times Base8 by zk-kit, packed by hand. */
 const signingByHand = (bytes: Uint8Array) => {
   const scalar = bigEndian(bytes) % 2n ** 250n
   const point = times(scalar)
   return { scalar: scalar.toString(), publicKey: [point.x.toString(), point.y.toString()], address: pack(point.x, point.y) }
 }
-/** An opening half by hand: the 32 bytes as age's identity, and the hybrid public key they expand to. */
+/** An encryption key by hand: the 32 bytes as age's identity, and the hybrid public key they expand to. */
 const openingByHand = (bytes: Uint8Array) => ({
   identity: bech32.encodeFromBytes('AGE-SECRET-KEY-PQ-', bytes).toUpperCase(),
   openKey: bech32.encode('age1pq', bech32.toWords(MLKEM768X25519.getPublicKey(bytes)), false),
@@ -399,7 +399,7 @@ test('a new access key is fresh random bytes, from no seed; its halves are its o
   assert.equal(one.secret.length, 64)
   assert.notEqual(one.address, two.address)
   assert.deepEqual(await accessKey(one.secret), one, 'its 64 bytes give it back whole')
-  // Nothing of one half comes from the other: change one, and only it changes.
+  // Nothing of one key comes from the other: change one, and only it changes.
   const signing = Uint8Array.from(one.secret)
   signing[0]! ^= 1
   const changed = await accessKey(signing)

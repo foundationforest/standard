@@ -1,4 +1,4 @@
-// Locked entries: a body only chosen keys open, the main key's opening half among them. Hosts
+// Locked entries: a body only chosen keys open, the main key's encryption key among them. Hosts
 // check and store them like any entry, and read none. Notes about access keys and the Profiles
 // folder's entries are locked entries at random paths; a backup's seed entry, at one path.
 
@@ -102,7 +102,7 @@ describe('locked entries', () => {
       assert.deepEqual(stanzas(body).map((s) => [s[0], s.length - 1]), [['mlkem768x25519', 1], ['mlkem768x25519', 1]], 'one argument each')
       const file = Buffer.from(body.private, 'base64url')
       for (const r of keys) {
-        // The open key, its ML-KEM-768 half and its X25519 half: no 16 bytes of it are in the file.
+        // The public encryption key, its ML-KEM-768 half and its X25519 half: no 16 bytes of it are in the file.
         const key = bech32.fromWords(bech32.decode(r.openKey as `${string}1${string}`, false).words)
         assert.equal(key.length, 1216)
         for (let i = 0; i + 16 <= key.length; i++) assert.ok(!file.includes(Buffer.from(key.subarray(i, i + 16))), `bytes ${i} to ${i + 16} of a key`)
@@ -194,7 +194,7 @@ const first = await mainKey(SEED, '')
 const firstOpening = await openingHalf(first.secret)
 const backup = await mainKey(BACKUP_SEED, '')
 const backupOpening = await openingHalf(backup.secret)
-/** A seed entry's body: the seed in base64url without padding, locked to the backup folder's own open key alone. */
+/** A seed entry's body: the seed in base64url without padding, locked to the backup folder's own public encryption key alone. */
 const seedBody = (seed: Uint8Array) => lock({ seed: b64u.encode(seed) }, [backupOpening.openKey])
 
 describe('the seed entry: a backup, a second seed whose Profiles folder holds the first', () => {
@@ -223,7 +223,7 @@ describe('the seed entry: a backup, a second seed whose Profiles folder holds th
       // Nothing in the backup's folder names the first: not its seed, in any spelling, nor an address.
       const held = (await readAll(host.url, { profile: again.address })).entries.map((c) => canonical(c.entry)).join('\n')
       for (const named of [b64u.encode(SEED), hex.encode(SEED), first.address, alice.address]) assert.ok(!held.includes(named))
-      // Only the backup folder's own opening half opens it.
+      // Only the backup folder's own encryption key opens it.
       for (const other of [firstOpening.identity, aliceOpening.identity, access.identity]) assert.equal(await seedOf(folder.current.get(SEED_PATH)!.entry.body, other), null)
     } finally {
       await host.close()

@@ -3,20 +3,22 @@ Read `README.md` and the README of the directory you work in before any task.
 
 ## Words
 
-Use these words: seed, seed's number, main key, signing half, opening half, open key, access key,
-profile, Profiles folder, profile entry, entry, folder, address, label, scope, verifier, verified,
-stamp, stamp number, facts, verification, reputation proof, check, host, plug, host check, service
-key, connector, private, locked (an entry, to a key), envelope, message, inbox, inbox entry, file,
-pay address, pay key, escrow, receipt, deal, index, fee payer, app, market, role.
+Use these words: seed, seed's number, derive, main key, signing key, encryption key, public
+encryption key, access key, profile, Profiles folder, profile entry, entry, folder, address, label,
+scope, verifier, verified, stamp, stamp number, facts, verification, reputation proof, check, host,
+host API, host check, service key, connector, private, locked (an entry, to a key), envelope,
+message, inbox, inbox entry, file, pay address, pay key, escrow, receipt, deal, index, fee payer,
+app, market, role.
 Plain words, no em-dashes. The seed is the secret on your device; a stamp is the verifier's
 signature for your seed, kept private; a verification is what a profile shows. The standard says
 entry: anything in a folder. Markets name the kinds (listing, review, vouch, report).
 
 - Locked, never "sealed".
 - Never "record" for what a folder holds (it is an entry), "signer" (a chain's transaction signer
-  keeps the chain's word, in escrows/), "permission", "inbox key" (it is the main key's opening
-  half), "hosts record" (hosts are the profile entry's), "tag", "stamp proof" (it is a
-  verification), "pull", "blob" or "letter".
+  keeps the chain's word, in escrows/), "permission", "inbox key" (it is the main key's encryption
+  key), "hosts record" (hosts are the profile entry's), "tag", "stamp proof" (it is a
+  verification), "pull", "blob", "letter", "plug" (it is the host API), "mix" (derive), "signing
+  half", "opening half" or "open key" (signing key, encryption key, public encryption key).
 - Check, never verify: a reader checks a proof or a signature. The tooling keeps its own names
   (snarkjs's verifier, `verification-key.json`), and prose calls that part the proof check.
 - Never "account" for a person: a person has a seed and profiles. The word appears only in

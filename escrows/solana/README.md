@@ -9,7 +9,7 @@ The escrow program on Solana, and its client. An escrow holds an amount of one m
 money such as a dollar, between a payer and a recipient, by the schedule and the moves
 [escrows](../README.md) sets out, and leaves a receipt at its address for good: its account, saying
 how the deal ended. This version, 4, runs on devnet at `38vLV7TMvJ9bvXT3cbRLEfHUy8WbvHWfjmiUALUyCm5J`
-([record](devnet/devnet.json)), its upgrade authority, the key that could replace its code,
+([record](devnet/devnet.json)), with its upgrade authority, the key that could replace its code,
 removed. On mainnet, Solana's network for real money, it cannot change once deployed either,
 because money sits inside it and nobody, the Forest Foundation included, may change the
 rules around money already there: a new version is a new program at a new address, and the old ones
@@ -130,8 +130,8 @@ receipt keeps for good. A fee payer may front it, and charges for that as it cho
 the end makes the deposit account again, almost always at the payer's cost, so `recover_late` sends
 that rent to the payer with the late money.
 
-At Solana's 5,080 lamports a byte, the escrow account holds 304 bytes after its 8-byte
-discriminator, which names the account's kind (2,235,200 lamports), and comes back whole only at
+At Solana's 5,080 lamports a byte, the escrow account's rent is 2,235,200 lamports, for 304 bytes
+after its 8-byte discriminator, which names the account's kind; it comes back whole only at
 `close_unfunded`. A classic deposit account is 165 bytes; one for Open USD's extensions, 179
 (1,559,560 lamports).
 
@@ -161,8 +161,8 @@ but `end`.
 
 ### What cannot change
 
-Once the program is deployed to mainnet, none of this changes; a new version is a new program
-beside it, and on devnet too it goes to a new address.
+None of this changes once a version is deployed with its upgrade authority removed, as version 4
+is on devnet and as every version will be on mainnet.
 
 - **The account:** 304 bytes after the discriminator: the receipt's fields, with the version, the
   id, the deposit account, when it was created, its status and its bump, laid out in
@@ -195,19 +195,18 @@ keypair for it exists, and each deploy uses its own.
 
 ### Devnet
 
-On devnet the program is built as SBPF v3, a version of the format Solana runs programs in. Version 3
-stays at `FA6ZodkyhMDj9yjzY27dk8JDCtcHnJx8mr45Mx9TfKg8`, its upgrade authority still its deploy key,
-`2mz33wBK7FKRXoAi7LptGGTwVQJDbrSyrVwbYRCqwP3A`, from another phrase than version 4's (`earlier` in
-the record). It was upgraded in place from version 2, whose receipts it refuses (`beforeSchedules`).
-Version 4 accepts only accounts it owns, so it refuses every version 3 or 2 receipt, and version 3's
-escrows keep version 3's rules there.
+On devnet the program is built as SBPF v3, a version of the format Solana runs programs in. Older
+versions stay at their own addresses with their own rules (version 3's upgrade authority is still
+its deploy key), and [`devnet/devnet.json`](devnet/devnet.json) keeps their record under `earlier`;
+version 4 accepts only accounts it owns, so it refuses their receipts.
 
 `devnet/deploy.sh` takes any phrase. It builds a copy of the source with the devnet id put in,
 deploys a fresh id (one holding other bytes is refused), checks the deployed bytes against the build,
 removes the upgrade authority, and records everything public in [`devnet/devnet.json`](devnet/devnet.json):
 when the record names another program, that program's record (its keys, dollars, deals and
-transactions) first moves into `earlier`, whole. Its header holds the recipe for every devnet key it
-needs; the keys labelled `buyer` and `seller` act as payer and recipient, and `payer` as the sponsor.
+transactions) first moves into `earlier`, whole. The script's header holds the recipe for every
+devnet key it needs; the keys labelled `buyer` and `seller` act as payer and recipient, and
+`payer` as the sponsor.
 `client/scripts/devnet.ts` runs seven deals there, recorded in the same file, in a classic test
 dollar (`testDollar`) and a Token-2022 dollar made with Open USD's extensions (`openUsdShaped`),
 each reused when the `payer` key holds its mint authority and made otherwise. There is no smoke test:

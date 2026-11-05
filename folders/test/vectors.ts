@@ -1,5 +1,5 @@
 // The spec's test vectors. The keys are keys/'s: its test seed (bytes 00 01 … 1f), its
-// tutoring/seller and tutoring/buyer profiles, their opening halves and pay addresses, the empty
+// tutoring/seller and tutoring/buyer profiles, their encryption keys and pay addresses, the empty
 // label's main key, the Profiles folder's, and its access key, pinned in keys/test/vectors.json and
 // not repeated here; and a backup of the test seed, bytes 20 21 … 3f, whose Profiles folder's key
 // keys/'s mainKey makes from it. EdDSA-Poseidon here is deterministic, and the locked bodies are pinned as made,
@@ -39,7 +39,7 @@ const describeMessage = (message: SignedMessage) => {
 /** The photo vector's bytes: the 26 letters, as text/plain. */
 export const LETTERS = new TextEncoder().encode('abcdefghijklmnopqrstuvwxyz')
 
-/** The folder's profile entry: its hosts, its open key, its pay addresses, and keys/'s access key, able to read its inbox and write. */
+/** The folder's profile entry: its hosts, its public encryption key, its pay addresses, and keys/'s access key, able to read its inbox and write. */
 export const profileBody = () => {
   const seller = KEYS.payKeys.filter((p: { label: string }) => p.label === 'tutoring/seller')
   return {
@@ -55,7 +55,7 @@ export const profileBody = () => {
 export const MESSAGE = { text: 'Is Tuesday at six free?' }
 /** The note about the access key, locked to the main key alone: it names the key it is about. */
 export const NOTE = { key: access.address, holder: 'my tutoring AI', since: TIME }
-/** The Profiles folder's entry for tutoring/seller, locked to its own opening half. */
+/** The Profiles folder's entry for tutoring/seller, locked to its own encryption key. */
 export const LABEL = { label: 'tutoring/seller', time: TIME }
 
 /**

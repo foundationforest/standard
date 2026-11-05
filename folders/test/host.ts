@@ -1,7 +1,7 @@
-// A minimal host, for folders' own tests only and never exported: the plug (README.md, Hosts) and
-// nothing more. It holds what it takes in memory and chooses nothing of its own: it takes any size
-// and any number of lines, refuses nothing by its own choice, keeps every entry, inbox entry and
-// file it took, and answers a page whole unless a test sets `page`. Each write is given its
+// A minimal host, for folders' own tests only and never exported: the host API (README.md, Hosts)
+// and nothing more. It holds what it takes in memory and chooses nothing of its own: it takes any
+// size and any number of lines, refuses nothing by its own choice, keeps every entry, inbox entry
+// and file it took, and answers a page whole unless a test sets `page`. Each write is given its
 // request's `forest-payment` header, which this host ignores: a test that charges reads it. The
 // host check runs against it (check.test.ts). A host someone runs, with its storage and its
 // choices, is a product, and lives outside the standard.
@@ -44,7 +44,7 @@ export class TestHost {
   }
 
   // ------------------------------------------------------------------------------------------
-  // Entries: Taking an entry in, in the plug's order.
+  // Entries: Taking an entry in, in the host API's order.
 
   async accept(lines: string[], payment?: string): Promise<Result[]> {
     const now = this.now()
@@ -96,7 +96,7 @@ export class TestHost {
   }
 
   // ------------------------------------------------------------------------------------------
-  // The inbox: Taking an inbox entry in, and Deleting one, in the plug's order.
+  // The inbox: Taking an inbox entry in, and Deleting one, in the host API's order.
 
   async leave(lines: string[], payment?: string): Promise<Result[]> {
     const now = this.now()
