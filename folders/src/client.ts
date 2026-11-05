@@ -1,6 +1,7 @@
 // Talking to hosts over HTTP: write entries and read them back; leave inbox entries and list them;
 // upload and fetch files. Every entry and inbox entry read is checked here, and every
-// file's bytes hashed, whatever host they came from: a reader trusts no host.
+// file's bytes hashed, whatever host they came from: a reader trusts no host. A file read follows a
+// host's redirects itself, a few at most, each through the caller's fetch (getFile).
 //
 // How many lines a request or a page holds is each host's choice, and this handles any: a request
 // a host finds too big is sent again in halves, and a page is read line by line, however long. How
@@ -14,6 +15,7 @@ import { type Checked, type SignedEntry, decodeEntry, encodeEntry } from './entr
 import { FolderError } from './fail.ts'
 import { fileOf } from './files.ts'
 import { type CheckedInbox, type InboxEntry, decodeInbox, encodeInbox } from './inbox.ts'
+import { isHttpsOrLoopback } from './profile.ts'
 import { type View, viewFolder } from './view.ts'
 
 /** A host's answer to one line of a request: its place in the request, the id, and why not if not taken. */
@@ -28,6 +30,13 @@ export const READ_TIMEOUT_MS = 60_000
 export const MAX_LINE_READ = 65_536
 /** The largest file a reader takes unless told otherwise: a short video. */
 export const MAX_FILE_READ = 50_000_000
+/**
+ * The most redirects a file read follows: a host may hand it on to where the bytes are, such as a
+ * short-lived link into a bucket, and that may hand it on again. Three is room for that, and for a
+ * CDN in front, with no loop to follow for long.
+ */
+export const MAX_FILE_REDIRECTS = 3
+const REDIRECT_STATUS = new Set([301, 302, 303, 307, 308])
 
 /** How to reach a host: `fetch` and `redirect` as a read takes them (ReadHow). */
 export type Reach = Pick<ReadHow, 'fetch' | 'redirect'>
@@ -282,14 +291,39 @@ export async function upload(hosts: string[], bytes: Uint8Array, type: string, h
 }
 
 /**
+ * A file read, GET `url`, as the host answers it: the bytes, or a redirect to them. It follows at
+ * most MAX_FILE_REDIRECTS redirects itself, each through the caller's fetch, so whatever that
+ * fetch checks (refusing private addresses, say) it checks on every hop, and each to https, or
+ * http on loopback, as a host's origin is; more, or one elsewhere, throws. Given `redirect:
+ * 'error'`, a redirect is refused, as for any request.
+ */
+export async function getFile(url: string, how: Reach & { signal: AbortSignal }): Promise<Response> {
+  const get = how.fetch ?? fetch
+  if (how.redirect === 'error') return get(url, { signal: how.signal, redirect: 'error' })
+  for (let hops = 0; ; hops++) {
+    const res = await get(url, { signal: how.signal, redirect: 'manual' })
+    // A browser hides where a redirect leads (an opaque redirect), so nothing here can check it:
+    // there the read is sent once more, for the browser to follow under its own rules.
+    if (res.type === 'opaqueredirect') return get(url, { signal: how.signal })
+    const location = res.headers.get('location')
+    if (!REDIRECT_STATUS.has(res.status) || location === null) return res
+    await res.body?.cancel()
+    if (hops === MAX_FILE_REDIRECTS) throw new Error(`${url} redirects again, after ${MAX_FILE_REDIRECTS} redirects`)
+    const next = new URL(location, url)
+    if (!isHttpsOrLoopback(next)) throw new Error(`${url} redirects to ${next.origin}, not https`)
+    url = next.href
+  }
+}
+
+/**
  * The bytes named by `sha256`, from the first of a folder's hosts that serves bytes with that hash;
- * null if none does. A host that serves other bytes, or more than `maxBytes` (MAX_FILE_READ when
- * omitted), is skipped.
+ * null if none does. A host may answer with a redirect, which is followed as getFile says. A host
+ * that serves other bytes, or more than `maxBytes` (MAX_FILE_READ when omitted), is skipped.
  */
 export async function fetchFile(hosts: string[], name: string, options: { maxBytes?: number; timeout?: number } & Reach = {}): Promise<{ host: string; bytes: Uint8Array; type: string } | null> {
   for (const host of hosts) {
     try {
-      const res = await (options.fetch ?? fetch)(`${host}/v1/files/${name}`, { signal: AbortSignal.timeout(options.timeout ?? READ_TIMEOUT_MS), ...(options.redirect && { redirect: options.redirect }) })
+      const res = await getFile(`${host}/v1/files/${name}`, { ...options, signal: AbortSignal.timeout(options.timeout ?? READ_TIMEOUT_MS) })
       if (!res.ok) {
         await res.body?.cancel()
         continue

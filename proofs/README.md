@@ -188,7 +188,14 @@ cd proofs
 npm run fetch                  # each setup's committed files, hash-checked
 npm run compile                # circom 2.2.3 on PATH or in CIRCOM; checks each against its setup.json
 npm run check && npm test
-verification/setup/setup.sh    # a new setup for one circuit: new keys, new hashes
+```
+
+A setup is made only for a new version, under a new name. Each script writes its setup in place,
+with new keys and hashes, so run on these circuits it would stop every proof made so far from
+checking:
+
+```
+verification/setup/setup.sh
 reputation/setup/setup.sh
 ```
 
@@ -218,8 +225,9 @@ Node's `Buffer` taken away, as a browser runs it.
 
 ## Limits
 
-- Each circuit's setup was made by one party: whoever ran its `setup/setup.sh` could make a false
-  proof for that circuit. A public setup ceremony is planned.
+- Each circuit's setup was made by one party, the Forest Foundation, which ran its
+  `setup/setup.sh` and so could make a false proof for that circuit. A public setup ceremony is
+  planned.
 - A verifier's name beside a proof is a claim; the key is the fact. Anyone can write any name, and
   a reader trusts keys.
 - `facts` is a number the verifier fills, and nothing in the standard reads it.
@@ -250,3 +258,8 @@ More of either is a new circuit and a new setup.
 **Why is the reputation proof checked off chain?**
 Nothing on chain needs a reputation, and a program that cannot change could not take a better
 circuit. Whoever is shown a proof checks it.
+
+**What happens to today's proofs after the public setup ceremony?**
+They keep checking as they do. The ceremony's setups come with new circuits under new names,
+beside the old ones; apps make new proofs with them, and each index, when it chooses, stops
+counting the old.

@@ -8,12 +8,16 @@ encryption key, access key, profile, Profiles folder, profile entry, entry, fold
 scope, verifier, verified, stamp, stamp number, facts, verification, reputation proof, check, host,
 host API, host check, service key, connector, private, locked (an entry, to a key), envelope,
 message, inbox, inbox entry, file, pay address, pay key, escrow, receipt, deal, index, fee payer,
-app, market, role.
-Plain words, no em-dashes. The seed is the secret on your device; a stamp is the verifier's
-signature for your seed, kept private; a verification is what a profile shows. The standard says
-entry: anything in a folder. Markets name the kinds (listing, review, vouch, report).
+app, market, role, directory.
+Plain words, no em-dashes. The seed is a person's one secret, behind all their profiles, kept by
+their app; a stamp is the verifier's signature for your seed, kept private; a verification is what
+a profile shows. The standard says entry: anything in a folder. Markets name the kinds (listing,
+review, vouch, report).
 
 - Locked, never "sealed".
+- Seed means only a person's seed: a service's own is its secret.
+- Directory, never "folder", for `keys/`, `proofs/`, `folders/`, `escrows/` and the rest of the
+  repo's tree: in Forest, a folder is a profile's.
 - Never "record" for what a folder holds (it is an entry), "signer" (a chain's transaction signer
   keeps the chain's word, in escrows/), "permission", "inbox key" (it is the main key's encryption
   key), "hosts record" (hosts are the profile entry's), "tag", "stamp proof" (it is a
@@ -54,8 +58,8 @@ What an app that holds keys should know: `keys/README.md`. Never copy it here.
   configured for it.
 - One README per level: the repo's, and one in each directory. Each explains at its own altitude
   and says a thing once, at the lowest level that explains it; the others link to it.
-- The repo README is The picture, The folders, What's not here, Who decides what, How it changes,
-  For builders and Limits. Who decides what lives only there.
+- The repo README is The picture, The directories, What's not here, Who decides what, How it
+  changes, For builders and Limits. Who decides what lives only there.
 - Each directory's README, in this order: What it is (one paragraph, in the repo README's words,
   never why Forest exists); How it works (the substance, tables and short lists over prose); Use it
   (one short example that runs); Run it (the commands, and one line on what test/ covers, never test
