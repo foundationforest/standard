@@ -16,7 +16,7 @@ type Entry = { bytes: number; sha256: string }
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 
 let failed = false
-for (const circuit of ['verification', 'reputation']) {
+for (const circuit of ['verification', 'reputation', 'facts']) {
   const dir = join(root, circuit, 'setup')
   const setup = JSON.parse(readFileSync(join(dir, 'setup.json'), 'utf8')) as { files: Record<string, Entry> }
   for (const [name, entry] of Object.entries(setup.files)) {

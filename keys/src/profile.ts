@@ -25,7 +25,7 @@ export type MainKey = {
   secret: Uint8Array
 }
 
-/** A profile's scalar from the seed's number and its label. Both circuits compute the same. */
+/** A profile's scalar from the seed's number and its label. Every circuit computes the same. */
 export function profileScalarOf(seed: bigint, label: string): bigint {
   if (!isFieldElement(seed)) throw new RangeError("the seed's number is a field element")
   return keyScalar(poseidon2([seed, scopeOf(label)]))

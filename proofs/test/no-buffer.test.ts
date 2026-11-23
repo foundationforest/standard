@@ -1,6 +1,7 @@
-// The verification as a browser runs it: with no Buffer. Node's global is taken away before the
-// client and keys/ load; then a verifier signs a stamp, the device proves for one profile, and a
-// reader checks the proof, from its 256 bytes too.
+// The verification and the facts proof as a browser runs them: with no Buffer. Node's global is
+// taken away before the client and keys/ load; then a verifier signs a stamp, the device proves for
+// one profile, and a reader checks the proof, from its 256 bytes too; and a facts proof, from its
+// JSON.
 
 import assert from 'node:assert/strict'
 import { dirname, join } from 'node:path'
@@ -14,10 +15,12 @@ Object.defineProperty(globalThis, 'Buffer', { configurable: true, get: () => (/\
 const { hexToBytes } = await import('@noble/hashes/utils.js')
 const { sha256 } = await import('@noble/hashes/sha2.js')
 const { mainKey, seedNumber } = await import('@foundationforest/keys')
-const { checkVerification, fieldHash, proofBytes, proveVerification, signStamp, stampNumberOf } = await import('../src/index.ts')
+const { checkFacts, checkVerification, factsNumber, factsProofFromJson, factsProofToJson, fieldHash, newFact, proofBytes, proveFacts, proveVerification, signStamp, stampNumberOf } =
+  await import('../src/index.ts')
 
 const here = dirname(fileURLToPath(import.meta.url))
 const artifacts = { wasm: join(here, '../verification/setup/verification.wasm'), zkey: join(here, '../verification/setup/verification.zkey') }
+const factsArtifacts = { wasm: join(here, '../facts/setup/facts.wasm'), zkey: join(here, '../facts/setup/facts.zkey') }
 const seed = hexToBytes('000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f')
 const NAME = 'verifier-a.example'
 const LABEL = 'tutoring/seller'
@@ -39,4 +42,21 @@ test('with no Buffer: a verifier signs a stamp, the device proves, a reader chec
   const shown = { verifier: r.verifier, verifierName: NAME, label: LABEL, profile: main.address }
   assert.equal(await checkVerification({ ...shown, proof: r.proof }), true)
   assert.equal(await checkVerification({ ...shown, proof: proofBytes(r.proof) }), true, 'from its 256 bytes')
+})
+
+test('with no Buffer: a verifier signs a list of facts, the device shows one to a reader, the reader checks it from its JSON', async () => {
+  assert.equal(typeof Buffer, 'undefined')
+  const list = [newFact('given name', 'Ana'), newFact('nationality', 'ES')]
+  const stamp = signStamp(sha256(new TextEncoder().encode('forest stamp fixture: verifier A')), {
+    stampNumber: stampNumberOf(seedNumber(seed), NAME),
+    facts: factsNumber(list),
+    verifierName: NAME,
+    factList: list,
+  })
+  const time = 1_791_072_000_000
+  const made = await proveFacts({ seed, stamp, label: LABEL, show: [{ name: 'nationality', value: 'ES' }], time, to: 'a reader', artifacts: factsArtifacts })
+  const json = JSON.parse(JSON.stringify(factsProofToJson(made)))
+  const main = await mainKey(seed, LABEL)
+  const expect = { verifier: stamp.verifier, verifierName: NAME, label: LABEL, profile: main.address, to: 'a reader', oldest: time }
+  assert.equal(await checkFacts({ ...expect, proof: factsProofFromJson(json) }), true)
 })

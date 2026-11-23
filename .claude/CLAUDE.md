@@ -5,14 +5,15 @@ Read `README.md` and the README of the directory you work in before any task.
 
 Use these words: seed, seed's number, derive, main key, signing key, encryption key, public
 encryption key, access key, profile, Profiles folder, profile entry, entry, folder, address, label,
-scope, verifier, verified, stamp, stamp number, facts, verification, reputation proof, check, host,
-host API, host check, service key, connector, private, locked (an entry, to a key), envelope,
-message, inbox, inbox entry, file, pay address, pay key, escrow, receipt, deal, index, fee payer,
-app, market, role, directory.
+scope, verifier, verified, stamp, stamp number, facts, fact, salt, verification, reputation proof,
+facts proof, made for, match number, check, host, host API, host check, service key, connector,
+private, locked (an entry, to a key), envelope, message, inbox, inbox entry, file, pay address, pay
+key, escrow, receipt, deal, index, fee payer, app, market, role, directory.
 Plain words, no em-dashes. The seed is a person's one secret, behind all their profiles, kept by
 their app; a stamp is the verifier's signature for your seed, kept private; a verification is what
-a profile shows. The standard says entry: anything in a folder. Markets name the kinds (listing,
-review, vouch, report).
+a profile shows; a fact is one of a stamp's facts, a name, a value and a salt, and a facts proof
+shows some of them to the one reader it is made for. The standard says entry: anything in a
+folder. Markets name the kinds (listing, review, vouch, report).
 
 - Locked, never "sealed".
 - Seed means only a person's seed: a service's own is its secret.
@@ -49,7 +50,7 @@ What an app that holds keys should know: `keys/README.md`. Never copy it here.
   effect of a task.
 - Content shapes are never defined in this repo: what a listing, a review or a market holds is
   `foundationforest/markets`'s.
-- The repo is `keys/`, `proofs/` (`verification/`, `reputation/`), `folders/`, `escrows/`
+- The repo is `keys/`, `proofs/` (`verification/`, `reputation/`, `facts/`), `folders/`, `escrows/`
   (`solana/`), `README.md` and `LICENSE`, with `.github/`, `.claude/CLAUDE.md`, and the npm
   workspace's `package.json`, `package-lock.json` and `tsconfig.base.json`.
   The README is the standard.
