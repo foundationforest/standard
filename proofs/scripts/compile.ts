@@ -1,6 +1,6 @@
 // Compile each circuit and check it is the one its setup was made for.
 //
-//   npm run compile                          # both; needs circom 2.2.3 on PATH, or its path in CIRCOM
+//   npm run compile                          # all three; needs circom 2.2.3 on PATH, or its path in CIRCOM
 //   node scripts/compile.ts verification     # one
 //
 // circom gives the same bytes every time for the same source, so the constraint system's and the
@@ -22,6 +22,7 @@ const CIRCOM_VERSION = '2.2.3'
 const CIRCUITS: Record<string, Array<[string, string]>> = {
   verification: [['circomlib', 'circuits']],
   reputation: [['circomlib', 'circuits'], ['@zk-kit/binary-merkle-root.circom', 'src']],
+  facts: [['circomlib', 'circuits'], ['@zk-kit/binary-merkle-root.circom', 'src']],
 }
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')

@@ -2,7 +2,7 @@
   "name": "@foundationforest/proofs",
   "version": "0.0.0",
   "private": true,
-  "description": "Forest's two zero-knowledge proofs, each its own circuit and setup, and the one client for both: the stamp a verifier signs and the verification a device makes from it for one profile; the tree an index publishes and the reputation proof a device makes from it for one of the person's own profiles; and the check any reader makes of each.",
+  "description": "Forest's three zero-knowledge proofs, each its own circuit and setup, and the one client for all three: the stamp a verifier signs and the verification a device makes from it for one profile; the tree an index publishes and the reputation proof a device makes from it for one of the person's own profiles; a stamp's facts as a list, and the facts proof a device makes from it to show some of them to one reader; and the check any reader makes of each.",
   "license": "Apache-2.0",
   "type": "module",
   "engines": {

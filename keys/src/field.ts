@@ -17,7 +17,7 @@ export function numberOf(bytes: Uint8Array): bigint {
 
 /**
  * The seed's number: its 32 bytes read big-endian, reduced mod BN254's order. Poseidon takes it
- * whenever it derives from the seed, and so do both proofs.
+ * whenever it derives from the seed, and so does every proof.
  */
 export function seedNumber(seed: Uint8Array): bigint {
   assertBytes('seed', seed, SEED_LENGTH)

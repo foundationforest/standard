@@ -72,8 +72,8 @@ It is on Baby Jubjub so that a proof can derive it from the seed's number cheapl
 would not allow.
 
 - Its scalar is the lowest 250 bits of `Poseidon(the seed's number, scope)`. Baby Jubjub's subgroup
-  order `l` is above 2^250, so every 250-bit number is already a scalar, and both proofs derive the
-  same key with nothing to reduce ([proofs](../proofs/README.md)).
+  order `l` is above 2^250, so every 250-bit number is already a scalar, and every proof derives
+  the same key with nothing to reduce ([proofs](../proofs/README.md)).
 - Its public key is the scalar times Baby Jubjub's `Base8`, the point circomlib and zk-kit use.
 - Its address is the public key packed into 32 bytes (y little-endian, x's sign in the top bit, as
   circomlib and zk-kit pack it), in base58 (the Bitcoin alphabet), almost always 43 or 44
@@ -154,7 +154,8 @@ The person decides what to do with their keys. An app that holds them should kno
    That copy of the seed sits on hosts, and whoever holds any one of the passkeys holds the seed.
 2. Access keys are made to be handed out. An AI app, a service or another person acts for a profile
    with an access key the profile lists, never with the seed or a main key.
-3. Verifications and reputation proofs are made on the device, from the seed, never delegated.
+3. Verifications, reputation proofs and facts proofs are made on the device, from the seed, never
+   delegated.
 
 ## Use it
 
